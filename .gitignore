@@ -2,6 +2,11 @@
 dom_dump.html
 test_login.ps1
 
+# Database Backups & Spreadsheet Exports
+leanlife_database_backup.json
+leanlife_*_export.json
+leanlife_*_export.csv
+
 # IDE and System Metadata
 .vscode/
 .idea/
