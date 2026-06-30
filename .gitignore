@@ -1,3 +1,15 @@
+# Dependency Directories
+node_modules/
+.next/
+dist/
+build/
+.cache/
+
+# Environment Variables & Configs
+.env
+.env.local
+.env.production
+
 # Debug files
 dom_dump.html
 test_login.ps1
