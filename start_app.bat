@@ -1,0 +1,3 @@
+@echo off
+echo Launching LeanLife Wellness App...
+start "" "%~dp0index.html"

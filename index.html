@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeanLife Wellness - Premium Health, Shared Accountability & Community</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            const errorDiv = document.createElement('div');
+            errorDiv.id = 'fatal-error-banner';
+            errorDiv.style.position = 'fixed';
+            errorDiv.style.top = '0';
+            errorDiv.style.left = '0';
+            errorDiv.style.width = '100%';
+            errorDiv.style.background = '#ffcccc';
+            errorDiv.style.color = '#cc0000';
+            errorDiv.style.padding = '15px';
+            errorDiv.style.borderBottom = '3px solid #cc0000';
+            errorDiv.style.zIndex = '999999';
+            errorDiv.style.fontFamily = 'monospace';
+            errorDiv.style.fontSize = '0.9rem';
+            errorDiv.innerHTML = '<strong>LEANLIFE FATAL ERROR:</strong> ' + message + ' <br>File: ' + source + ' <br>Line: ' + lineno + ':' + colno + (error ? '<br>Stack: ' + error.stack : '');
+            document.body.insertBefore(errorDiv, document.body.firstChild);
+            return false;
+        };
+        window.onunhandledrejection = function(event) {
+            const errorDiv = document.createElement('div');
+            errorDiv.id = 'fatal-rejection-banner';
+            errorDiv.style.position = 'fixed';
+            errorDiv.style.top = '0';
+            errorDiv.style.left = '0';
+            errorDiv.style.width = '100%';
+            errorDiv.style.background = '#ffcccc';
+            errorDiv.style.color = '#cc0000';
+            errorDiv.style.padding = '15px';
+            errorDiv.style.borderBottom = '3px solid #cc0000';
+            errorDiv.style.zIndex = '999999';
+            errorDiv.style.fontFamily = 'monospace';
+            errorDiv.style.fontSize = '0.9rem';
+            errorDiv.innerHTML = '<strong>LEANLIFE PROMISE REJECTION:</strong> ' + event.reason;
+            document.body.insertBefore(errorDiv, document.body.firstChild);
+        };
+    </script>
+</head>
+<body>
+    <div id="app-container">
+        <!-- Floating Wellness Background Icons -->
+        <div class="floating-bg">
+            <span class="floating-icon"><i class="fa-solid fa-heart" style="color: #ff4757;"></i></span>
+            <span class="floating-icon"><i class="fa-solid fa-apple-whole" style="color: #ff6b81;"></i></span>
+            <span class="floating-icon"><i class="fa-solid fa-dumbbell" style="color: #747d8c;"></i></span>
+            <span class="floating-icon"><i class="fa-solid fa-droplet" style="color: #70a1ff;"></i></span>
+            <span class="floating-icon"><i class="fa-solid fa-spa" style="color: #2ed573;"></i></span>
+            <span class="floating-icon"><i class="fa-solid fa-moon" style="color: #ffa502;"></i></span>
+            <span class="floating-icon"><i class="fa-solid fa-leaf" style="color: #2ed573;"></i></span>
+            <span class="floating-icon"><i class="fa-solid fa-shoe-prints" style="color: #ffa502;"></i></span>
+        </div>
+
+        <!-- Global Header Navbar -->
+        <header class="navbar">
+            <div class="brand-logo-container" onclick="app.navigateTo('home')">
+                <img src="logo_transparent.png" alt="LeanLife Logo" class="logo-img">
+            </div>
+            
+            <nav>
+                <ul class="nav-links">
+                    <li><a id="nav-home" onclick="app.navigateTo('home')" class="active">Home</a></li>
+                    <li class="logged-in-only" style="display: none;"><a id="nav-dashboard" onclick="app.navigateTo('dashboard')">Dashboard</a></li>
+                    <li class="logged-in-only" style="display: none;"><a id="nav-community" onclick="app.navigateTo('community')">Community</a></li>
+                    <li class="logged-in-only" style="display: none;"><a id="nav-notice-board" onclick="app.navigateTo('notice-board')">Notice Board</a></li>
+                    <li class="logged-in-only" style="display: none;"><a id="nav-coaching" onclick="app.navigateTo('coaching')">Speak with Coach</a></li>
+                    <li class="admin-only" style="display: none;"><a id="nav-admin" onclick="app.navigateTo('admin')">Admin Panel</a></li>
+                </ul>
+            </nav>
+
+            <div class="nav-buttons">
+                <!-- User Profile / Auth Actions -->
+                <div id="auth-nav-buttons">
+                    <button class="btn btn-outline" onclick="app.navigateTo('login')">Login</button>
+                    <button class="btn btn-primary" onclick="app.navigateTo('login', {tab: 'register'})">Join Community</button>
+                </div>
+                <div id="user-nav-dropdown" style="display: none; align-items: center; gap: 12px; cursor: pointer;" onclick="app.navigateTo('profile')">
+                    <span id="user-display-name" style="font-weight: 600; font-family: var(--font-brand);">Member</span>
+                    <div style="width: 40px; height: 40px; border-radius: 50%; overflow: hidden; border: 2px solid var(--clr-accent-green); background: #eee;">
+                        <img id="user-display-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="event.stopPropagation(); app.logout()">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- --- SUCCESS SUBMISSION OVERLAY --- -->
+        <div id="success-overlay" class="success-overlay">
+            <div class="success-check-icon">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <h2 style="font-family: var(--font-brand); font-size: 2.2rem;">Wellness Log Saved!</h2>
+            <div class="glass-card" style="max-width: 500px; text-align: center;">
+                <p style="font-style: italic; margin-bottom: 1rem;">"Thank you for completing your Daily Wellness Log. Frannie is analyzing your Daily Wellness Log and will respond shortly."</p>
+                <span class="speedup-badge" onclick="app.triggerAISpeedUp()">Speed Up Analysis (Simulate 1 Hour)</span>
+            </div>
+            <button class="btn btn-primary" onclick="app.closeSuccessOverlay()">Go to Dashboard</button>
+        </div>
+
+        <!-- ==================== VIEWS ==================== -->
+
+        <!-- 1. LANDING / HERO VIEW -->
+        <section id="view-home" class="view-section active">
+            <div class="landing-hero">
+                <div class="hero-text">
+                    <h1>LeanLife Wellness <span class="title-highlight">Community App</span></h1>
+                    <p>Transforming Lives Through Science-Backed Wellness, Shared Accountability & Active Community</p>
+                    <div class="hero-ctas">
+                        <button class="btn btn-primary" onclick="app.navigateTo('login', {tab: 'register'})">Join Community</button>
+                        <button class="btn btn-secondary" onclick="app.navigateTo('login')">Login</button>
+                        <a class="btn btn-outline" href="#features-anchor">Learn More</a>
+                    </div>
+                </div>
+                
+                <!-- Animated Hero Carousel -->
+                <div class="hero-carousel-container">
+                    <div class="carousel-track">
+                        <!-- Slide 1 -->
+                        <div class="carousel-slide active" data-index="0">
+                            <div class="carousel-card">
+                                <img src="assets/gym_laughing.png" alt="Gym laughs">
+                                <div class="carousel-card-caption">
+                                    <h4>Accountability & Joy</h4>
+                                    <p>Members celebrating their fitness milestones in modern wellness environments.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Slide 2 -->
+                        <div class="carousel-slide" data-index="1">
+                            <div class="carousel-card">
+                                <img src="assets/meal_prep.png" alt="Healthy meal plans">
+                                <div class="carousel-card-caption">
+                                    <h4>Nutritional Excellence</h4>
+                                    <p>Beautiful healthy meal plans arranged professionally with lean protein, oats, and fruits.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Slide 3 -->
+                        <div class="carousel-slide" data-index="2">
+                            <div class="carousel-card">
+                                <img src="assets/consult.png" alt="Wellness consultation">
+                                <div class="carousel-card-caption">
+                                    <h4>Expert Consultation</h4>
+                                    <p>Health specialists providing personalized reviews inside premium wellness clinics.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Slide 4 -->
+                        <div class="carousel-slide" data-index="3">
+                            <div class="carousel-logo-card">
+                                <img src="logo.png" alt="LeanLife Logo">
+                                <h3>LeanLife Wellness App</h3>
+                                <p style="text-align: center; max-width: 80%;">A premium healthcare ecosystem engineered for personalized longevity and wellness excellence.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Indicators -->
+                    <div class="carousel-indicators">
+                        <button class="carousel-indicator active" onclick="app.setCarouselSlide(0)"></button>
+                        <button class="carousel-indicator" onclick="app.setCarouselSlide(1)"></button>
+                        <button class="carousel-indicator" onclick="app.setCarouselSlide(2)"></button>
+                        <button class="carousel-indicator" onclick="app.setCarouselSlide(3)"></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Animated Statistics Grid -->
+            <div class="landing-stats-grid glass-card">
+                <div class="stat-card">
+                    <div class="stat-num" id="stat-members" data-val="15243">15,243</div>
+                    <div class="stat-label">Active Members</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-num" id="stat-weight" data-val="84230">84,230</div>
+                    <div class="stat-label">Weight Lost (lbs)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-num" id="stat-goals" data-val="112050">112,050</div>
+                    <div class="stat-label">Goals Achieved</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-num" id="stat-water" data-val="2403120">2,403,120</div>
+                    <div class="stat-label">Glasses Water Logged</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-num" id="stat-calories" data-val="9843201">9,843.2k</div>
+                    <div class="stat-label">Calories Tracked</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-num" id="stat-challenges" data-val="48290">48,290</div>
+                    <div class="stat-label">Challenges Completed</div>
+                </div>
+            </div>
+
+            <!-- Clickable Feature Cards -->
+            <div id="features-anchor">
+                <h2 class="features-section-title">Explore App Features</h2>
+                <div class="features-grid">
+                    <div class="feature-card" onclick="app.navigateToFeature('wellness-log')">
+                        <div class="feature-card-bg">
+                            <img src="assets/card_log.png" alt="Daily Log">
+                        </div>
+                        <div class="feature-card-content">
+                            <div class="feature-card-icon"><i class="fa-solid fa-pen-to-square"></i></div>
+                            <h3>Daily Wellness Log</h3>
+                            <p>Track steps, hydration, meals, mood, sleep and fasting under Frannie's coaching.</p>
+                        </div>
+                    </div>
+                    <div class="feature-card" onclick="app.navigateToFeature('coaching')">
+                        <div class="feature-card-bg">
+                            <img src="assets/card_coach.png" alt="Speak with Coach">
+                        </div>
+                        <div class="feature-card-content">
+                            <div class="feature-card-icon"><i class="fa-solid fa-comments"></i></div>
+                            <h3>Speak with Coach</h3>
+                            <p>Direct WhatsApp integration and virtual consultations with certified premium healthcare specialists.</p>
+                        </div>
+                    </div>
+                    <div class="feature-card" onclick="app.navigateToFeature('community')">
+                        <div class="feature-card-bg">
+                            <img src="assets/card_community.png" alt="Community">
+                        </div>
+                        <div class="feature-card-content">
+                            <div class="feature-card-icon"><i class="fa-solid fa-users"></i></div>
+                            <h3>Health & Community</h3>
+                            <p>Discuss recipes, share progress photos, join fitness challenges, and earn member badges.</p>
+                        </div>
+                    </div>
+                    <div class="feature-card" onclick="app.navigateToFeature('notice-board')">
+                        <div class="feature-card-bg">
+                            <img src="assets/card_board.png" alt="Notice Board">
+                        </div>
+                        <div class="feature-card-content">
+                            <div class="feature-card-icon"><i class="fa-solid fa-clipboard-list"></i></div>
+                            <h3>Notice Board</h3>
+                            <p>RSVP to upcoming virtual live classes, fitness sessions, and physical healthcare events.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. LOGIN / AUTHENTICATION VIEW -->
+        <section id="view-login" class="view-section">
+            <div class="auth-container glass-card">
+                <div class="auth-header">
+                    <h2 id="auth-title">Welcome Back</h2>
+                    <p id="auth-subtitle">Log in to your personalized wellness portal</p>
+                </div>
+                
+                <form id="auth-form" onsubmit="app.handleAuthSubmit(event)">
+                    <div class="form-group" id="group-name" style="display: none;">
+                        <label for="auth-fullname">Full Name</label>
+                        <input type="text" id="auth-fullname" class="form-input" placeholder="Emma Watson">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-email">Email Address</label>
+                        <input type="email" id="auth-email" class="form-input" placeholder="emma@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-password">Password</label>
+                        <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required>
+                    </div>
+                    
+                    <div class="form-row" id="auth-row-remember">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; cursor: pointer;">
+                            <input type="checkbox" id="auth-remember" style="accent-color: var(--clr-accent-green);"> Remember Me
+                        </label>
+                        <a href="#" onclick="app.toggleAuthForgotPassword(event)" style="color: #4a90e2; text-decoration: none;">Forgot Password?</a>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; font-size: 1.1rem; margin-top: 1rem;" id="btn-auth-submit">Login</button>
+                </form>
+                
+                <!-- Simulation Quick-Login Box -->
+                <div style="margin-top: 1.5rem; border-top: 1px solid rgba(0, 0, 0, 0.08); padding-top: 1.2rem; text-align: center;">
+                    <p style="font-size: 0.8rem; color: #555; margin-bottom: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">Simulation Quick Login</p>
+                    <div style="display: flex; gap: 0.8rem; justify-content: center; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="app.fillSimulationCreds('emma@example.com', 'password123')">Member Login</button>
+                        <button type="button" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; border-color: rgba(0,0,0,0.15); color: var(--clr-text-dark);" onclick="app.fillSimulationCreds('admin@leanlife.com', 'admin123')">Admin Login</button>
+                    </div>
+                </div>
+                
+                <div class="auth-footer">
+                    <p id="auth-footer-text">Don't have an account? <a href="#" onclick="app.switchAuthTab('register')">Register here</a></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. USER DASHBOARD VIEW -->
+        <section id="view-dashboard" class="view-section">
+            <div class="dashboard-grid">
+                
+                <!-- Main Dashboard Panel -->
+                <div class="dashboard-main">
+                    <div class="dashboard-welcome">
+                        <div class="welcome-info">
+                            <h2>Hello, <span id="dash-user-name">Member</span>!</h2>
+                            <p id="dash-greeting-msg">Ready to elevate your wellness targets today? Let's stay accountable!</p>
+                        </div>
+                        <div class="streak-badge">
+                            <span class="streak-icon"><i class="fa-solid fa-fire"></i></span>
+                            <div>
+                                <div class="streak-number" id="dash-streak-count">3</div>
+                                <div class="streak-label">Day Streak</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Daily Core Scores Gauges -->
+                    <div class="dashboard-stats-grid">
+                        <div class="glass-card dash-stat-card">
+                            <span class="icon" style="color: #2196f3;"><i class="fa-solid fa-droplet"></i></span>
+                            <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Water Logged</span>
+                            <div class="dash-stat-val" id="dash-val-water">4 / 10 drops</div>
+                            <div class="dash-stat-progress">
+                                <div class="dash-stat-fill fill-water" id="dash-progress-water" style="width: 40%;"></div>
+                            </div>
+                        </div>
+                        <div class="glass-card dash-stat-card">
+                            <span class="icon" style="color: #8bc34a;"><i class="fa-solid fa-shoe-prints"></i></span>
+                            <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Steps Logged</span>
+                            <div class="dash-stat-val" id="dash-val-steps">7,850 steps</div>
+                            <div class="dash-stat-progress">
+                                <div class="dash-stat-fill fill-steps" id="dash-progress-steps" style="width: 78.5%;"></div>
+                            </div>
+                        </div>
+                        <div class="glass-card dash-stat-card">
+                            <span class="icon" style="color: #e91e63;"><i class="fa-solid fa-utensils"></i></span>
+                            <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Calories Burned</span>
+                            <div class="dash-stat-val" id="dash-val-calories">420 kcal</div>
+                            <div class="dash-stat-progress">
+                                <div class="dash-stat-fill fill-calories" id="dash-progress-calories" style="width: 60%;"></div>
+                            </div>
+                        </div>
+                        <div class="glass-card dash-stat-card">
+                            <span class="icon" style="color: #673ab7;"><i class="fa-solid fa-moon"></i></span>
+                            <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Sleep Logged</span>
+                            <div class="dash-stat-val" id="dash-val-sleep">7.5 hrs</div>
+                            <div class="dash-stat-progress">
+                                <div class="dash-stat-fill fill-sleep" id="dash-progress-sleep" style="width: 93.7%;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div>
+                        <h3 style="margin-bottom: 1rem; font-family: var(--font-brand);">Quick Actions</h3>
+                        <div class="quick-actions-bar">
+                            <button class="quick-action-btn" onclick="app.navigateTo('wellness-log')"><i class="fa-solid fa-pen-to-square" style="color: var(--clr-accent-green-hover);"></i> Log Daily Activity</button>
+                            <button class="quick-action-btn" onclick="app.quickLogWater()"><i class="fa-solid fa-glass-water" style="color: #2196f3;"></i> Log Glass of Water</button>
+                            <button class="quick-action-btn" onclick="app.navigateTo('coaching')"><i class="fa-solid fa-user-doctor" style="color: var(--clr-success);"></i> Consult Coach</button>
+                            <button class="quick-action-btn" onclick="app.navigateTo('community')"><i class="fa-solid fa-rss" style="color: #f77f00;"></i> Share Feed Post</button>
+                        </div>
+                    </div>
+
+                    <!-- Pending AI Coaching Alert Countdown -->
+                    <div id="dashboard-pending-analysis-card" class="glass-card analysis-progress-card" style="display: none;">
+                        <div class="loader-spinner"></div>
+                        <div>
+                            <h3 style="font-family: var(--font-brand);">Coach Frannie's Analysis In Progress</h3>
+                            <p style="color: #555; margin-bottom: 1rem;">Analyzing daily sleep patterns, meals, steps, gratitude logs, and habits...</p>
+                            <div class="countdown-timer-box">
+                                <div class="timer-unit" id="timer-hour">00</div>
+                                <div class="timer-unit" id="timer-min">59</div>
+                                <div class="timer-unit" id="timer-sec">59</div>
+                            </div>
+                            <span class="speedup-badge" onclick="app.triggerAISpeedUp()">Speed Up Analysis (Simulate 1 Hour)</span>
+                        </div>
+                    </div>
+
+                    <!-- AI Coach Frannie Recommendation Box -->
+                    <div class="glass-card ai-coach-banner">
+                        <div class="ai-coach-avatar">👩‍⚕️</div>
+                        <div class="ai-coach-speech">
+                            <h4 style="font-family: var(--font-brand);">Coach Frannie</h4>
+                            <p id="dash-ai-advice">"Drink one glass of water now. Your historical patterns indicate optimal metabolic recovery happens when you hydrate before 3:00 PM."</p>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Charts Container -->
+                    <div class="glass-card">
+                        <h3 style="margin-bottom: 1rem; font-family: var(--font-brand);">Weekly Wellness Progress Trends</h3>
+                        <div class="svg-chart-container" id="dash-weekly-chart-box">
+                            <!-- SVG Rendered via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sidebar Dashboard Panel -->
+                <div class="dashboard-sidebar">
+                    <!-- Daily score ring -->
+                    <div class="glass-card" style="text-align: center;">
+                        <h3 style="margin-bottom: 1.5rem; font-family: var(--font-brand);">Daily Wellness Score</h3>
+                        <div class="chart-pie-wrapper">
+                            <div class="gauge-circle" id="dash-score-gauge-ring" style="background: conic-gradient(var(--clr-accent-green) 0% 75%, #e2d2c1 75% 100%); width: 140px; height: 140px;">
+                                <div class="gauge-value" id="dash-score-gauge-num" style="font-size: 2.5rem; line-height: 1;">75</div>
+                            </div>
+                        </div>
+                        <p style="font-weight: 600; margin-top: 1rem;" id="dash-score-grade-text">Grade: B+</p>
+                        <p style="font-size: 0.85rem; color: #555; margin-top: 4px;">Updated 3 hours ago</p>
+                        <button class="btn btn-outline" style="width: 100%; margin-top: 1.5rem; justify-content: center;" onclick="app.viewLatestAIReport()">View Full Wellness Report</button>
+                    </div>
+
+                    <!-- Today's Tasks Checklist -->
+                    <div class="glass-card">
+                        <h3 style="margin-bottom: 1rem; font-family: var(--font-brand);">Today's Tasks</h3>
+                        <ul style="list-style: none; display: flex; flex-direction: column; gap: 12px;" id="dash-checklist-container">
+                            <li style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" checked disabled style="accent-color: var(--clr-accent-green);">
+                                <span style="text-decoration: line-through; color: #777;">Log Wakeup Time</span>
+                            </li>
+                            <li style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="chk-task-water" onclick="app.toggleTaskCheck('water')" style="accent-color: var(--clr-accent-green);">
+                                <span>Hydrate (10 glasses)</span>
+                            </li>
+                            <li style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="chk-task-steps" onclick="app.toggleTaskCheck('steps')" style="accent-color: var(--clr-accent-green);">
+                                <span>Complete 10,000 steps</span>
+                            </li>
+                            <li style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="chk-task-meal" onclick="app.toggleTaskCheck('meal')" style="accent-color: var(--clr-accent-green);">
+                                <span>Track Lunch & Dinner</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Achievements & Badges -->
+                    <div class="glass-card">
+                        <h3 style="margin-bottom: 1rem; font-family: var(--font-brand);">Your Achievements</h3>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: center;" id="dash-badges-container">
+                            <!-- Dynamically loaded badges -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. DAILY WELLNESS LOG VIEW -->
+        <section id="view-wellness-log" class="view-section">
+            <h2 style="font-family: var(--font-brand); font-size: 2.2rem; margin-bottom: 2rem; text-align: center;">Daily Wellness Log</h2>
+            
+            <div class="wellness-log-grid">
+                
+                <!-- Main Log Forms -->
+                <form id="wellness-log-form" class="wellness-log-form" onsubmit="app.handleWellnessLogSubmit(event)">
+                    
+                    <!-- Sleep Tracker -->
+                    <div class="glass-card">
+                        <h3 class="log-section-title"><i class="fa-solid fa-moon" style="color: #673ab7;"></i> Sleep Tracker</h3>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                            <div class="form-group">
+                                <label for="sleep-wakeup">Wake-up Time</label>
+                                <input type="time" id="sleep-wakeup" class="form-input" required value="06:30">
+                            </div>
+                            <div class="form-group">
+                                <label for="sleep-bedtime">Bedtime</label>
+                                <input type="time" id="sleep-bedtime" class="form-input" required value="22:30">
+                            </div>
+                            <div class="form-group">
+                                <label for="sleep-duration">Hours Slept</label>
+                                <input type="number" id="sleep-duration" class="form-input" min="0" max="24" step="0.1" required value="8">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Journaling & Affirmations -->
+                    <div class="glass-card">
+                        <h3 class="log-section-title"><i class="fa-solid fa-book-open" style="color: #f39c12;"></i> Journaling & Reflections</h3>
+                        
+                        <div class="form-group">
+                            <label style="font-weight: 600;">Daily Affirmations (Three items)</label>
+                            <input type="text" id="affirmation-1" class="form-input" style="margin-bottom: 8px;" placeholder="I am strong and capable of reaching my targets." required>
+                            <input type="text" id="affirmation-2" class="form-input" style="margin-bottom: 8px;" placeholder="I fuel my body with nutrients and hydration." required>
+                            <input type="text" id="affirmation-3" class="form-input" placeholder="I appreciate my mind's resilience." required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label style="font-weight: 600;">Gratitude Journal ("I am grateful for...")</label>
+                            <input type="text" id="gratitude-1" class="form-input" style="margin-bottom: 8px;" placeholder="1. Supportive family members" required>
+                            <input type="text" id="gratitude-2" class="form-input" style="margin-bottom: 8px;" placeholder="2. Healthy homemade breakfast" required>
+                            <input type="text" id="gratitude-3" class="form-input" placeholder="3. Sunny clean air today" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="font-weight: 600;">Today's Improvement Goals ("What can I do better today?")</label>
+                            <input type="text" id="goals-1" class="form-input" style="margin-bottom: 8px;" placeholder="1. Avoid snacking after 8:00 PM" required>
+                            <input type="text" id="goals-2" class="form-input" style="margin-bottom: 8px;" placeholder="2. Walk extra blocks during break" required>
+                            <input type="text" id="goals-3" class="form-input" placeholder="3. Limit screen time before bed" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="font-weight: 600;">Thoughts & Reflection (Three journal entries)</label>
+                            <textarea id="journal-1" class="form-input" style="margin-bottom: 8px; height: 60px;" placeholder="Morning thought reflection..." required></textarea>
+                            <textarea id="journal-2" class="form-input" style="margin-bottom: 8px; height: 60px;" placeholder="Afternoon state reflection..." required></textarea>
+                            <textarea id="journal-3" class="form-input" style="height: 60px;" placeholder="Evening mood reflection..." required></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="font-weight: 600;">Three Great Things Today</label>
+                            <input type="text" id="great-things-1" class="form-input" style="margin-bottom: 8px;" placeholder="1. Completed standard project layout ahead of time" required>
+                            <input type="text" id="great-things-2" class="form-input" style="margin-bottom: 8px;" placeholder="2. Had a refreshing 20 mins walk" required>
+                            <input type="text" id="great-things-3" class="form-input" placeholder="3. Logged water goals consistently" required>
+                        </div>
+                    </div>
+
+                    <!-- Water Tracker -->
+                    <div class="glass-card">
+                        <h3 class="log-section-title"><i class="fa-solid fa-glass-water" style="color: #2196f3;"></i> Water Tracker</h3>
+                        <p style="color: #555;">Click the droplets below to log a glass of water (250ml each):</p>
+                        
+                        <div class="droplets-container">
+                            <span class="droplet" data-num="1" onclick="app.logWaterClick(1)"><i class="fa-solid fa-droplet"></i></span>
+                            <span class="droplet" data-num="2" onclick="app.logWaterClick(2)"><i class="fa-solid fa-droplet"></i></span>
+                            <span class="droplet" data-num="3" onclick="app.logWaterClick(3)"><i class="fa-solid fa-droplet"></i></span>
+                            <span class="droplet" data-num="4" onclick="app.logWaterClick(4)"><i class="fa-solid fa-droplet"></i></span>
+                            <span class="droplet" data-num="5" onclick="app.logWaterClick(5)"><i class="fa-solid fa-droplet"></i></span>
+                            <span class="droplet" data-num="6" onclick="app.logWaterClick(6)"><i class="fa-solid fa-droplet"></i></span>
+                            <span class="droplet" data-num="7" onclick="app.logWaterClick(7)"><i class="fa-solid fa-droplet"></i></span>
+                            <span class="droplet" data-num="8" onclick="app.logWaterClick(8)"><i class="fa-solid fa-droplet"></i></span>
+                            <span class="droplet" data-num="9" onclick="app.logWaterClick(9)"><i class="fa-solid fa-droplet"></i></span>
+                            <span class="droplet" data-num="10" onclick="app.logWaterClick(10)"><i class="fa-solid fa-droplet"></i></span>
+                        </div>
+
+                        <!-- Animated water gauge -->
+                        <div class="water-gauge-wrapper">
+                            <div class="water-gauge-fill" id="water-log-gauge"></div>
+                            <div class="water-gauge-text" id="water-log-gauge-text">0% (0 / 10 glasses)</div>
+                        </div>
+                    </div>
+
+                    <!-- Exercise Tracker -->
+                    <div class="glass-card">
+                        <h3 class="log-section-title"><i class="fa-solid fa-dumbbell" style="color: #747d8c;"></i> Exercise Tracker</h3>
+                        
+                        <div class="form-group">
+                            <label style="margin-bottom: 0.5rem;">Did you Exercise today?</label>
+                            <div style="display: flex; gap: 1.5rem;">
+                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="exercise-completed" value="yes" checked onclick="app.toggleExerciseInputs(true)"> YES
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="exercise-completed" value="no" onclick="app.toggleExerciseInputs(false)"> NO
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="exercise-details-fields" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                            <div class="form-group">
+                                <label for="exercise-type">Exercise Type</label>
+                                <select id="exercise-type" class="form-input">
+                                    <option value="Strength Training" selected>Strength Training</option>
+                                    <option value="Cardio (Running/Cycling)">Cardio (Running/Cycling)</option>
+                                    <option value="Yoga & Flexibility">Yoga & Flexibility</option>
+                                    <option value="Pilates">Pilates</option>
+                                    <option value="HIIT (High Intensity)">HIIT (High Intensity)</option>
+                                    <option value="Swimming">Swimming</option>
+                                    <option value="Walking / Hiking">Walking / Hiking</option>
+                                    <option value="Sports & Recreation">Sports & Recreation</option>
+                                    <option value="Dance & Zumba">Dance & Zumba</option>
+                                    <option value="Other / Recovery Session">Other / Recovery Session</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="exercise-duration">Duration (Minutes)</label>
+                                <input type="number" id="exercise-duration" class="form-input" min="0" value="45">
+                            </div>
+                            <div class="form-group">
+                                <label for="exercise-intensity">Intensity</label>
+                                <select id="exercise-intensity" class="form-input">
+                                    <option value="Light">Light</option>
+                                    <option value="Moderate" selected>Moderate</option>
+                                    <option value="Heavy">Heavy</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Steps Log -->
+                    <div class="glass-card">
+                        <h3 class="log-section-title"><i class="fa-solid fa-shoe-prints" style="color: #8bc34a;"></i> Daily Steps</h3>
+                        <div class="form-group" style="max-width: 300px;">
+                            <label for="log-steps-input">Daily Steps</label>
+                            <input type="number" id="log-steps-input" class="form-input" min="0" value="8500" oninput="app.updateStepsCharts()">
+                        </div>
+                        <div style="margin-top: 2rem;">
+                            <h4 style="margin-bottom: 1rem; font-family: var(--font-brand);">Activity Level Graphs</h4>
+                            <div style="display: flex; gap: 12px; margin-bottom: 1rem;">
+                                <span class="speedup-badge" onclick="app.switchStepsTab('week')">Weekly Steps</span>
+                                <span class="speedup-badge" onclick="app.switchStepsTab('month')">Monthly Steps</span>
+                            </div>
+                            <div class="svg-chart-container" id="steps-chart-box">
+                                <!-- Steps Chart SVG -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mood Tracker -->
+                    <div class="glass-card">
+                        <h3 class="log-section-title"><i class="fa-solid fa-face-smile" style="color: #ffa502;"></i> Mood Tracker</h3>
+                        <p style="color: #555;">Select how you are feeling overall today:</p>
+                        
+                        <div class="mood-picker">
+                            <div class="mood-btn" data-mood="excellent" onclick="app.selectMood('excellent')">
+                                <span>😁</span>
+                                <span>Excellent</span>
+                            </div>
+                            <div class="mood-btn active" data-mood="happy" onclick="app.selectMood('happy')">
+                                <span>😊</span>
+                                <span>Happy</span>
+                            </div>
+                            <div class="mood-btn" data-mood="good" onclick="app.selectMood('good')">
+                                <span>🙂</span>
+                                <span>Good</span>
+                            </div>
+                            <div class="mood-btn" data-mood="neutral" onclick="app.selectMood('neutral')">
+                                <span>😐</span>
+                                <span>Neutral</span>
+                            </div>
+                            <div class="mood-btn" data-mood="sad" onclick="app.selectMood('sad')">
+                                <span>😔</span>
+                                <span>Sad</span>
+                            </div>
+                            <div class="mood-btn" data-mood="stressed" onclick="app.selectMood('stressed')">
+                                <span>😣</span>
+                                <span>Stressed</span>
+                            </div>
+                            <div class="mood-btn" data-mood="tired" onclick="app.selectMood('tired')">
+                                <span>😴</span>
+                                <span>Tired</span>
+                            </div>
+                            <div class="mood-btn" data-mood="angry" onclick="app.selectMood('angry')">
+                                <span>😡</span>
+                                <span>Angry</span>
+                            </div>
+                        </div>
+                        
+                        <div class="glass-card" id="mood-frannie-suggestions" style="border-left: 4px solid var(--clr-accent-green); background: rgba(255,255,255,0.4); margin-top: 1.5rem; padding: 1.2rem;">
+                            <h4 style="font-family: var(--font-brand); color: var(--clr-text-dark);"><i class="fa-solid fa-heart" style="color: #e91e63;"></i> Frannie's Emotional Insights</h4>
+                            <p style="font-size: 0.95rem; font-style: italic; margin-top: 4px;" id="mood-advice-text">"You are happy! A wonderful state to support digestion. Consider a lightweight meditation session to anchor this positive energy."</p>
+                        </div>
+                    </div>
+
+                    <!-- Meal Tracker -->
+                    <div class="glass-card">
+                        <h3 class="log-section-title"><i class="fa-solid fa-utensils" style="color: #e91e63;"></i> Meal Tracker</h3>
+                        
+                        <div class="meal-row">
+                            <h4>Breakfast</h4>
+                            <input type="text" id="meal-breakfast-desc" class="form-input" placeholder="Oatmeal, banana, almond milk" value="Oatmeal with berries and banana">
+                            <input type="text" id="meal-breakfast-portion" class="form-input" placeholder="Portion size e.g. 1 bowl" value="1 bowl">
+                        </div>
+                        <div class="meal-row">
+                            <h4>Lunch</h4>
+                            <input type="text" id="meal-lunch-desc" class="form-input" placeholder="Grilled chicken salad, quinoa" value="Grilled salmon salad with avocado">
+                            <input type="text" id="meal-lunch-portion" class="form-input" placeholder="Portion size e.g. 1 plate" value="1 plate">
+                        </div>
+                        <div class="meal-row">
+                            <h4>Dinner</h4>
+                            <input type="text" id="meal-dinner-desc" class="form-input" placeholder="Baked salmon, broccoli" value="Baked chicken breast with roasted sweet potatoes">
+                            <input type="text" id="meal-dinner-portion" class="form-input" placeholder="Portion size e.g. 200g" value="250g">
+                        </div>
+                        <div class="meal-row">
+                            <h4>Snacks</h4>
+                            <input type="text" id="meal-snacks-desc" class="form-input" placeholder="Greek yogurt, mixed almonds" value="Greek yogurt with honey and raw almonds">
+                            <input type="text" id="meal-snacks-portion" class="form-input" placeholder="Portion size e.g. 1 cup" value="1 cup">
+                        </div>
+
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label for="meal-photo">Upload Progress / Meal Photo (Optional)</label>
+                            <input type="file" id="meal-photo" class="form-input" accept="image/*">
+                        </div>
+                    </div>
+
+                    <!-- Fasting Tracker -->
+                    <div class="glass-card">
+                        <h3 class="log-section-title"><i class="fa-solid fa-hourglass-half" style="color: #9c27b0;"></i> Fasting Tracker</h3>
+                        
+                        <div class="form-group">
+                            <label style="margin-bottom: 0.5rem;">Are you fasting today?</label>
+                            <div style="display: flex; gap: 1.5rem;">
+                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="fasting-completed" value="yes" onclick="app.toggleFastingInputs(true)"> YES
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="radio" name="fasting-completed" value="no" checked onclick="app.toggleFastingInputs(false)"> NO
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="fasting-details-fields" style="display: none; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                            <div class="form-group">
+                                <label for="fasting-type">Fasting Type</label>
+                                <select id="fasting-type" class="form-input">
+                                    <option value="Intermittent">Intermittent</option>
+                                    <option value="OMAD">OMAD (One Meal A Day)</option>
+                                    <option value="16:8" selected>16:8 Protocol</option>
+                                    <option value="18:6">18:6 Protocol</option>
+                                    <option value="24 Hours">24 Hours</option>
+                                    <option value="Custom">Custom</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="fasting-start">Start Time</label>
+                                <input type="time" id="fasting-start" class="form-input" value="20:00">
+                            </div>
+                            <div class="form-group">
+                                <label for="fasting-end">End Time</label>
+                                <input type="time" id="fasting-end" class="form-input" value="12:00">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Additional Daily Wellness Features -->
+                    <div class="glass-card">
+                        <h3 class="log-section-title"><i class="fa-solid fa-circle-plus" style="color: #26af7f;"></i> Additional Daily Metrics</h3>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                            <div class="form-group">
+                                <label for="metrics-weight">Weight (kg)</label>
+                                <input type="number" id="metrics-weight" class="form-input" step="0.1" value="70.5" oninput="app.calculateBMI()">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-bmi">BMI (Auto-calculated)</label>
+                                <input type="text" id="metrics-bmi" class="form-input" readonly value="22.5">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-bodyfat">Body Fat %</label>
+                                <input type="number" id="metrics-bodyfat" class="form-input" step="0.1" value="18.5">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-bloodpressure">Blood Pressure (mmHg)</label>
+                                <input type="text" id="metrics-bloodpressure" class="form-input" value="120/80">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-bloodsugar">Blood Sugar (mg/dL)</label>
+                                <input type="number" id="metrics-bloodsugar" class="form-input" value="95">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-heartrate">Resting Heart Rate (bpm)</label>
+                                <input type="number" id="metrics-heartrate" class="form-input" value="65">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-stress">Stress Level (1 - 10)</label>
+                                <input type="range" id="metrics-stress" class="form-input" min="1" max="10" value="4">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-energy">Energy Level (1 - 10)</label>
+                                <input type="range" id="metrics-energy" class="form-input" min="1" max="10" value="7">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-screentime">Screen Time (Hours)</label>
+                                <input type="number" id="metrics-screentime" class="form-input" step="0.1" value="4.5">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-outdoortime">Outdoor Time (Minutes)</label>
+                                <input type="number" id="metrics-outdoortime" class="form-input" value="45">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-sunlight">Sunlight Exposure (Mins)</label>
+                                <input type="number" id="metrics-sunlight" class="form-input" value="20">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-meditation">Meditation (Minutes)</label>
+                                <input type="number" id="metrics-meditation" class="form-input" value="15">
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-top: 1rem;">
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="metrics-medication" checked style="accent-color: var(--clr-accent-green);"> Medication Taken
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="metrics-supplement" checked style="accent-color: var(--clr-accent-green);"> Supplements Logged
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="font-size: 1.15rem; width: 100%; justify-content: center; padding: 1rem;"><i class="fa-solid fa-cloud-arrow-up"></i> Submit Daily Wellness Log</button>
+                </form>
+
+                <!-- Sidebar Tips & Guides -->
+                <div class="wellness-log-sidebar">
+                    <div class="glass-card" style="position: sticky; top: 120px;">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1rem;"><i class="fa-solid fa-circle-question" style="color: var(--clr-accent-green-hover);"></i> Tracking Guide</h3>
+                        <p style="font-size: 0.9rem; color: #555; margin-bottom: 1rem;">Logging your activities triggers Frannie's wellness analysis engine. To receive an accurate review, try to write detailed descriptions in your journaling & meals boxes.</p>
+                        
+                        <div style="background-color: var(--clr-primary-translucent); padding: 1rem; border-radius: var(--radius-sm); border-left: 4px solid var(--clr-success); margin-bottom: 1rem;">
+                            <h4 style="font-size: 0.95rem; font-family: var(--font-brand); color: var(--clr-text-dark);">Streak Counter</h4>
+                            <p style="font-size: 0.8rem; color: #444;">Submitting logs daily increments your badge streak and boosts your physical and emotional wellness rating score.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. SPEAK WITH COACH VIEW -->
+        <section id="view-coaching" class="view-section">
+            <h2 style="font-family: var(--font-brand); font-size: 2.2rem; margin-bottom: 2rem; text-align: center;">Speak With Your Coach</h2>
+            
+            <div class="wellness-log-grid">
+                <!-- Coach Info & Direct Link -->
+                <div>
+                    <div class="glass-card coach-profile-header">
+                        <div class="coach-avatar-large">
+                            <img id="coach-pic" src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop" alt="Coach Francess">
+                        </div>
+                        <div>
+                            <h3 style="font-size: 1.8rem;" id="coach-name">Coach Francess Orenuga</h3>
+                            <p style="color: var(--clr-accent-green-hover); font-weight: 600; font-family: var(--font-brand);" id="coach-title">Senior Lifestyle Medicine & Nutrition Coach</p>
+                            <p style="margin-top: 10px; font-size: 0.95rem;" id="coach-spec">Specialization: Metabolic Restoration, Habit Loop Optimization, Integrative Nutrition.</p>
+                            <p style="font-size: 0.9rem; color: #555; margin-top: 4px;" id="coach-hours">Availability: Mon - Fri, 9:00 AM - 5:00 PM EST</p>
+                        </div>
+                    </div>
+
+                    <!-- Direct WhatsApp Integration -->
+                    <div class="glass-card whatsapp-chat-box">
+                        <div class="whatsapp-icon"><i class="fa-brands fa-whatsapp"></i></div>
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 0.5rem;">Chat Directly on WhatsApp</h3>
+                        <p style="color: #555; max-width: 500px; margin: 0 auto 1.5rem;">Connect with Coach Francess immediately to resolve hydration goals, snack alternatives, or lifestyle adjustments.</p>
+                        <a href="https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan." target="_blank" class="btn btn-primary" style="background-color: #25d366; color: white; border-color: #25d366; box-shadow: 0 4px 14px rgba(37, 211, 102, 0.4);"><i class="fa-brands fa-whatsapp"></i> Start WhatsApp Chat</a>
+                    </div>
+                </div>
+
+                <!-- Consultations Request Form -->
+                <div class="glass-card">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.5rem;">Schedule a Consultation</h3>
+                    <form onsubmit="app.handleCoachRequest(event)">
+                        <div class="form-group">
+                            <label for="consult-type">Consultation Mode</label>
+                            <select id="consult-type" class="form-input">
+                                <option value="Video Session">Video Consultation (30 mins)</option>
+                                <option value="Voice Session">Voice Call Request (15 mins)</option>
+                                <option value="Office Appointment">In-Person Clinic Appointment (60 mins)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="consult-date">Preferred Date</label>
+                            <input type="date" id="consult-date" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="consult-time">Preferred Time Slot</label>
+                            <input type="time" id="consult-time" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="consult-notes">Wellness Objectives / Focus Areas</label>
+                            <textarea id="consult-notes" class="form-input" style="height: 100px;" placeholder="What would you like to address with your coach?" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">Submit Request</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. HEALTH & WELLNESS COMMUNITY VIEW -->
+        <section id="view-community" class="view-section">
+            <h2 style="font-family: var(--font-brand); font-size: 2.2rem; margin-bottom: 2rem; text-align: center;">Wellness Community Forum</h2>
+            
+            <div class="community-layout">
+                <!-- Categories navigation -->
+                <div class="glass-card community-categories">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1rem;">Discussions</h3>
+                    <div class="cat-item active" onclick="app.filterCommunity('all')">All Categories</div>
+                    <div class="cat-item" onclick="app.filterCommunity('Nutrition')"><i class="fa-solid fa-apple-whole"></i> Nutrition</div>
+                    <div class="cat-item" onclick="app.filterCommunity('Weight Loss')"><i class="fa-solid fa-weight-scale"></i> Weight Loss</div>
+                    <div class="cat-item" onclick="app.filterCommunity('Fitness')"><i class="fa-solid fa-dumbbell"></i> Fitness</div>
+                    <div class="cat-item" onclick="app.filterCommunity('Mental Health')"><i class="fa-solid fa-spa"></i> Mental Health</div>
+                    <div class="cat-item" onclick="app.filterCommunity('Recipes')"><i class="fa-solid fa-kitchen-set"></i> Recipes</div>
+                    <div class="cat-item" onclick="app.filterCommunity('Success Stories')"><i class="fa-solid fa-trophy"></i> Success Stories</div>
+                </div>
+
+                <!-- Feed column -->
+                <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    
+                    <!-- Search and Posting box -->
+                    <div class="glass-card" style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div style="display: flex; gap: 1rem;">
+                            <input type="text" id="community-search-input" class="form-input" placeholder="Search discussions, recipes, members..." oninput="app.searchCommunity()">
+                            <button class="btn btn-primary" onclick="app.openNewPostModal()"><i class="fa-solid fa-plus"></i> New Topic</button>
+                        </div>
+                        
+                        <!-- Collapsible new post box -->
+                        <div id="new-post-box" style="display: none; border-top: 1px solid rgba(0,0,0,0.06); padding-top: 1rem;">
+                            <h4 style="font-family: var(--font-brand); margin-bottom: 1rem;">Create a New Discussion Topic</h4>
+                            <form onsubmit="app.handleNewPostSubmit(event)">
+                                <div class="form-group">
+                                    <label for="post-title">Topic Title</label>
+                                    <input type="text" id="post-title" class="form-input" placeholder="e.g. My intermittent fasting tips" required>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1rem;">
+                                    <div class="form-group">
+                                        <label for="post-category">Category</label>
+                                        <select id="post-category" class="form-input">
+                                            <option value="Nutrition">Nutrition</option>
+                                            <option value="Weight Loss">Weight Loss</option>
+                                            <option value="Fitness">Fitness</option>
+                                            <option value="Mental Health">Mental Health</option>
+                                            <option value="Recipes">Recipes</option>
+                                            <option value="Success Stories">Success Stories</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="post-image">Image URL (Optional)</label>
+                                        <input type="text" id="post-image" class="form-input" placeholder="https://images.unsplash.com/photo...">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="post-body">Content Description</label>
+                                    <textarea id="post-body" class="form-input" style="height: 120px;" placeholder="Share recipes, exercise reviews or success targets..." required></textarea>
+                                </div>
+                                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                                    <button type="button" class="btn btn-outline" onclick="app.closeNewPostModal()">Cancel</button>
+                                    <button type="submit" class="btn btn-primary">Publish Post</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Forum Posts Feed -->
+                    <div id="community-feed-container" class="community-feed">
+                        <!-- Loaded dynamically via Javascript -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. NOTICE BOARD VIEW -->
+        <section id="view-notice-board" class="view-section">
+            <h2 style="font-family: var(--font-brand); font-size: 2.2rem; margin-bottom: 2rem; text-align: center;">Wellness Notice Board</h2>
+            <p style="text-align: center; color: #555; max-width: 600px; margin: -1.5rem auto 3rem;">Admin announcements, virtual live workshops, exercise sessions, and upcoming wellness classes.</p>
+            
+            <div class="events-grid" id="events-grid-container">
+                <!-- Dynamically loaded event cards -->
+            </div>
+        </section>
+
+        <!-- 8. USER PROFILE VIEW -->
+        <section id="view-profile" class="view-section">
+            <h2 style="font-family: var(--font-brand); font-size: 2.2rem; margin-bottom: 1.5rem; text-align: center;">User Profile Settings</h2>
+            
+            <div class="wellness-log-grid">
+                <!-- Main Profile Details -->
+                <div class="glass-card">
+                    <div class="profile-completion-box">
+                        <div style="display: flex; justify-content: space-between; font-weight: 600;">
+                            <span>Profile Completion Meter</span>
+                            <span id="profile-meter-text">85%</span>
+                        </div>
+                        <div class="completion-bar-wrapper">
+                            <div class="completion-bar-fill" id="profile-meter-fill" style="width: 85%;"></div>
+                        </div>
+                    </div>
+
+                    <form onsubmit="app.handleProfileSave(event)">
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem;">
+                            <div class="form-group">
+                                <label for="prof-name">Full Name</label>
+                                <input type="text" id="prof-name" class="form-input" value="Emma Watson" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="prof-email">Email Address</label>
+                                <input type="email" id="prof-email" class="form-input" value="emma@example.com" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label for="prof-phone">Phone Number</label>
+                                <input type="tel" id="prof-phone" class="form-input" value="+1 (555) 0199" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="prof-dob">Date of Birth</label>
+                                <input type="date" id="prof-dob" class="form-input" value="1990-04-15" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="prof-gender">Gender</label>
+                                <select id="prof-gender" class="form-input">
+                                    <option value="Female" selected>Female</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Non-binary">Non-binary</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="prof-goal">Primary Fitness/Weight Goal</label>
+                                <input type="text" id="prof-goal" class="form-input" value="Build lean muscle & improve deep sleep">
+                            </div>
+                            <div class="form-group">
+                                <label for="prof-height">Height (cm)</label>
+                                <input type="number" id="prof-height" class="form-input" value="172" oninput="app.updateProfileBMI()">
+                            </div>
+                            <div class="form-group">
+                                <label for="prof-weight">Weight (kg)</label>
+                                <input type="number" id="prof-weight" class="form-input" value="70.5" oninput="app.updateProfileBMI()">
+                            </div>
+                        </div>
+
+                        <!-- Medical context card -->
+                        <h4 style="margin-top: 2rem; margin-bottom: 1rem; font-family: var(--font-brand); color: #c0392b;"><i class="fa-solid fa-notes-medical"></i> Secure Medical Records</h4>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem;">
+                            <div class="form-group">
+                                <label for="prof-blood">Blood Group</label>
+                                <input type="text" id="prof-blood" class="form-input" value="O-positive">
+                            </div>
+                            <div class="form-group">
+                                <label for="prof-allergies">Allergies</label>
+                                <input type="text" id="prof-allergies" class="form-input" value="Peanuts, Penicillin">
+                            </div>
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label for="prof-meds">Current Medication</label>
+                                <input type="text" id="prof-meds" class="form-input" value="Vitamin D3 2000IU, L-Theanine 200mg">
+                            </div>
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label for="prof-conditions">Medical Conditions</label>
+                                <input type="text" id="prof-conditions" class="form-input" value="None">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem; width: 100%; justify-content: center;"><i class="fa-solid fa-floppy-disk"></i> Save Profile Details</button>
+                    </form>
+                </div>
+
+                <!-- Emergency Contacts & Badges -->
+                <div class="glass-card">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.5rem;">Security & Emergency Contacts</h3>
+                    <div class="form-group">
+                        <label for="prof-emergency-name">Emergency Contact Name</label>
+                        <input type="text" id="prof-emergency-name" class="form-input" value="John Watson">
+                    </div>
+                    <div class="form-group">
+                        <label for="prof-emergency-phone">Emergency Phone</label>
+                        <input type="tel" id="prof-emergency-phone" class="form-input" value="+1 (555) 0188">
+                    </div>
+                    <div class="form-group">
+                        <label for="prof-coach">Assigned Wellness Coach</label>
+                        <select id="prof-coach" class="form-input">
+                            <option value="sarah" selected>Coach Francess Orenuga</option>
+                            <option value="james">Coach James Peterson</option>
+                        </select>
+                    </div>
+                    
+                    <h3 style="font-family: var(--font-brand); margin-top: 2.5rem; margin-bottom: 1rem;">Update Password</h3>
+                    <form onsubmit="app.handlePasswordChange(event)">
+                        <div class="form-group">
+                            <label for="prof-newpwd">New Password</label>
+                            <input type="password" id="prof-newpwd" class="form-input" placeholder="••••••••" required>
+                        </div>
+                        <button type="submit" class="btn btn-secondary" style="width: 100%; justify-content: center;">Change Password</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- 9. SUPER ADMIN DASHBOARD VIEW -->
+        <section id="view-admin" class="view-section">
+            <h2 style="font-family: var(--font-brand); font-size: 2.2rem; margin-bottom: 2rem; text-align: center;">Super Admin Console</h2>
+            
+            <div class="admin-tab-nav" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 2rem; justify-content: center;">
+                <button class="admin-tab-btn active" id="btn-admin-users" onclick="app.switchAdminTab('users')"><i class="fa-solid fa-users"></i> Users</button>
+                <button class="admin-tab-btn" id="btn-admin-logs-cms" onclick="app.switchAdminTab('logs-cms')"><i class="fa-solid fa-pen-to-square"></i> Wellness Logs</button>
+                <button class="admin-tab-btn" id="btn-admin-reports-cms" onclick="app.switchAdminTab('reports-cms')"><i class="fa-solid fa-square-poll-horizontal"></i> Reports Archive</button>
+                <button class="admin-tab-btn" id="btn-admin-emails-cms" onclick="app.switchAdminTab('emails-cms')"><i class="fa-solid fa-envelope-open-text"></i> Email & Alerts</button>
+                <button class="admin-tab-btn" id="btn-admin-moderation-cms" onclick="app.switchAdminTab('moderation-cms')"><i class="fa-solid fa-comments"></i> Moderation</button>
+                <button class="admin-tab-btn" id="btn-admin-notices-cms" onclick="app.switchAdminTab('notices-cms')"><i class="fa-solid fa-bullhorn"></i> Events</button>
+                <button class="admin-tab-btn" id="btn-admin-coaches-cms" onclick="app.switchAdminTab('coaches-cms')"><i class="fa-solid fa-user-doctor"></i> Coaches</button>
+                <button class="admin-tab-btn" id="btn-admin-analytics-cms" onclick="app.switchAdminTab('analytics-cms')"><i class="fa-solid fa-chart-line"></i> Analytics</button>
+                <button class="admin-tab-btn" id="btn-admin-audits-cms" onclick="app.switchAdminTab('audits-cms')"><i class="fa-solid fa-shield-halved"></i> Audit Trails</button>
+                <button class="admin-tab-btn" id="btn-admin-settings-cms" onclick="app.switchAdminTab('settings-cms')"><i class="fa-solid fa-sliders"></i> Settings & Backups</button>
+                <button class="admin-tab-btn" id="btn-admin-automation" onclick="app.switchAdminTab('automation')"><i class="fa-solid fa-gears"></i> Automation Center</button>
+            </div>
+
+            <!-- SUBVIEW 1: USER MANAGEMENT -->
+            <div id="admin-subview-users" class="admin-subpanel" style="display: block;">
+                <!-- User Registration Form -->
+                <div class="glass-card" style="margin-bottom: 2rem;">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-user-plus"></i> Generate Member Account</h3>
+                    <form id="admin-register-form" onsubmit="app.handleAdminRegisterMember(event)">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.2rem;">
+                            <div class="form-group">
+                                <label for="reg-name">Full Name</label>
+                                <input type="text" id="reg-name" class="form-input" placeholder="Emma Watson" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="reg-email">Email Address</label>
+                                <input type="email" id="reg-email" class="form-input" placeholder="emma@example.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="reg-phone">Phone Number</label>
+                                <input type="tel" id="reg-phone" class="form-input" placeholder="+1 (555) 0199" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="reg-dob">Date of Birth</label>
+                                <input type="date" id="reg-dob" class="form-input" value="1995-04-15" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="reg-gender">Gender</label>
+                                <select id="reg-gender" class="form-input">
+                                    <option value="Female" selected>Female</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Non-binary">Non-binary</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="reg-coach">Coach Assignment</label>
+                                <select id="reg-coach" class="form-input">
+                                    <option value="sarah" selected>Coach Francess Orenuga</option>
+                                    <option value="james">Coach James Peterson</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1.2rem;"><i class="fa-solid fa-circle-check"></i> Generate Member Account</button>
+                    </form>
+                </div>
+
+                <!-- Users Directory CMS Grid -->
+                <div class="glass-card">
+                    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                        <h3 style="font-family: var(--font-brand);"><i class="fa-solid fa-address-book"></i> Platform Registered Members</h3>
+                        <div style="display: flex; gap: 0.8rem; flex-grow: 1; max-width: 600px; justify-content: flex-end;">
+                            <input type="text" id="admin-user-search" class="form-input" placeholder="Search by name, email, coach..." oninput="app.renderAdminUsers()">
+                            <select id="admin-user-filter-status" class="form-input" style="max-width: 150px;" onchange="app.renderAdminUsers()">
+                                <option value="all">All Status</option>
+                                <option value="Active">Active</option>
+                                <option value="Suspended">Suspended</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="overflow-x: auto;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Coach</th>
+                                    <th>Status</th>
+                                    <th>Role</th>
+                                    <th>Logs Completed</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-user-list-tbody">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Member Health Profile Editor / Viewer Modal -->
+                <div id="admin-health-profile-modal" class="glass-card" style="display: none; margin-top: 2rem; border-color: var(--clr-accent-green);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 0.8rem;">
+                        <h3 style="font-family: var(--font-brand);"><i class="fa-solid fa-file-medical"></i> Member Health Profile: <span id="health-modal-user-name">...</span></h3>
+                        <button type="button" class="btn btn-outline" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="document.getElementById('admin-health-profile-modal').style.display='none'">Close Panel</button>
+                    </div>
+                    <form id="admin-health-profile-form" onsubmit="app.saveAdminHealthProfile(event)">
+                        <input type="hidden" id="health-modal-user-email">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; margin-bottom: 1.5rem;">
+                            <div class="form-group">
+                                <label>Height (cm)</label>
+                                <input type="number" id="health-height" class="form-input" min="50" max="250">
+                            </div>
+                            <div class="form-group">
+                                <label>Weight (kg)</label>
+                                <input type="number" id="health-weight" class="form-input" step="0.1" min="20" max="300">
+                            </div>
+                            <div class="form-group">
+                                <label>Blood Group</label>
+                                <select id="health-blood" class="form-input">
+                                    <option value="Unknown">Unknown</option>
+                                    <option value="A+">A-positive</option>
+                                    <option value="A-">A-negative</option>
+                                    <option value="B+">B-positive</option>
+                                    <option value="B-">B-negative</option>
+                                    <option value="O+">O-positive</option>
+                                    <option value="O-">O-negative</option>
+                                    <option value="AB+">AB-positive</option>
+                                    <option value="AB-">AB-negative</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Dietary Preferences</label>
+                                <input type="text" id="health-diet" class="form-input" placeholder="e.g. Vegetarian, Keto, None">
+                            </div>
+                            <div class="form-group">
+                                <label>Emergency Contact Name</label>
+                                <input type="text" id="health-emergency-name" class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Emergency Contact Phone</label>
+                                <input type="tel" id="health-emergency-phone" class="form-input">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; margin-bottom: 1.5rem;">
+                            <div class="form-group">
+                                <label>Allergies (Comma separated)</label>
+                                <textarea id="health-allergies" class="form-input" style="height: 60px;"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Current Medical Conditions</label>
+                                <textarea id="health-conditions" class="form-input" style="height: 60px;"></textarea>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; margin-bottom: 1.5rem;">
+                            <div class="form-group">
+                                <label>Current Medication & Dosages</label>
+                                <textarea id="health-medications" class="form-input" style="height: 60px;"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Wellness & Lifestyle Goals</label>
+                                <textarea id="health-goals" class="form-input" style="height: 60px;"></textarea>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Save Health Biometrics</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 2: WELLNESS LOGS CMS -->
+            <div id="admin-subview-logs-cms" class="admin-subpanel" style="display: none;">
+                <div class="glass-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                        <h3 style="font-family: var(--font-brand);"><i class="fa-solid fa-pen-to-square"></i> Daily Wellness Log Submissions</h3>
+                        <div style="display: flex; gap: 0.8rem; flex-grow: 1; max-width: 600px; justify-content: flex-end;">
+                            <input type="text" id="admin-logs-search" class="form-input" placeholder="Search by email, mood, exercise..." oninput="app.renderAdminLogsCMS()">
+                            <button class="btn btn-secondary" onclick="app.exportReport('wellnessLogs', 'csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                            <button class="btn btn-secondary" onclick="app.exportReport('wellnessLogs', 'json')"><i class="fa-solid fa-file-code"></i> JSON</button>
+                        </div>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Member Email</th>
+                                    <th>Sleep</th>
+                                    <th>Water (oz)</th>
+                                    <th>Steps</th>
+                                    <th>Mood</th>
+                                    <th>Exercise</th>
+                                    <th>View</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-logs-cms-tbody">
+                                <!-- Dynamic -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Expander modal for full details -->
+                <div id="admin-log-detail-modal" class="glass-card" style="display: none; margin-top: 2rem; border-color: var(--clr-success);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 0.8rem;">
+                        <h3 style="font-family: var(--font-brand);"><i class="fa-solid fa-file-lines"></i> Complete Wellness Log Details</h3>
+                        <button type="button" class="btn btn-outline" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="document.getElementById('admin-log-detail-modal').style.display='none'">Close</button>
+                    </div>
+                    <div id="admin-log-detail-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+                        <!-- Dynamic content -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 3: REPORTS ARCHIVE CMS -->
+            <div id="admin-subview-reports-cms" class="admin-subpanel" style="display: none;">
+                <div class="glass-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                        <h3 style="font-family: var(--font-brand);"><i class="fa-solid fa-square-poll-horizontal"></i> Historical Wellness Reports</h3>
+                        <div style="display: flex; gap: 0.8rem; flex-grow: 1; max-width: 600px; justify-content: flex-end;">
+                            <input type="text" id="admin-reports-search" class="form-input" placeholder="Search by email, score, grade..." oninput="app.renderAdminReportsCMS()">
+                            <button class="btn btn-secondary" onclick="app.exportReport('aiReports', 'csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                        </div>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Member Email</th>
+                                    <th>Score</th>
+                                    <th>Grade</th>
+                                    <th>Sleep Score</th>
+                                    <th>Hydration Score</th>
+                                    <th>Nutrition Score</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-reports-cms-tbody">
+                                <!-- Dynamic -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 4: EMAILS & NOTIFICATIONS CENTER -->
+            <div id="admin-subview-emails-cms" class="admin-subpanel" style="display: none;">
+                <!-- Broadcast Alert Panel -->
+                <div class="glass-card" style="margin-bottom: 2rem;">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-bullhorn"></i> Dispatch Custom Notification Alert</h3>
+                    <form onsubmit="app.handleAdminSendNotification(event)">
+                        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1.2rem;">
+                            <div class="form-group">
+                                <label>Recipient (Member Email)</label>
+                                <select id="notif-recipient" class="form-input">
+                                    <option value="all">All Members (Global Broadcast)</option>
+                                    <!-- Dynamic email option list populated via JS -->
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Notification Alert Text Message</label>
+                                <input type="text" id="notif-message" class="form-input" placeholder="e.g. Schedule update: Coach Francess has posted a new metabolic recipe!" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1rem;"><i class="fa-solid fa-paper-plane"></i> Dispatch Notification</button>
+                    </form>
+                </div>
+
+                <!-- Simulation Email outbox log -->
+                <div class="glass-card">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-envelope-open-text"></i> Automated Email Dispatch Outbox Ledger</h3>
+                    <div style="overflow-x: auto; max-height: 350px;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Recipient</th>
+                                    <th>Email Subject</th>
+                                    <th>Mail Template</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-emails-tbody">
+                                <!-- Dynamic -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 5: MODERATION CMS -->
+            <div id="admin-subview-moderation-cms" class="admin-subpanel" style="display: none;">
+                <div class="glass-card">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.5rem;"><i class="fa-solid fa-comments"></i> Community Discussion Moderation Queue</h3>
+                    <div style="overflow-x: auto;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Author</th>
+                                    <th>Category</th>
+                                    <th>Post Title</th>
+                                    <th>Status</th>
+                                    <th>Stats</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-moderation-cms-tbody">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 6: NOTICE BOARD CMS -->
+            <div id="admin-subview-notices-cms" class="admin-subpanel" style="display: none;">
+                <!-- Event Scheduler -->
+                <div class="glass-card" style="margin-bottom: 2rem;">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-calendar-plus"></i> Schedule Notice Board Event</h3>
+                    <form onsubmit="app.handleAdminAddEvent(event)">
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem;">
+                            <div class="form-group">
+                                <label>Event Title</label>
+                                <input type="text" id="event-title" class="form-input" placeholder="Yoga & Core Flow Session" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Date & Time</label>
+                                <input type="datetime-local" id="event-datetime" class="form-input" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Event Category</label>
+                                <select id="event-category" class="form-input">
+                                    <option value="Live Class">Live Class</option>
+                                    <option value="Fitness Meetup">Fitness Meetup</option>
+                                    <option value="Nutrition Workshop">Nutrition Workshop</option>
+                                    <option value="Announcement">Announcement</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top: 1.2rem;">
+                            <label>Event Description & Link Details</label>
+                            <input type="text" id="event-desc" class="form-input" placeholder="Join Coach Francess live on WhatsApp Rooms. Have your yoga mat and resistance bands ready!" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1.2rem;"><i class="fa-solid fa-calendar-check"></i> Publish Event to Board</button>
+                    </form>
+                </div>
+
+                <!-- Event list -->
+                <div class="glass-card">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-list-check"></i> Active Notice Board Events</h3>
+                    <div style="overflow-x: auto;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Category</th>
+                                    <th>Title</th>
+                                    <th>Description</th>
+                                    <th>RSVP Count</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-events-tbody">
+                                <!-- Dynamic -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 7: COACH DIRECTORY -->
+            <div id="admin-subview-coaches-cms" class="admin-subpanel" style="display: none;">
+                <div class="glass-card">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.5rem;"><i class="fa-solid fa-user-doctor"></i> Wellness Coach Directory & Performance Metrics</h3>
+                    <div style="overflow-x: auto;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Coach Name</th>
+                                    <th>Assigned Members</th>
+                                    <th>Consultations Booked</th>
+                                    <th>WhatsApp Link</th>
+                                    <th>Availability Hours</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-coaches-tbody">
+                                <!-- Dynamic -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 8: ANALYTICS DASHBOARD -->
+            <div id="admin-subview-analytics-cms" class="admin-subpanel" style="display: none;">
+                <!-- Real-time Stat Cards -->
+                <div class="dashboard-stats" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                    <div class="stat-card">
+                        <div class="stat-num" id="admin-stat-dau">0</div>
+                        <div class="stat-label">Daily Active Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-num" id="admin-stat-avgscore">0</div>
+                        <div class="stat-label">Average Wellness Rating</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-num" id="admin-stat-emails">0</div>
+                        <div class="stat-label">Simulated Emails Dispatched</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-num" id="admin-stat-dbsize">0 KB</div>
+                        <div class="stat-label">Local DB Storage Size</div>
+                    </div>
+                </div>
+
+                <!-- Custom SVG Chart Panels -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem;">
+                    <div class="glass-card">
+                        <h4 style="font-family: var(--font-brand); margin-bottom: 1.2rem;">Platform Engagement Trends (Active Users)</h4>
+                        <div id="admin-analytics-chart-engagement" style="height: 250px;">
+                            <!-- SVG Rendered dynamically -->
+                        </div>
+                    </div>
+                    <div class="glass-card">
+                        <h4 style="font-family: var(--font-brand); margin-bottom: 1.2rem;">Mood Distribution Metrics</h4>
+                        <div id="admin-analytics-chart-mood" style="height: 250px;">
+                            <!-- SVG Rendered dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 9: AUDIT TRAILS -->
+            <div id="admin-subview-audits-cms" class="admin-subpanel" style="display: none;">
+                <div class="glass-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                        <h3 style="font-family: var(--font-brand);"><i class="fa-solid fa-shield-halved"></i> Platform Operations Audit Trail</h3>
+                        <div style="display: flex; gap: 0.8rem; flex-grow: 1; max-width: 600px; justify-content: flex-end;">
+                            <input type="text" id="admin-audits-search" class="form-input" placeholder="Search by operator, action, details..." oninput="app.renderAdminAuditsCMS()">
+                            <button class="btn btn-secondary" onclick="app.exportReport('auditLogs', 'csv')"><i class="fa-solid fa-file-csv"></i> CSV</button>
+                        </div>
+                    </div>
+                    <div style="overflow-x: auto; max-height: 400px;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Operator</th>
+                                    <th>Action / Event</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-audits-tbody">
+                                <!-- Dynamic -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 10: SETTINGS & BACKUPS -->
+            <div id="admin-subview-settings-cms" class="admin-subpanel" style="display: none;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
+                    <!-- Branding and Persona settings -->
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-palette"></i> Theme & Assistant Settings</h3>
+                        <form onsubmit="app.handleAdminSaveSettings(event)">
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label>Frannie Coaching Personality</label>
+                                <select id="settings-persona" class="form-input">
+                                    <option value="encouraging">Encouraging & Empathetic</option>
+                                    <option value="clinical">Clinical & Fact-driven</option>
+                                    <option value="direct">Direct & Accountability Focused</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label>Primary Green Hue (HSL H-value)</label>
+                                <input type="number" id="settings-primary-hue" class="form-input" min="0" max="360" value="168">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label>Accent Green Hue (HSL H-value)</label>
+                                <input type="number" id="settings-accent-hue" class="form-input" min="0" max="360" value="80">
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="margin-top: 1rem;"><i class="fa-solid fa-save"></i> Save Settings</button>
+                        </form>
+                    </div>
+
+                    <!-- Database Backup and Recovery panel -->
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-database"></i> Database Maintenance & Backups</h3>
+                        <p style="font-size: 0.85rem; color: #555; margin-bottom: 1.5rem;">Export the entire LeanLife system state to a local JSON backup file, or upload a backup to restore the platform state.</p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            <button class="btn btn-primary" style="justify-content: center; padding: 0.8rem;" onclick="app.exportDatabaseBackupJSON()"><i class="fa-solid fa-download"></i> Download Database Backup (.JSON)</button>
+                            
+                            <div style="border: 2px dashed rgba(0,0,0,0.1); padding: 1.2rem; border-radius: var(--radius-sm); text-align: center;">
+                                <label for="db-restore-file" style="cursor: pointer; display: block; font-weight: 600; color: var(--clr-primary-green); margin-bottom: 0.5rem;"><i class="fa-solid fa-upload"></i> Upload Backup File</label>
+                                <input type="file" id="db-restore-file" style="display: none;" onchange="app.importDatabaseBackupJSON(event)">
+                                <p style="font-size: 0.75rem; color: #888;">Only valid JSON files generated by LeanLife are supported.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBVIEW 11: AUTOMATION CENTER -->
+            <div id="admin-subview-automation" class="admin-subpanel" style="display: none;">
+                <div class="glass-card" style="margin-bottom: 2rem;">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1rem;"><i class="fa-solid fa-microchip"></i> System Automation Dashboard</h3>
+                    <p style="font-size: 0.9rem; color: #555; margin-bottom: 1.5rem;">Monitor and manage the backend workflows, asynchronous jobs, AI queues, and cron scheduler events.</p>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
+                        <div class="stat-box" style="background: rgba(255,255,255,0.4); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
+                            <span style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: bold;">Daemon Status</span>
+                            <h4 style="font-size: 1.4rem; color: var(--clr-success); margin-top: 0.5rem;"><i class="fa-solid fa-circle-check"></i> Active</h4>
+                        </div>
+                        <div class="stat-box" style="background: rgba(255,255,255,0.4); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
+                            <span style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: bold;">Active Jobs</span>
+                            <h4 id="auto-active-jobs" style="font-size: 1.4rem; color: var(--clr-text-dark); margin-top: 0.5rem;">0 Pending</h4>
+                        </div>
+                        <div class="stat-box" style="background: rgba(255,255,255,0.4); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
+                            <span style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: bold;">Success Rate</span>
+                            <h4 style="font-size: 1.4rem; color: var(--clr-text-dark); margin-top: 0.5rem;">100%</h4>
+                        </div>
+                        <div class="stat-box" style="background: rgba(255,255,255,0.4); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
+                            <span style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: bold;">Failures/Retries</span>
+                            <h4 id="auto-failed-jobs" style="font-size: 1.4rem; color: #f77f00; margin-top: 0.5rem;">0 / 0</h4>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                    <!-- Jobs Queue & Execution History -->
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-list-check"></i> Asynchronous Job Queues & Executions</h3>
+                        
+                        <div style="overflow-x: auto;">
+                            <table class="cms-table">
+                                <thead>
+                                    <tr>
+                                        <th>Job ID</th>
+                                        <th>Workflow / Task</th>
+                                        <th>Target User</th>
+                                        <th>Triggered Time</th>
+                                        <th>Retries</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="automation-jobs-tbody">
+                                    <!-- Dynamic records -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Automation Control Center -->
+                    <div class="glass-card" style="display: flex; flex-direction: column; gap: 1rem;">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 0.5rem;"><i class="fa-solid fa-screwdriver-wrench"></i> Workflow Controls</h3>
+                        
+                        <button class="btn btn-secondary" style="width: 100%; justify-content: center;" onclick="app.triggerSimulatedCronJob('newsletter')"><i class="fa-solid fa-paper-plane"></i> Run Newsletter Cron Now</button>
+                        <button class="btn btn-secondary" style="width: 100%; justify-content: center;" onclick="app.triggerSimulatedCronJob('backup')"><i class="fa-solid fa-database"></i> Run Database Backup</button>
+                        <button class="btn btn-secondary" style="width: 100%; justify-content: center;" onclick="app.triggerSimulatedCronJob('learning')"><i class="fa-solid fa-brain"></i> Trigger AI Learning Loop</button>
+                        <button class="btn btn-danger" style="width: 100%; justify-content: center;" onclick="app.triggerSimulatedFailure()"><i class="fa-solid fa-triangle-exclamation"></i> Inject Sim Network Failure</button>
+                        
+                        <div style="background: rgba(0,0,0,0.05); padding: 1rem; border-radius: var(--radius-sm); font-size: 0.8rem; margin-top: 1rem;">
+                            <h4 style="margin-bottom: 0.4rem;">System Health Check</h4>
+                            <p><strong>Uptime:</strong> <span id="auto-uptime">00:00:00</span></p>
+                            <p><strong>DB Memory Used:</strong> <span id="auto-memory">0.00 KB</span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1rem;"><i class="fa-solid fa-terminal"></i> Daemon System Output Log</h3>
+                    <div id="automation-terminal-logs" style="background: #1e1e1e; color: #39ff14; font-family: monospace; font-size: 0.85rem; padding: 1.2rem; border-radius: var(--radius-sm); height: 200px; overflow-y: auto; white-space: pre-wrap;">
+                        <!-- Terminal output logs -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 10. FRANNIE'S PERSONALIZED AI REPORT VIEW -->
+        <section id="view-ai-report" class="view-section">
+            <div class="ai-report-header">
+                <div>
+                    <h2 style="font-family: var(--font-brand); font-size: 2.2rem;">Wellness Analysis Report</h2>
+                    <p style="color: #555;">Detailed recovery report generated by coach <strong>Frannie</strong></p>
+                </div>
+                <button class="btn btn-primary" onclick="app.downloadReportPDF()"><i class="fa-solid fa-file-pdf"></i> Download PDF Report</button>
+            </div>
+
+            <div class="report-summary-boxes">
+                <div class="glass-card score-gauge-box">
+                    <div class="gauge-circle" id="report-gauge-overall" style="background: conic-gradient(var(--clr-accent-green) 0% 88%, #eee 88% 100%);">
+                        <div class="gauge-value" id="report-val-overall">88</div>
+                    </div>
+                    <span style="font-family: var(--font-brand); font-weight: 700;">Overall score</span>
+                    <span style="font-size: 0.8rem; color: #555;" id="report-grade-val">Grade: A</span>
+                </div>
+                <div class="glass-card score-gauge-box">
+                    <div class="gauge-circle" id="report-gauge-nutrition" style="background: conic-gradient(var(--clr-accent-green) 0% 75%, #eee 75% 100%);">
+                        <div class="gauge-value" id="report-val-nutrition">75</div>
+                    </div>
+                    <span style="font-family: var(--font-brand); font-weight: 700;">Nutrition Score</span>
+                </div>
+                <div class="glass-card score-gauge-box">
+                    <div class="gauge-circle" id="report-gauge-physical" style="background: conic-gradient(var(--clr-accent-green) 0% 90%, #eee 90% 100%);">
+                        <div class="gauge-value" id="report-val-physical">90</div>
+                    </div>
+                    <span style="font-family: var(--font-brand); font-weight: 700;">Physical Health</span>
+                </div>
+                <div class="glass-card score-gauge-box">
+                    <div class="gauge-circle" id="report-gauge-mental" style="background: conic-gradient(var(--clr-accent-green) 0% 92%, #eee 92% 100%);">
+                        <div class="gauge-value" id="report-val-mental">92</div>
+                    </div>
+                    <span style="font-family: var(--font-brand); font-weight: 700;">Mental Wellness</span>
+                </div>
+            </div>
+
+            <div class="ai-report-details">
+                <!-- Left Details Panels -->
+                <div class="report-analysis-tabs">
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem; border-bottom: 1.5px solid var(--clr-accent-green); padding-bottom: 6px;"><i class="fa-solid fa-moon"></i> Sleep Analysis</h3>
+                        <div class="analysis-bubble">
+                            <h4>Hours & Quality Assessment</h4>
+                            <p id="report-sleep-desc">You slept 8.0 hours. Sleep consistency rating is excellent. Your circadian alignment score is 95% with optimal sleep cycles.</p>
+                        </div>
+                        <div class="analysis-bubble">
+                            <h4>Recovery Score & Recommended Bedtime</h4>
+                            <p id="report-sleep-recovery">Recovery Score: 92/100. Target bedtime is 10:15 PM and wakeup target is 06:15 AM to synchronize circadian rhythms.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem; border-bottom: 1.5px solid var(--clr-accent-green); padding-bottom: 6px;"><i class="fa-solid fa-droplet"></i> Hydration Analysis</h3>
+                        <div class="analysis-bubble">
+                            <h4>Hydration Target Completion</h4>
+                            <p id="report-water-desc">Water intake completed: 80% (8 / 10 glasses). Hydration score: 85/100. This volume is sufficient to sustain active muscle mass.</p>
+                        </div>
+                        <div class="analysis-bubble">
+                            <h4>Advice & Encouragement</h4>
+                            <p id="report-water-tips">Frannie recommends adding 2 more glasses after your heavy activity windows to counter perspiration loss.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem; border-bottom: 1.5px solid var(--clr-accent-green); padding-bottom: 6px;"><i class="fa-solid fa-utensils"></i> Nutrition & Meal Quality</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                            <div>
+                                <div class="analysis-bubble">
+                                    <h4>Caloric & Nutrient Profile</h4>
+                                    <p id="report-nutrition-profile">Estimated calories intake: 1,850 kcal. Protein: 110g, Carbs: 185g, Fats: 55g, Fibre: 32g, Sugar: 24g, Sodium: 1,450mg.</p>
+                                </div>
+                                <div class="analysis-bubble">
+                                    <h4>Dietary Guidelines & Substitutions</h4>
+                                    <p id="report-nutrition-subs">Meal quality rating is A. Substitutions: Replace honey with organic stevia, increase raw spinach for calcium intake.</p>
+                                </div>
+                            </div>
+                            
+                            <!-- SVG Pie Chart -->
+                            <div class="chart-pie-wrapper" id="report-nutrition-svg-chart">
+                                <!-- Dynamic Chart -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem; border-bottom: 1.5px solid var(--clr-accent-green); padding-bottom: 6px;"><i class="fa-solid fa-heart-pulse"></i> Physical Fitness & Fasting</h3>
+                        <div class="analysis-bubble">
+                            <h4>Exercise Performance</h4>
+                            <p id="report-fitness-desc">Intensity: Moderate Strength training. Burned calories estimated: 450 kcal. Recovery rating is high. Advised to stretch next 24 hours.</p>
+                        </div>
+                        <div class="analysis-bubble">
+                            <h4>Daily Steps & Fasting</h4>
+                            <p id="report-steps-fasting-desc">Steps rating: Active. Fasting Protocol: 16:8 protocol completed with 100% schedule consistency.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem; border-bottom: 1.5px solid var(--clr-accent-green); padding-bottom: 6px;"><i class="fa-solid fa-face-smile"></i> Mood & Mental Growth</h3>
+                        <div class="analysis-bubble">
+                            <h4>Positivity Index & Growth Patterns</h4>
+                            <p id="report-mood-journal-desc">Your journals show a high positivity rating index (90%). Thought patterns reveal high focus and resilience indicators.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Side Coaching Summary -->
+                <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    <!-- Actions plan -->
+                    <div class="glass-card" style="border-left: 6px solid var(--clr-accent-green);">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1rem;">Action Plan (Next 24h)</h3>
+                        <ul style="display: flex; flex-direction: column; gap: 12px; font-size: 0.95rem; padding-left: 1rem;" id="report-action-checklist">
+                            <li>Keep water container on desk to improve mid-day hydration</li>
+                            <li>Commit to bedtime by 10:15 PM tonight</li>
+                            <li>Stretch shoulders and hamstrings for 10 minutes</li>
+                            <li>Perform deep breathing exercise when screening screen time</li>
+                        </ul>
+                    </div>
+
+                    <!-- Frannie message -->
+                    <div class="glass-card" style="background-color: var(--clr-primary-translucent);">
+                        <h4 style="font-family: var(--font-brand); margin-bottom: 0.5rem;">Frannie's Motivational Coach Message</h4>
+                        <p style="font-style: italic; font-size: 0.95rem;" id="report-ai-motivate">"You are doing exceptionally well, Emma! Completing your gratitude targets and maintaining sleep consistency is building structural resilience. Keep pushing!"</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Global Footer -->
+        <footer>
+            <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
+                <div class="brand-logo-container">
+                    <img src="logo_transparent.png" alt="LeanLife Logo" style="height: 36px;">
+                </div>
+                <p>&copy; 2026 LeanLife Wellness Community. All rights reserved. Secured Encrypted Healthcare Platform.</p>
+                <div style="display: flex; gap: 1.5rem; font-size: 1.2rem;">
+                    <i class="fa-brands fa-instagram" style="cursor: pointer;"></i>
+                    <i class="fa-brands fa-facebook" style="cursor: pointer;"></i>
+                    <i class="fa-brands fa-twitter" style="cursor: pointer;"></i>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>

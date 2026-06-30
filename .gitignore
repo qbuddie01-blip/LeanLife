@@ -1,0 +1,13 @@
+# Debug files
+dom_dump.html
+test_login.ps1
+
+# IDE and System Metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
