@@ -1,14 +1,24 @@
-# Dependency Directories
+# Dependencies
 node_modules/
-.next/
-dist/
-build/
-.cache/
 
-# Environment Variables & Configs
+# Environment variables
 .env
 .env.local
 .env.production
+.env.development
+
+# Logs
+*.log
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Cache
+.cache/
+tmp/
 
 # Debug files
 dom_dump.html
@@ -25,6 +35,3 @@ leanlife_*_export.csv
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# Logs
-*.log
