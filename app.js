@@ -38,11 +38,35 @@ const app = {
         }
     },
 
+    // Helper to open IndexedDB
+    openDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open('LeanLifeDB', 1);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('store')) {
+                    db.createObjectStore('store');
+                }
+            };
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    // Secure SHA-256 password hashing
+    async hashPassword(password) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password + "leanlife_secure_salt_2026");
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    },
+
     // Initialize application
-    init() {
+    async init() {
         console.log("Initializing LeanLife App...");
-        this.loadDatabase();
-        this.seedInitialData();
+        await this.loadDatabase();
+        await this.seedInitialData();
 
         // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga
         let migrated = false;
@@ -71,7 +95,7 @@ const app = {
             });
         }
         if (migrated) {
-            this.saveDatabase();
+            await this.saveDatabase();
         }
 
         this.checkSession();
@@ -81,7 +105,10 @@ const app = {
         this.animateStats();
         
         // Form submissions
-        document.getElementById('auth-form').addEventListener('submit', (e) => this.handleAuthSubmit(e));
+        const authForm = document.getElementById('auth-form');
+        if (authForm) {
+            authForm.addEventListener('submit', (e) => this.handleAuthSubmit(e));
+        }
         
         // Check for pending countdowns from previous session
         this.restorePendingCountdowns();
@@ -90,40 +117,65 @@ const app = {
         this.startBackgroundAutomationLoop();
     },
 
-    // Save current db to localStorage
-    saveDatabase() {
+    // Save current db to IndexedDB and localStorage (redundancy)
+    async saveDatabase() {
         localStorage.setItem('leanlife_db', JSON.stringify(this.db));
+        try {
+            const db = await this.openDB();
+            const tx = db.transaction('store', 'readwrite');
+            const store = tx.objectStore('store');
+            store.put(this.db, 'leanlife_db');
+            await new Promise((resolve, reject) => {
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        } catch(e) {
+            console.error("IndexedDB failed to save", e);
+        }
     },
 
-    // Load db from localStorage
-    loadDatabase() {
-        const stored = localStorage.getItem('leanlife_db');
-        if (stored) {
-            try {
-                const parsed = JSON.parse(stored);
-                this.db = {
-                    users: parsed.users || [],
-                    wellnessLogs: parsed.wellnessLogs || [],
-                    aiReports: parsed.aiReports || [],
-                    posts: parsed.posts || [],
-                    appointments: parsed.appointments || [],
-                    events: parsed.events || [],
-                    auditLogs: parsed.auditLogs || [],
-                    emails: parsed.emails || [],
-                    notifications: parsed.notifications || [],
-                    automationJobs: parsed.automationJobs || [],
-                    automationFailures: parsed.automationFailures !== undefined ? parsed.automationFailures : 0,
-                    automationRetries: parsed.automationRetries !== undefined ? parsed.automationRetries : 0,
-                    systemSettings: parsed.systemSettings || {
-                        primaryHue: 168,
-                        accentHue: 80,
-                        persona: 'encouraging'
-                    }
-                };
-            } catch(e) {
-                console.error("Failed to parse local storage database, using defaults", e);
+    // Load db from IndexedDB with localStorage fallback
+    async loadDatabase() {
+        try {
+            const db = await this.openDB();
+            const tx = db.transaction('store', 'readonly');
+            const store = tx.objectStore('store');
+            const getRequest = store.get('leanlife_db');
+            const storedData = await new Promise((resolve, reject) => {
+                getRequest.onsuccess = () => resolve(getRequest.result);
+                getRequest.onerror = () => reject(getRequest.error);
+            });
+
+            if (storedData) {
+                this.db = storedData;
+            } else {
+                const local = localStorage.getItem('leanlife_db');
+                if (local) this.db = JSON.parse(local);
             }
+        } catch(e) {
+            console.error("IndexedDB load failed, falling back to localStorage", e);
+            const local = localStorage.getItem('leanlife_db');
+            if (local) this.db = JSON.parse(local);
         }
+
+        this.db = this.db || {};
+        this.db.users = this.db.users || [];
+        this.db.wellnessLogs = this.db.wellnessLogs || [];
+        this.db.aiReports = this.db.aiReports || [];
+        this.db.posts = this.db.posts || [];
+        this.db.appointments = this.db.appointments || [];
+        this.db.events = this.db.events || [];
+        this.db.auditLogs = this.db.auditLogs || [];
+        this.db.emails = this.db.emails || [];
+        this.db.notifications = this.db.notifications || [];
+        this.db.automationJobs = this.db.automationJobs || [];
+        this.db.automationFailures = this.db.automationFailures !== undefined ? this.db.automationFailures : 0;
+        this.db.automationRetries = this.db.automationRetries !== undefined ? this.db.automationRetries : 0;
+        this.db.systemSettings = this.db.systemSettings || {
+            primaryHue: 168,
+            accentHue: 80,
+            persona: 'encouraging'
+        };
     },
 
     // Log user activities to Audit Trail
@@ -144,14 +196,17 @@ const app = {
     },
 
     // Seed mock data for first-time usage
-    seedInitialData() {
+    async seedInitialData() {
         // 1. Seed default Admin and Coach
         if (this.db.users.length === 0 || !this.db.users.find(u => u.email.toLowerCase() === 'admin@leanlife.com')) {
+            const adminPass = await this.hashPassword('admin123');
+            const coachPass = await this.hashPassword('password123');
+            const memberPass = await this.hashPassword('password123');
             this.db.users = [
                 {
                     name: 'Super Administrator',
                     email: 'admin@leanlife.com',
-                    password: 'admin123', // In a real app this is hashed
+                    password: adminPass,
                     role: 'admin',
                     phone: '+1 (555) 0100',
                     dob: '1985-01-01',
@@ -165,7 +220,7 @@ const app = {
                 {
                     name: 'Coach Francess Orenuga',
                     email: 'sarah@leanlife.com',
-                    password: 'password123',
+                    password: coachPass,
                     role: 'coach',
                     phone: '+1 (555) 0199',
                     dob: '1980-04-12',
@@ -179,7 +234,7 @@ const app = {
                 {
                     name: 'Emma Watson',
                     email: 'emma@example.com',
-                    password: 'password123',
+                    password: memberPass,
                     role: 'member',
                     phone: '+1 (555) 0199',
                     dob: '1990-04-15',
@@ -202,7 +257,7 @@ const app = {
                     streakCount: 3
                 }
             ];
-            this.saveDatabase();
+            await this.saveDatabase();
         }
 
         // 2. Seed community posts
@@ -531,8 +586,10 @@ const app = {
         this.logAudit(email, 'Password Reset Requested', `Reset requested for ${email}`);
     },
 
-    fillSimulationCreds(email, password) {
+    async fillSimulationCreds(email, password) {
         this.switchAuthTab('login');
+        
+        const hashedPassword = await this.hashPassword(password);
         
         // Ensure simulation users exist and are active in mock db
         let user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
@@ -541,7 +598,7 @@ const app = {
                 user = {
                     name: 'Super Administrator',
                     email: 'admin@leanlife.com',
-                    password: 'admin123',
+                    password: hashedPassword,
                     role: 'admin',
                     phone: '+1 (555) 0100',
                     dob: '1985-01-01',
@@ -558,7 +615,7 @@ const app = {
                 user = {
                     name: 'Emma Watson',
                     email: 'emma@example.com',
-                    password: 'password123',
+                    password: hashedPassword,
                     role: 'member',
                     phone: '+1 (555) 0199',
                     dob: '1990-04-15',
@@ -582,13 +639,13 @@ const app = {
                 };
                 this.db.users.push(user);
             }
-            this.saveDatabase();
+            await this.saveDatabase();
         } else {
             // Force reset credentials to active defaults
             user.status = 'Active';
-            user.password = password;
+            user.password = hashedPassword;
             user.firstLogin = false;
-            this.saveDatabase();
+            await this.saveDatabase();
         }
 
         const emailInput = document.getElementById('auth-email');
@@ -609,10 +666,10 @@ const app = {
         submitBtn.focus();
 
         // Submit form immediately to trigger instant login "when clicked"
-        this.handleAuthSubmit({ preventDefault: () => {} });
+        await this.handleAuthSubmit({ preventDefault: () => {} });
     },
 
-    handleAuthSubmit(e) {
+    async handleAuthSubmit(e) {
         e.preventDefault();
         const email = document.getElementById('auth-email').value.trim();
         const password = document.getElementById('auth-password').value;
@@ -627,11 +684,13 @@ const app = {
                 return;
             }
 
+            const hashedPassword = await this.hashPassword(password);
+
             // Create new member account
             const newUser = {
                 name: fullname,
                 email: email,
-                password: password,
+                password: hashedPassword,
                 role: 'member',
                 phone: '+1 (555) 0000',
                 dob: '1995-01-01',
@@ -647,7 +706,7 @@ const app = {
             };
 
             this.db.users.push(newUser);
-            this.saveDatabase();
+            await this.saveDatabase();
             this.logAudit(fullname, 'Member Registered', `Self-registration completed for ${email}`);
             
             // Set session
@@ -658,7 +717,8 @@ const app = {
             alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
         } else {
             // Login Validation
-            const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+            const hashedPassword = await this.hashPassword(password);
+            const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
             
             if (!user) {
                 alert("Invalid email or password. Please try again.");
@@ -677,9 +737,9 @@ const app = {
             if (user.firstLogin) {
                 const newPwd = prompt(`Welcome, ${user.name}! You are logging in with a temporary password generated by Admin. Please set a new secure password to proceed:`);
                 if (newPwd && newPwd.trim() !== '') {
-                    user.password = newPwd;
+                    user.password = await this.hashPassword(newPwd);
                     user.firstLogin = false;
-                    this.saveDatabase();
+                    await this.saveDatabase();
                     this.logAudit(user.name, 'Password Updated', 'First login temporary password replaced');
                     alert("Password updated successfully!");
                 } else {
@@ -1173,19 +1233,42 @@ const app = {
     },
 
     startBackgroundAutomationLoop() {
-        console.log("Starting LeanLife Background Automation Scheduler...");
+        console.log("Starting LeanLife Background Automation Scheduler (Web Worker Thread)...");
         this.autoUptimeStart = Date.now();
         this.autoTerminalLogs = [];
         this.simulatedNetworkFailure = false;
         
-        // Seed default checks log
-        this.logAutomation("System Daemon initialized. Uptime counter active.");
-        this.logAutomation("Starting asynchronous queue processor loop.");
+        this.logAutomation("System Daemon initialized via Web Worker thread. Uptime active.");
+        this.logAutomation("Starting multi-threaded asynchronous queue processor loop.");
 
-        // Run every 5 seconds for real-time responsiveness
-        setInterval(() => {
-            this.runSimulatedBackgroundTasks();
-        }, 5000);
+        const workerCode = `
+            self.onmessage = function(e) {
+                if (e.data.type === 'START') {
+                    setInterval(() => {
+                        self.postMessage({ type: 'TICK' });
+                    }, 5000);
+                }
+            };
+        `;
+
+        try {
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const workerUrl = URL.createObjectURL(blob);
+            this.autoWorker = new Worker(workerUrl);
+            
+            this.autoWorker.onmessage = (e) => {
+                if (e.data.type === 'TICK') {
+                    this.runSimulatedBackgroundTasks();
+                }
+            };
+
+            this.autoWorker.postMessage({ type: 'START' });
+        } catch (err) {
+            console.warn("Web Worker creation failed. Falling back to main thread interval.", err);
+            setInterval(() => {
+                this.runSimulatedBackgroundTasks();
+            }, 5000);
+        }
     },
 
     runSimulatedBackgroundTasks() {
@@ -1861,7 +1944,7 @@ const app = {
         alert("Success! Your personal details and clinical profiles have been updated securely.");
     },
 
-    handlePasswordChange(e) {
+    async handlePasswordChange(e) {
         e.preventDefault();
         const userObj = this.db.users.find(u => u.email.toLowerCase() === this.currentUser.email.toLowerCase());
         if (!userObj) return;
@@ -1872,7 +1955,7 @@ const app = {
             return;
         }
 
-        userObj.password = newPwd;
+        userObj.password = await this.hashPassword(newPwd);
         this.saveDatabase();
         document.getElementById('prof-newpwd').value = '';
         this.logAudit(this.currentUser.name, 'Password Changed', 'User password updated manually');
@@ -2084,15 +2167,15 @@ const app = {
         alert(`User status for ${user.name} toggled to: ${user.status}`);
     },
 
-    adminResetPassword(email) {
+    async adminResetPassword(email) {
         const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
         if (!user) return;
         
         const tempPassword = 'RESET' + Math.floor(1000 + Math.random() * 9000);
-        user.password = tempPassword;
+        user.password = await this.hashPassword(tempPassword);
         user.firstLogin = true;
         
-        this.saveDatabase();
+        await this.saveDatabase();
         
         // Add to email outbox
         this.db.emails.unshift({
@@ -2103,7 +2186,7 @@ const app = {
             templateName: 'Password Reset',
             status: 'Delivered'
         });
-        this.saveDatabase();
+        await this.saveDatabase();
         
         this.logAudit(this.currentUser.name, 'Admin Password Reset', `Generated temporary password for ${email}`);
         
@@ -2127,7 +2210,7 @@ const app = {
         }
     },
 
-    handleAdminRegisterMember(e) {
+    async handleAdminRegisterMember(e) {
         e.preventDefault();
         const name = document.getElementById('reg-name').value.trim();
         const email = document.getElementById('reg-email').value.trim().toLowerCase();
@@ -2146,11 +2229,12 @@ const app = {
         // Generate Username & Temporary Password
         const username = email.split('@')[0] + Math.floor(10 + Math.random() * 90);
         const tempPassword = 'TEMP' + Math.floor(1000 + Math.random() * 9000);
+        const hashedPassword = await this.hashPassword(tempPassword);
 
         const newMember = {
             name: name,
             email: email,
-            password: tempPassword,
+            password: hashedPassword,
             role: 'member',
             phone: phone,
             dob: dob,
@@ -2189,7 +2273,7 @@ const app = {
             status: 'Delivered'
         });
         
-        this.saveDatabase();
+        await this.saveDatabase();
         this.logAudit(this.currentUser.name, 'Admin Registered User', `Registered user ${email} with temporary credentials`);
         
         alert(`Member Account Created Successfully!
