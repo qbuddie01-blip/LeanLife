@@ -47,12 +47,13 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    max-width: 100%;
 }
 
-html, body {
+html, body, main, section, .view-section {
     width: 100%;
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: hidden !important;
 }
 
 body {
@@ -1619,11 +1620,11 @@ footer {
     .landing-stats-grid {
         grid-template-columns: repeat(2, 1fr);
         gap: 1rem !important;
-        padding: 1.5rem !important;
+        padding: 1rem !important;
     }
 
     .stat-num {
-        font-size: clamp(1.1rem, 5.5vw, 1.7rem) !important;
+        font-size: clamp(1rem, 4.5vw, 1.5rem) !important;
     }
     
     .features-grid {
@@ -1687,13 +1688,14 @@ footer {
     }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {
     .landing-stats-grid {
         grid-template-columns: 1fr !important;
         gap: 1.2rem !important;
+        padding: 1rem !important;
     }
     .stat-num {
-        font-size: clamp(1.4rem, 6.5vw, 2rem) !important;
+        font-size: clamp(1.2rem, 5.8vw, 1.8rem) !important;
     }
     .carousel-card {
         height: 250px !important;
