@@ -1545,6 +1545,27 @@
                         </form>
                     </div>
 
+                    <!-- Email Service Integration settings -->
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-paper-plane"></i> Email Service Settings</h3>
+                        <form onsubmit="app.handleAdminSaveEmailSettings(event)">
+                            <p style="font-size: 0.8rem; color: #555; margin-bottom: 1rem;">Configure EmailJS keys to toggle from offline simulation mode to real-world email delivery.</p>
+                            <div class="form-group" style="margin-bottom: 0.8rem;">
+                                <label>EmailJS Service ID</label>
+                                <input type="text" id="settings-emailjs-service-id" class="form-input" placeholder="e.g. service_xxxx">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0.8rem;">
+                                <label>EmailJS Template ID</label>
+                                <input type="text" id="settings-emailjs-template-id" class="form-input" placeholder="e.g. template_xxxx">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0.8rem;">
+                                <label>EmailJS Public Key</label>
+                                <input type="text" id="settings-emailjs-public-key" class="form-input" placeholder="e.g. user_xxxx">
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;"><i class="fa-solid fa-save"></i> Save Email Setup</button>
+                        </form>
+                    </div>
+
                     <!-- Database Backup and Recovery panel -->
                     <div class="glass-card">
                         <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-database"></i> Database Maintenance & Backups</h3>

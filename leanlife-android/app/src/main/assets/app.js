@@ -2281,6 +2281,9 @@ const app = {
         });
         await this.saveDatabase();
         
+        // Dispatch real email
+        this.sendRealEmail(user.name, user.email, 'Temporary Credentials Reset Request', tempPassword);
+        
         this.logAudit(this.currentUser.name, 'Admin Password Reset', `Generated temporary password for ${email}`);
         
         alert(`Password Reset Successful!
@@ -2367,6 +2370,10 @@ const app = {
         });
         
         await this.saveDatabase();
+
+        // Dispatch real email
+        this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword);
+
         this.logAudit(this.currentUser.name, 'Admin Registered User', `Registered user ${email} with temporary credentials`);
         
         alert(`Member Account Created Successfully!
@@ -2773,6 +2780,15 @@ const app = {
         document.getElementById('settings-persona').value = this.db.systemSettings.persona || 'encouraging';
         document.getElementById('settings-primary-hue').value = this.db.systemSettings.primaryHue || 168;
         document.getElementById('settings-accent-hue').value = this.db.systemSettings.accentHue || 80;
+
+        // Populate EmailJS settings
+        const serviceIdField = document.getElementById('settings-emailjs-service-id');
+        const templateIdField = document.getElementById('settings-emailjs-template-id');
+        const publicKeyField = document.getElementById('settings-emailjs-public-key');
+        
+        if (serviceIdField) serviceIdField.value = this.db.systemSettings.emailjsServiceId || '';
+        if (templateIdField) templateIdField.value = this.db.systemSettings.emailjsTemplateId || '';
+        if (publicKeyField) publicKeyField.value = this.db.systemSettings.emailjsPublicKey || '';
     },
 
     handleAdminSaveSettings(e) {
@@ -2781,11 +2797,10 @@ const app = {
         const primaryHue = parseInt(document.getElementById('settings-primary-hue').value) || 168;
         const accentHue = parseInt(document.getElementById('settings-accent-hue').value) || 80;
 
-        this.db.systemSettings = {
-            persona: persona,
-            primaryHue: primaryHue,
-            accentHue: accentHue
-        };
+        this.db.systemSettings = this.db.systemSettings || {};
+        this.db.systemSettings.persona = persona;
+        this.db.systemSettings.primaryHue = primaryHue;
+        this.db.systemSettings.accentHue = accentHue;
 
         this.saveDatabase();
         this.logAudit(this.currentUser.name, 'System Settings Saved', `Frannie Persona: ${persona}. Custom Branding color Hues saved: Primary H:${primaryHue}, Accent H:${accentHue}`);
@@ -2795,6 +2810,65 @@ const app = {
         document.documentElement.style.setProperty('--hue-accent', accentHue);
 
         alert("System parameters and styling colors updated successfully!");
+    },
+
+    handleAdminSaveEmailSettings(e) {
+        e.preventDefault();
+        const serviceId = document.getElementById('settings-emailjs-service-id').value.trim();
+        const templateId = document.getElementById('settings-emailjs-template-id').value.trim();
+        const publicKey = document.getElementById('settings-emailjs-public-key').value.trim();
+
+        this.db.systemSettings = this.db.systemSettings || {};
+        this.db.systemSettings.emailjsServiceId = serviceId;
+        this.db.systemSettings.emailjsTemplateId = templateId;
+        this.db.systemSettings.emailjsPublicKey = publicKey;
+
+        this.saveDatabase();
+        this.logAudit(this.currentUser.name, 'Email settings updated', `EmailJS Integration Service: ${serviceId ? 'Activated' : 'Disabled'}`);
+        alert("Email delivery settings updated successfully!");
+    },
+
+    async sendRealEmail(recipientName, recipientEmail, subject, tempPassword) {
+        const config = window.SUPABASE_CONFIG || {};
+        const serviceId = config.EMAILJS_SERVICE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsServiceId);
+        const templateId = config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId);
+        const publicKey = config.EMAILJS_PUBLIC_KEY || (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey);
+
+        if (!serviceId || !templateId || !publicKey) {
+            console.log("EmailJS credentials missing. Operating in local simulation outbox mode.");
+            return;
+        }
+
+        console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
+        try {
+            const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    service_id: serviceId,
+                    template_id: templateId,
+                    user_id: publicKey,
+                    template_params: {
+                        to_name: recipientName,
+                        to_email: recipientEmail,
+                        temp_password: tempPassword,
+                        subject: subject
+                    }
+                })
+            });
+
+            if (response.ok) {
+                console.log(`Real email successfully dispatched to ${recipientEmail}!`);
+                this.logAudit('System', 'Real Email Dispatched', `Real onboarding email delivered to ${recipientEmail}`);
+            } else {
+                const errText = await response.text();
+                console.error("EmailJS API returned error status:", response.status, errText);
+            }
+        } catch (err) {
+            console.error("Failed to execute EmailJS HTTP request:", err);
+        }
     },
 
     exportReport(table, format) {
