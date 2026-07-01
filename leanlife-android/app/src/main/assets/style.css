@@ -410,31 +410,42 @@ h1, h2, h3, h4, h5, h6 {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: linear-gradient(135deg, var(--clr-primary-green), var(--clr-bg-base));
+    background: linear-gradient(135deg, hsl(var(--hue-primary), 45%, 10%), hsl(var(--hue-primary), 25%, 5%));
     gap: 20px;
-    padding: 2rem;
+    padding: 3rem 2rem;
     width: 95%;
     height: 95%;
     border-radius: var(--radius-xl);
-    color: var(--clr-text-light);
+    color: #ffffff;
+    box-shadow: inset 0 0 100px rgba(0,0,0,0.4), 0 20px 40px rgba(0,0,0,0.3);
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
+
 .carousel-logo-card h3 {
-    color: var(--clr-text-light);
+    font-size: 2.5rem;
+    text-align: center;
+    color: #ffffff;
+    font-family: var(--font-brand);
+    font-weight: 700;
+    margin: 0;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
+
 .carousel-logo-card p {
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 1.05rem;
+    line-height: 1.6;
+    text-align: center;
+    max-width: 80%;
+    margin: 0;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
 
 .carousel-logo-card img {
     width: 240px;
     height: auto;
     object-fit: contain;
-}
-
-.carousel-logo-card h3 {
-    font-size: 2.2rem;
-    text-align: center;
-    color: var(--clr-text-light);
+    filter: brightness(0) invert(1) drop-shadow(0 2px 8px rgba(0,0,0,0.3));
 }
 
 .carousel-card-caption {
