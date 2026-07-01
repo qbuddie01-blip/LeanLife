@@ -132,6 +132,41 @@ const app = {
 
         // Start background simulation loops for automated emails/alerts
         this.startBackgroundAutomationLoop();
+
+        // Initialize smart scroll header
+        this.initScrollHeader();
+    },
+
+    // Toggle Mobile menu drawer
+    toggleMobileMenu() {
+        const navbar = document.querySelector('.navbar');
+        if (navbar) {
+            navbar.classList.toggle('mobile-nav-active');
+        }
+    },
+
+    // Initialize smart scroll header
+    initScrollHeader() {
+        let lastScrollY = window.scrollY;
+        const navbar = document.querySelector('.navbar');
+        if (!navbar) return;
+
+        window.addEventListener('scroll', () => {
+            const currentScrollY = window.scrollY;
+            
+            // Do not hide header if mobile nav drawer is open
+            if (navbar.classList.contains('mobile-nav-active')) {
+                lastScrollY = currentScrollY;
+                return;
+            }
+            
+            if (currentScrollY > lastScrollY && currentScrollY > 80) {
+                navbar.classList.add('header-hidden');
+            } else {
+                navbar.classList.remove('header-hidden');
+            }
+            lastScrollY = currentScrollY;
+        }, { passive: true });
     },
 
     // Save current db to IndexedDB and localStorage (redundancy) and sync to Supabase Cloud
@@ -482,6 +517,12 @@ const app = {
     // ==================== SPA ROUTING ====================
     navigateTo(viewId, params = {}) {
         console.log(`Routing to: ${viewId}`, params);
+        
+        // Close mobile nav drawer if active
+        const navbar = document.querySelector('.navbar');
+        if (navbar) {
+            navbar.classList.remove('mobile-nav-active');
+        }
         
         // Route protection
         if (viewId !== 'home' && viewId !== 'login' && !this.currentUser) {
