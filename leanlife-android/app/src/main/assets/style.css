@@ -1625,6 +1625,10 @@ footer {
         color: var(--clr-accent-green);
     }
     
+    .floating-bg {
+        display: none !important;
+    }
+
     .carousel-card {
         height: 320px !important;
     }
@@ -1632,15 +1636,18 @@ footer {
     .landing-stats-grid {
         grid-template-columns: repeat(2, 1fr) !important;
         gap: 1rem !important;
+        width: 100% !important;
     }
 
     .stat-card {
         padding: 1rem 0.5rem !important;
         min-height: 100px;
+        width: 100% !important;
+        box-sizing: border-box !important;
     }
 
     .stat-num {
-        font-size: clamp(1rem, 4.5vw, 1.5rem) !important;
+        font-size: clamp(1rem, 4vw, 1.4rem) !important;
     }
 
     .score-gauge-box {
@@ -1712,13 +1719,16 @@ footer {
     .landing-stats-grid {
         grid-template-columns: 1fr !important;
         gap: 1.2rem !important;
+        width: 100% !important;
     }
     .stat-card {
         padding: 1.2rem 1rem !important;
         min-height: 100px;
+        width: 100% !important;
+        box-sizing: border-box !important;
     }
     .stat-num {
-        font-size: clamp(1.4rem, 6.5vw, 2.2rem) !important;
+        font-size: clamp(1.2rem, 5.5vw, 1.8rem) !important;
     }
     .carousel-card {
         height: 250px !important;
