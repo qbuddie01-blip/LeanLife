@@ -49,13 +49,18 @@
     box-sizing: border-box;
 }
 
+html, body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
 body {
     font-family: var(--font-body);
     background: radial-gradient(circle at 50% 50%, var(--clr-bg-base) 0%, rgba(246, 241, 233, 1) 55%, rgba(238, 230, 216, 1) 100%);
     background-attachment: fixed;
     color: var(--clr-text-dark);
     min-height: 100vh;
-    overflow-x: hidden;
     line-height: 1.6;
 }
 
@@ -1616,6 +1621,10 @@ footer {
         gap: 1rem !important;
         padding: 1.5rem !important;
     }
+
+    .stat-num {
+        font-size: clamp(1.1rem, 5.5vw, 1.7rem) !important;
+    }
     
     .features-grid {
         grid-template-columns: 1fr;
@@ -1682,6 +1691,9 @@ footer {
     .landing-stats-grid {
         grid-template-columns: 1fr !important;
         gap: 1.2rem !important;
+    }
+    .stat-num {
+        font-size: clamp(1.4rem, 6.5vw, 2rem) !important;
     }
     .carousel-card {
         height: 250px !important;
