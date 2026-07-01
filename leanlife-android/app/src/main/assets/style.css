@@ -369,6 +369,7 @@ h1, h2, h3, h4, h5, h6 {
     display: flex;
     gap: 1.2rem;
     margin-top: 1rem;
+    flex-wrap: wrap;
 }
 
 /* Hero Carousel */
@@ -376,6 +377,7 @@ h1, h2, h3, h4, h5, h6 {
     position: relative;
     height: 480px;
     width: 100%;
+    overflow: hidden;
 }
 
 .carousel-track {
@@ -515,6 +517,8 @@ h1, h2, h3, h4, h5, h6 {
     gap: 1.5rem;
     margin-top: 4rem;
     padding: 2rem;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .stat-card {
@@ -525,13 +529,23 @@ h1, h2, h3, h4, h5, h6 {
     align-items: center;
     gap: 8px;
     padding: 1.5rem 1rem;
+    min-height: 120px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-md);
+    box-sizing: border-box;
 }
 
 .stat-num {
-    font-size: clamp(1.4rem, 5vw, 2.2rem);
+    font-size: clamp(1.4rem, 2.5vw, 2.2rem);
     font-family: var(--font-brand);
     font-weight: 800;
     color: var(--clr-text-dark);
+    word-wrap: break-word;
+    word-break: break-all;
+    max-width: 100%;
+    line-height: 1.2;
 }
 
 .mobile-menu-header, .mobile-menu-buttons {
@@ -1555,8 +1569,7 @@ footer {
 
     .navbar nav {
         position: fixed;
-        top: 0;
-        right: -100%;
+        inset: 0 0 0 auto;
         width: 80%;
         max-width: 300px;
         height: 100vh;
@@ -1568,7 +1581,8 @@ footer {
         flex-direction: column;
         justify-content: flex-start;
         align-items: center;
-        transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s;
+        transform: translateX(100%);
+        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s;
         box-shadow: -10px 0 30px rgba(0,0,0,0.3);
         border-left: 1px solid rgba(255,255,255,0.1);
         padding: 6rem 2rem 2rem 2rem;
@@ -1576,7 +1590,7 @@ footer {
     }
 
     .navbar.mobile-nav-active nav {
-        right: 0;
+        transform: translateX(0);
         visibility: visible;
     }
 
@@ -1620,13 +1634,22 @@ footer {
     }
 
     .landing-stats-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
         gap: 1rem !important;
         padding: 1rem !important;
     }
 
+    .stat-card {
+        padding: 1rem 0.5rem !important;
+        min-height: 100px;
+    }
+
     .stat-num {
         font-size: clamp(1rem, 4.5vw, 1.5rem) !important;
+    }
+
+    .score-gauge-box {
+        padding: 0.8rem !important;
     }
     
     .features-grid {
@@ -1696,8 +1719,12 @@ footer {
         gap: 1.2rem !important;
         padding: 1rem !important;
     }
+    .stat-card {
+        padding: 1.2rem 1rem !important;
+        min-height: 100px;
+    }
     .stat-num {
-        font-size: clamp(1.2rem, 5.8vw, 1.8rem) !important;
+        font-size: clamp(1.4rem, 6.5vw, 2.2rem) !important;
     }
     .carousel-card {
         height: 250px !important;
