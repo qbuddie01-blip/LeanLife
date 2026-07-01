@@ -1,0 +1,10 @@
+# Ignore Android wrapper project from web deployment
+leanlife-android/
+
+# Ignore documentation, local build tools, and database blueprints
+android_publish_guide.md
+supabase_schema.sql
+.env.example
+scripts/
+walkthrough.md
+task.md
