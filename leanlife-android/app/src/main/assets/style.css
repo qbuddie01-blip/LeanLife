@@ -1568,14 +1568,16 @@ footer {
         flex-direction: column;
         justify-content: flex-start;
         align-items: center;
-        transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s;
         box-shadow: -10px 0 30px rgba(0,0,0,0.3);
         border-left: 1px solid rgba(255,255,255,0.1);
         padding: 6rem 2rem 2rem 2rem;
+        visibility: hidden; /* Prevent side swipe swing */
     }
 
     .navbar.mobile-nav-active nav {
         right: 0;
+        visibility: visible;
     }
 
     .mobile-menu-header {
@@ -1702,6 +1704,10 @@ footer {
     }
     .admin-stats-grid {
         grid-template-columns: 1fr !important;
+    }
+    .dashboard-stats-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
     }
 }
 
