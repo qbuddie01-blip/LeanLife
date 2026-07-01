@@ -2,7 +2,7 @@
 $stagedFiles = git diff --cached --name-only
 
 $sensitivePatterns = @(
-    "\.env(\..*)?$"
+    "\.env(\.(?!example)[a-zA-Z0-9_-]+)?$"
     "\.pem$"
     "\.key$"
     "\.pfx$"

@@ -38,6 +38,22 @@ const app = {
         }
     },
 
+    // Initialize Supabase Client
+    initSupabase() {
+        console.log("Initializing Supabase Client...");
+        const config = window.SUPABASE_CONFIG;
+        if (config && config.URL && config.KEY && window.supabase) {
+            try {
+                this.supabase = window.supabase.createClient(config.URL, config.KEY);
+                console.log("Supabase client successfully initialized.");
+            } catch (e) {
+                console.error("Failed to initialize Supabase client:", e);
+            }
+        } else {
+            console.warn("Supabase configuration or library not loaded. Running in local-only IndexedDB mode.");
+        }
+    },
+
     // Helper to open IndexedDB
     openDB() {
         return new Promise((resolve, reject) => {
@@ -65,6 +81,7 @@ const app = {
     // Initialize application
     async init() {
         console.log("Initializing LeanLife App...");
+        this.initSupabase();
         await this.loadDatabase();
         await this.seedInitialData();
 
@@ -117,7 +134,7 @@ const app = {
         this.startBackgroundAutomationLoop();
     },
 
-    // Save current db to IndexedDB and localStorage (redundancy)
+    // Save current db to IndexedDB and localStorage (redundancy) and sync to Supabase Cloud
     async saveDatabase() {
         localStorage.setItem('leanlife_db', JSON.stringify(this.db));
         try {
@@ -132,9 +149,30 @@ const app = {
         } catch(e) {
             console.error("IndexedDB failed to save", e);
         }
+
+        // Supabase Cloud Sync
+        if (this.supabase) {
+            try {
+                const { error } = await this.supabase
+                    .from('system_settings')
+                    .upsert({
+                        id: 'leanlife_cloud_db',
+                        data: this.db,
+                        updated_at: new Date().toISOString()
+                    });
+
+                if (error) {
+                    console.warn("Supabase Cloud Sync warning:", error.message);
+                } else {
+                    console.log("Supabase Cloud Sync completed successfully.");
+                }
+            } catch (err) {
+                console.error("Failed to sync to Supabase Cloud:", err);
+            }
+        }
     },
 
-    // Load db from IndexedDB with localStorage fallback
+    // Load db from IndexedDB with localStorage fallback and sync with Supabase Cloud
     async loadDatabase() {
         try {
             const db = await this.openDB();
@@ -176,6 +214,61 @@ const app = {
             accentHue: 80,
             persona: 'encouraging'
         };
+
+        // Supabase Cloud Load Sync
+        if (this.supabase) {
+            console.log("Syncing database with Supabase cloud...");
+            try {
+                const { data, error } = await this.supabase
+                    .from('system_settings')
+                    .select('data')
+                    .eq('id', 'leanlife_cloud_db')
+                    .single();
+
+                if (data && data.data) {
+                    console.log("Supabase Cloud DB found. Syncing collections...");
+                    this.mergeCloudDatabase(data.data);
+                } else if (error && error.code !== 'PGRST116') {
+                    console.warn("Supabase fetch returned error:", error);
+                }
+            } catch (err) {
+                console.error("Failed to fetch data from Supabase:", err);
+            }
+        }
+    },
+
+    // Merge Cloud DB lists with Local DB lists (Cloud takes priority)
+    mergeCloudDatabase(cloudDb) {
+        if (!cloudDb) return;
+        console.log("Merging local database with Cloud DB...");
+        
+        const mergeLists = (localList, cloudList, key = 'email') => {
+            const map = new Map();
+            (localList || []).forEach(item => map.set(item[key]?.toLowerCase() || item[key] || item.id, item));
+            (cloudList || []).forEach(item => {
+                const itemKey = item[key]?.toLowerCase() || item[key] || item.id;
+                map.set(itemKey, item);
+            });
+            return Array.from(map.values());
+        };
+
+        this.db.users = mergeLists(this.db.users, cloudDb.users, 'email');
+        this.db.wellnessLogs = mergeLists(this.db.wellnessLogs, cloudDb.wellnessLogs, 'id');
+        this.db.aiReports = mergeLists(this.db.aiReports, cloudDb.aiReports, 'id');
+        this.db.posts = mergeLists(this.db.posts, cloudDb.posts, 'id');
+        this.db.appointments = mergeLists(this.db.appointments, cloudDb.appointments, 'id');
+        this.db.events = mergeLists(this.db.events, cloudDb.events, 'id');
+        this.db.auditLogs = mergeLists(this.db.auditLogs, cloudDb.auditLogs, 'id');
+        this.db.emails = mergeLists(this.db.emails, cloudDb.emails, 'id');
+        this.db.notifications = mergeLists(this.db.notifications, cloudDb.notifications, 'id');
+        this.db.automationJobs = mergeLists(this.db.automationJobs, cloudDb.automationJobs, 'id');
+        
+        if (cloudDb.systemSettings) {
+            this.db.systemSettings = cloudDb.systemSettings;
+        }
+        
+        this.db.automationFailures = cloudDb.automationFailures !== undefined ? cloudDb.automationFailures : this.db.automationFailures;
+        this.db.automationRetries = cloudDb.automationRetries !== undefined ? cloudDb.automationRetries : this.db.automationRetries;
     },
 
     // Log user activities to Audit Trail
