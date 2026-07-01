@@ -135,13 +135,40 @@ const app = {
 
         // Initialize smart scroll header
         this.initScrollHeader();
+
+        // Close mobile drawer on Esc key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const navbar = document.querySelector('.navbar');
+                if (navbar && navbar.classList.contains('mobile-nav-active')) {
+                    navbar.classList.remove('mobile-nav-active');
+                    const btn = document.getElementById('mobile-menu-toggle');
+                    if (btn) btn.setAttribute('aria-expanded', 'false');
+                }
+            }
+        });
+
+        // Close mobile drawer on click outside
+        document.addEventListener('click', (e) => {
+            const navbar = document.querySelector('.navbar');
+            if (navbar && navbar.classList.contains('mobile-nav-active')) {
+                const nav = navbar.querySelector('nav');
+                const btn = document.getElementById('mobile-menu-toggle');
+                if (nav && btn && !nav.contains(e.target) && !btn.contains(e.target)) {
+                    navbar.classList.remove('mobile-nav-active');
+                    btn.setAttribute('aria-expanded', 'false');
+                }
+            }
+        });
     },
 
     // Toggle Mobile menu drawer
     toggleMobileMenu() {
         const navbar = document.querySelector('.navbar');
-        if (navbar) {
-            navbar.classList.toggle('mobile-nav-active');
+        const btn = document.getElementById('mobile-menu-toggle');
+        if (navbar && btn) {
+            const active = navbar.classList.toggle('mobile-nav-active');
+            btn.setAttribute('aria-expanded', active ? 'true' : 'false');
         }
     },
 
@@ -600,6 +627,18 @@ const app = {
             document.getElementById('user-display-avatar').src = this.currentUser.avatar;
         }
 
+        // Mobile profile elements
+        const mobAuthBtn = document.getElementById('mobile-auth-nav-buttons');
+        const mobUserDropdown = document.getElementById('mobile-user-nav-dropdown');
+        if (mobAuthBtn) mobAuthBtn.style.display = 'none';
+        if (mobUserDropdown) {
+            mobUserDropdown.style.display = 'flex';
+            document.getElementById('mobile-user-display-name').textContent = this.currentUser.name;
+            if (this.currentUser.avatar) {
+                document.getElementById('mobile-user-display-avatar').src = this.currentUser.avatar;
+            }
+        }
+
         // Show member links
         document.querySelectorAll('.logged-in-only').forEach(el => el.style.display = 'block');
 
@@ -614,6 +653,12 @@ const app = {
     updateUIAfterLogout() {
         document.getElementById('auth-nav-buttons').style.display = 'flex';
         document.getElementById('user-nav-dropdown').style.display = 'none';
+
+        // Mobile profile elements reset
+        const mobAuthBtn = document.getElementById('mobile-auth-nav-buttons');
+        const mobUserDropdown = document.getElementById('mobile-user-nav-dropdown');
+        if (mobAuthBtn) mobAuthBtn.style.display = 'flex';
+        if (mobUserDropdown) mobUserDropdown.style.display = 'none';
         
         // Hide member links
         document.querySelectorAll('.logged-in-only').forEach(el => el.style.display = 'none');
