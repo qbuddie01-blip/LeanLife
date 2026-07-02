@@ -203,26 +203,32 @@
             <!-- Animated Statistics Grid -->
             <div class="landing-stats-grid">
                 <div class="glass-card stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
                     <div class="stat-num" id="stat-members" data-val="15243">15,243</div>
                     <div class="stat-label">Active Members</div>
                 </div>
                 <div class="glass-card stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-weight-scale"></i></div>
                     <div class="stat-num" id="stat-weight" data-val="84230">84,230</div>
                     <div class="stat-label">Weight Lost (lbs)</div>
                 </div>
                 <div class="glass-card stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-trophy"></i></div>
                     <div class="stat-num" id="stat-goals" data-val="112050">112,050</div>
                     <div class="stat-label">Goals Achieved</div>
                 </div>
                 <div class="glass-card stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-glass-water"></i></div>
                     <div class="stat-num" id="stat-water" data-val="2403120">2,403,120</div>
                     <div class="stat-label">Glasses Water Logged</div>
                 </div>
                 <div class="glass-card stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-fire"></i></div>
                     <div class="stat-num" id="stat-calories" data-val="9843201">9,843.2k</div>
                     <div class="stat-label">Calories Tracked</div>
                 </div>
                 <div class="glass-card stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-circle-check"></i></div>
                     <div class="stat-num" id="stat-challenges" data-val="48290">48,290</div>
                     <div class="stat-label">Challenges Completed</div>
                 </div>
@@ -346,32 +352,40 @@
                     <!-- Daily Core Scores Gauges -->
                     <div class="dashboard-stats-grid">
                         <div class="glass-card dash-stat-card">
-                            <span class="icon" style="color: #2196f3;"><i class="fa-solid fa-droplet"></i></span>
-                            <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Water Logged</span>
+                            <div class="dash-stat-header">
+                                <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Water Logged</span>
+                                <span class="icon" style="color: #2196f3;"><i class="fa-solid fa-droplet"></i></span>
+                            </div>
                             <div class="dash-stat-val" id="dash-val-water">4 / 10 drops</div>
                             <div class="dash-stat-progress">
                                 <div class="dash-stat-fill fill-water" id="dash-progress-water" style="width: 40%;"></div>
                             </div>
                         </div>
                         <div class="glass-card dash-stat-card">
-                            <span class="icon" style="color: #8bc34a;"><i class="fa-solid fa-shoe-prints"></i></span>
-                            <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Steps Logged</span>
+                            <div class="dash-stat-header">
+                                <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Steps Logged</span>
+                                <span class="icon" style="color: #8bc34a;"><i class="fa-solid fa-shoe-prints"></i></span>
+                            </div>
                             <div class="dash-stat-val" id="dash-val-steps">7,850 steps</div>
                             <div class="dash-stat-progress">
                                 <div class="dash-stat-fill fill-steps" id="dash-progress-steps" style="width: 78.5%;"></div>
                             </div>
                         </div>
                         <div class="glass-card dash-stat-card">
-                            <span class="icon" style="color: #e91e63;"><i class="fa-solid fa-utensils"></i></span>
-                            <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Calories Burned</span>
+                            <div class="dash-stat-header">
+                                <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Calories Burned</span>
+                                <span class="icon" style="color: #e91e63;"><i class="fa-solid fa-utensils"></i></span>
+                            </div>
                             <div class="dash-stat-val" id="dash-val-calories">420 kcal</div>
                             <div class="dash-stat-progress">
                                 <div class="dash-stat-fill fill-calories" id="dash-progress-calories" style="width: 60%;"></div>
                             </div>
                         </div>
                         <div class="glass-card dash-stat-card">
-                            <span class="icon" style="color: #673ab7;"><i class="fa-solid fa-moon"></i></span>
-                            <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Sleep Logged</span>
+                            <div class="dash-stat-header">
+                                <span style="font-size: 0.9rem; font-weight: 600; color: #555;">Sleep Logged</span>
+                                <span class="icon" style="color: #673ab7;"><i class="fa-solid fa-moon"></i></span>
+                            </div>
                             <div class="dash-stat-val" id="dash-val-sleep">7.5 hrs</div>
                             <div class="dash-stat-progress">
                                 <div class="dash-stat-fill fill-sleep" id="dash-progress-sleep" style="width: 93.7%;"></div>
@@ -1818,7 +1832,7 @@
 
         <!-- Global Footer -->
         <footer>
-            <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem;">
+            <div class="footer-container">
                 <div class="brand-logo-container">
                     <img src="logo_transparent.png" alt="LeanLife Logo" style="height: 36px;">
                 </div>
