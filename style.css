@@ -404,7 +404,7 @@ h1, h2, h3, h4, h5, h6 {
     transition: opacity 0.8s ease-in-out;
     display: flex;
     justify-content: center;
-    align-items: flex-start;
+    align-items: center;
 }
 
 .carousel-slide.active {
@@ -476,7 +476,7 @@ h1, h2, h3, h4, h5, h6 {
     bottom: 0;
     left: 0;
     width: 100%;
-    padding: 1.5rem 1.5rem 2.4rem 1.5rem;
+    padding: 1.5rem 1.5rem 2.8rem 1.5rem;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.4) 60%, rgba(0, 0, 0, 0) 100%);
     color: white;
     font-family: var(--font-brand);
@@ -494,19 +494,20 @@ h1, h2, h3, h4, h5, h6 {
 
 .carousel-indicators {
     position: absolute;
-    bottom: 8px;
+    bottom: 15px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 3px;
+    gap: 8px;
+    align-items: center;
     z-index: 20;
 }
 
 .carousel-indicator {
-    width: 4px;
-    height: 1px;
-    border-radius: 1px;
-    background-color: rgba(0, 0, 0, 0.25);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.45);
     border: none;
     cursor: pointer;
     transition: var(--transition-fast);
@@ -515,7 +516,9 @@ h1, h2, h3, h4, h5, h6 {
 .carousel-indicator.active {
     background-color: var(--clr-accent-green);
     width: 8px;
-    border-radius: 1px;
+    height: 8px;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(165, 227, 50, 0.6);
 }
 
 /* Landing Statistics */
@@ -1680,8 +1683,26 @@ footer {
     }
 
     .carousel-card, .carousel-logo-card {
-        height: 92% !important;
+        height: 100% !important;
         width: 100% !important;
+    }
+
+    .carousel-logo-card {
+        padding: 1.5rem 1.25rem !important;
+        gap: 12px !important;
+    }
+
+    .carousel-logo-card img {
+        width: 140px !important;
+    }
+
+    .carousel-logo-card h3 {
+        font-size: 1.6rem !important;
+    }
+
+    .carousel-logo-card p {
+        font-size: 0.85rem !important;
+        max-width: 90% !important;
     }
 
     .landing-stats-grid {
@@ -1778,7 +1799,7 @@ footer {
         height: 330px !important;
     }
     .carousel-card, .carousel-logo-card {
-        height: 92% !important;
+        height: 100% !important;
     }
     .admin-stats-grid {
         grid-template-columns: 1fr !important;
@@ -1801,6 +1822,20 @@ footer {
     }
     .hero-carousel-container {
         height: 280px !important;
+    }
+    .carousel-logo-card {
+        padding: 1rem !important;
+        gap: 8px !important;
+    }
+    .carousel-logo-card img {
+        width: 110px !important;
+    }
+    .carousel-logo-card h3 {
+        font-size: 1.25rem !important;
+    }
+    .carousel-logo-card p {
+        font-size: 0.75rem !important;
+        max-width: 95% !important;
     }
 }
 
