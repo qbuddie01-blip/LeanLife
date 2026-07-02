@@ -383,7 +383,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Hero Carousel */
 .hero-carousel-container {
     position: relative;
-    height: 480px;
+    height: 540px;
     width: 100%;
     overflow: hidden;
 }
@@ -433,7 +433,7 @@ h1, h2, h3, h4, h5, h6 {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: linear-gradient(135deg, hsl(var(--hue-primary), 45%, 10%), hsl(var(--hue-primary), 25%, 5%));
+    background: linear-gradient(135deg, hsl(var(--hue-primary), 60%, 15%), hsl(var(--hue-primary), 65%, 8%));
     gap: 20px;
     padding: 3rem 2rem;
     width: 95%;
@@ -503,9 +503,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .carousel-indicator {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+    width: 12px;
+    height: 3px;
+    border-radius: 2px;
     background-color: rgba(255, 255, 255, 0.4);
     border: none;
     cursor: pointer;
@@ -514,8 +514,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .carousel-indicator.active {
     background-color: var(--clr-accent-green);
-    width: 16px;
-    border-radius: 3px;
+    width: 24px;
+    border-radius: 2px;
 }
 
 /* Landing Statistics */
@@ -1676,7 +1676,7 @@ footer {
     }
 
     .hero-carousel-container {
-        height: 340px !important;
+        height: 400px !important;
     }
 
     .carousel-card, .carousel-logo-card {
@@ -1775,7 +1775,7 @@ footer {
 
 @media (max-width: 600px) {
     .hero-carousel-container {
-        height: 270px !important;
+        height: 330px !important;
     }
     .carousel-card, .carousel-logo-card {
         height: 100% !important;
@@ -1800,7 +1800,7 @@ footer {
         justify-content: center !important;
     }
     .hero-carousel-container {
-        height: 230px !important;
+        height: 280px !important;
     }
 }
 
