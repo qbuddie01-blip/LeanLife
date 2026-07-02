@@ -476,8 +476,8 @@ h1, h2, h3, h4, h5, h6 {
     bottom: 0;
     left: 0;
     width: 100%;
-    padding: 2rem;
-    background: linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0));
+    padding: 1.5rem 1.5rem 2.4rem 1.5rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.4) 60%, rgba(0, 0, 0, 0) 100%);
     color: white;
     font-family: var(--font-brand);
 }
@@ -494,19 +494,19 @@ h1, h2, h3, h4, h5, h6 {
 
 .carousel-indicators {
     position: absolute;
-    bottom: 15px;
+    bottom: 10px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 8px;
+    gap: 6px;
     z-index: 20;
 }
 
 .carousel-indicator {
-    width: 10px;
-    height: 10px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    background-color: rgba(0, 0, 0, 0.15);
+    background-color: rgba(255, 255, 255, 0.4);
     border: none;
     cursor: pointer;
     transition: var(--transition-fast);
@@ -514,8 +514,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .carousel-indicator.active {
     background-color: var(--clr-accent-green);
-    width: 24px;
-    border-radius: 12px;
+    width: 16px;
+    border-radius: 3px;
 }
 
 /* Landing Statistics */
