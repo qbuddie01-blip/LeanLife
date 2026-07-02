@@ -404,7 +404,7 @@ h1, h2, h3, h4, h5, h6 {
     transition: opacity 0.8s ease-in-out;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
 }
 
 .carousel-slide.active {
@@ -494,19 +494,19 @@ h1, h2, h3, h4, h5, h6 {
 
 .carousel-indicators {
     position: absolute;
-    bottom: 10px;
+    bottom: 8px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 6px;
+    gap: 3px;
     z-index: 20;
 }
 
 .carousel-indicator {
-    width: 12px;
-    height: 3px;
-    border-radius: 2px;
-    background-color: rgba(255, 255, 255, 0.4);
+    width: 4px;
+    height: 1px;
+    border-radius: 1px;
+    background-color: rgba(0, 0, 0, 0.25);
     border: none;
     cursor: pointer;
     transition: var(--transition-fast);
@@ -514,8 +514,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .carousel-indicator.active {
     background-color: var(--clr-accent-green);
-    width: 24px;
-    border-radius: 2px;
+    width: 8px;
+    border-radius: 1px;
 }
 
 /* Landing Statistics */
@@ -1680,7 +1680,7 @@ footer {
     }
 
     .carousel-card, .carousel-logo-card {
-        height: 100% !important;
+        height: 92% !important;
         width: 100% !important;
     }
 
@@ -1778,7 +1778,7 @@ footer {
         height: 330px !important;
     }
     .carousel-card, .carousel-logo-card {
-        height: 100% !important;
+        height: 92% !important;
     }
     .admin-stats-grid {
         grid-template-columns: 1fr !important;
