@@ -17,3 +17,8 @@ Whenever the agent finishes implementing a feature, resolving an issue, or compl
    - Push the local commits immediately to the remote branch `main` on GitHub:
      `https://github.com/qbuddie01-blip/LeanLife.git`
    - If the push fails because of authentication or connection errors, preserve the local commits and output the error logs without force-pushing.
+
+## 🔒 Git Identity Rules
+
+- **Git Author Identity Preservation:** Never override the Git author email or user name configuration dynamically during tasks or commits.
+- **GitHub Verified Email Requirement:** Always use the GitHub verified user name (`qbuddie01-blip`) and noreply email (`qbuddie01-blip@users.noreply.github.com`) for all commits to prevent blocking deployments.
