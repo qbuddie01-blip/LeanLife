@@ -30,6 +30,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Enable JavaScript alert/confirm dialogs
+        webView.webChromeClient = android.webkit.WebChromeClient()
+
         // Load index.html from assets
         webView.loadUrl("file:///android_asset/index.html")
 

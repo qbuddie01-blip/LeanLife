@@ -1784,6 +1784,19 @@ const app = {
         this.saveDatabase();
         this.logAudit(this.currentUser.name, 'Coach Consultation Scheduled', `Request made for ${date} at ${time}`);
 
+        // Add to email outbox
+        this.db.emails.unshift({
+            id: 'EML-' + Date.now(),
+            timestamp: new Date().toISOString(),
+            recipient: this.currentUser.email,
+            subject: `Coach Consultation Confirmation - ${date} at ${time}`,
+            templateName: 'Auto Reply Email',
+            status: 'Delivered'
+        });
+
+        // Dispatch real email
+        this.sendRealEmail(this.currentUser.name, this.currentUser.email, `Coach Consultation Confirmation - ${date} at ${time}`, '', 'autoreply');
+
         const coachKey = this.currentUser.preferredCoach || 'sarah';
         const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
         alert(`Success! Your request for a ${mode} on ${date} at ${time} has been submitted to ${coachName}. You will receive an email confirmation shortly.`);
@@ -2504,7 +2517,7 @@ const app = {
         await this.saveDatabase();
 
         // Dispatch real email
-        this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword);
+        this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome');
 
         this.logAudit(this.currentUser.name, 'Admin Registered User', `Registered user ${email} with temporary credentials`);
         
@@ -2917,10 +2930,14 @@ const app = {
         const serviceIdField = document.getElementById('settings-emailjs-service-id');
         const templateIdField = document.getElementById('settings-emailjs-template-id');
         const publicKeyField = document.getElementById('settings-emailjs-public-key');
+        const autoreplyTemplateIdField = document.getElementById('settings-emailjs-autoreply-template-id');
+        const welcomeTemplateIdField = document.getElementById('settings-emailjs-welcome-template-id');
         
         if (serviceIdField) serviceIdField.value = this.db.systemSettings.emailjsServiceId || '';
         if (templateIdField) templateIdField.value = this.db.systemSettings.emailjsTemplateId || '';
         if (publicKeyField) publicKeyField.value = this.db.systemSettings.emailjsPublicKey || '';
+        if (autoreplyTemplateIdField) autoreplyTemplateIdField.value = this.db.systemSettings.emailjsAutoreplyTemplateId || '';
+        if (welcomeTemplateIdField) welcomeTemplateIdField.value = this.db.systemSettings.emailjsWelcomeTemplateId || '';
     },
 
     handleAdminSaveSettings(e) {
@@ -2949,21 +2966,32 @@ const app = {
         const serviceId = document.getElementById('settings-emailjs-service-id').value.trim();
         const templateId = document.getElementById('settings-emailjs-template-id').value.trim();
         const publicKey = document.getElementById('settings-emailjs-public-key').value.trim();
+        const autoreplyTemplateId = document.getElementById('settings-emailjs-autoreply-template-id').value.trim();
+        const welcomeTemplateId = document.getElementById('settings-emailjs-welcome-template-id').value.trim();
 
         this.db.systemSettings = this.db.systemSettings || {};
         this.db.systemSettings.emailjsServiceId = serviceId;
         this.db.systemSettings.emailjsTemplateId = templateId;
         this.db.systemSettings.emailjsPublicKey = publicKey;
+        this.db.systemSettings.emailjsAutoreplyTemplateId = autoreplyTemplateId;
+        this.db.systemSettings.emailjsWelcomeTemplateId = welcomeTemplateId;
 
         this.saveDatabase();
         this.logAudit(this.currentUser.name, 'Email settings updated', `EmailJS Integration Service: ${serviceId ? 'Activated' : 'Disabled'}`);
         alert("Email delivery settings updated successfully!");
     },
 
-    async sendRealEmail(recipientName, recipientEmail, subject, tempPassword) {
+    async sendRealEmail(recipientName, recipientEmail, subject, tempPassword, templateType = null) {
         const config = window.SUPABASE_CONFIG || {};
         const serviceId = config.EMAILJS_SERVICE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsServiceId);
-        const templateId = config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId);
+        
+        let templateId = config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId);
+        if (templateType === 'welcome' && this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) {
+            templateId = this.db.systemSettings.emailjsWelcomeTemplateId;
+        } else if (templateType === 'autoreply' && this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) {
+            templateId = this.db.systemSettings.emailjsAutoreplyTemplateId;
+        }
+
         const publicKey = config.EMAILJS_PUBLIC_KEY || (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey);
 
         if (!serviceId || !templateId || !publicKey) {
