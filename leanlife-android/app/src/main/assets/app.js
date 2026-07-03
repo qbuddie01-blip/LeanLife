@@ -126,6 +126,26 @@ const app = {
         if (authForm) {
             authForm.addEventListener('submit', (e) => this.handleAuthSubmit(e));
         }
+
+        // Secret developer quick login toggle (5 clicks on "Welcome Back" title)
+        const authTitle = document.getElementById('auth-title');
+        if (authTitle) {
+            let clickCount = 0;
+            let clickTimeout;
+            authTitle.addEventListener('click', () => {
+                clickCount++;
+                clearTimeout(clickTimeout);
+                if (clickCount >= 5) {
+                    const simBox = document.getElementById('simulation-login-box');
+                    if (simBox) {
+                        simBox.style.display = simBox.style.display === 'none' ? 'block' : 'none';
+                    }
+                    clickCount = 0;
+                } else {
+                    clickTimeout = setTimeout(() => { clickCount = 0; }, 2000);
+                }
+            });
+        }
         
         // Check for pending countdowns from previous session
         this.restorePendingCountdowns();
