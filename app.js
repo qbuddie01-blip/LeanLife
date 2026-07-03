@@ -585,6 +585,8 @@ const app = {
             this.renderCommunityFeed();
         } else if (viewId === 'notice-board') {
             this.renderNoticeBoard();
+        } else if (viewId === 'coaching') {
+            this.renderCoaching();
         } else if (viewId === 'admin') {
             this.renderAdminPanel();
         } else if (viewId === 'profile') {
@@ -1782,10 +1784,54 @@ const app = {
         this.saveDatabase();
         this.logAudit(this.currentUser.name, 'Coach Consultation Scheduled', `Request made for ${date} at ${time}`);
 
-        alert(`Success! Your request for a ${mode} on ${date} at ${time} has been submitted to Coach Francess Orenuga. You will receive an email confirmation shortly.`);
+        const coachKey = this.currentUser.preferredCoach || 'sarah';
+        const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
+        alert(`Success! Your request for a ${mode} on ${date} at ${time} has been submitted to ${coachName}. You will receive an email confirmation shortly.`);
         
         // Reset form
         document.getElementById('consult-notes').value = '';
+    },
+
+    renderCoaching() {
+        const coachKey = this.currentUser.preferredCoach || 'sarah';
+        const coachData = {
+            sarah: {
+                name: 'Coach Francess Orenuga',
+                title: 'Senior Lifestyle Medicine & Nutrition Coach',
+                spec: 'Specialization: Metabolic Restoration, Habit Loop Optimization, Integrative Nutrition.',
+                hours: 'Availability: Mon - Fri, 9:00 AM - 5:00 PM EST',
+                pic: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop',
+                whatsapp: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.',
+                shortName: 'Coach Francess'
+            },
+            james: {
+                name: 'Coach James Peterson',
+                title: 'Senior Strength & Conditioning Specialist',
+                spec: 'Specialization: Functional Rehabilitation, Athletic Performance, High-Performance Habit Design.',
+                hours: 'Availability: Mon - Sat, 8:00 AM - 6:00 PM EST',
+                pic: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop',
+                whatsapp: 'https://wa.me/15550198?text=Hello%20Coach%20James,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.',
+                shortName: 'Coach James'
+            }
+        };
+
+        const data = coachData[coachKey] || coachData.sarah;
+
+        const nameEl = document.getElementById('coach-name');
+        const titleEl = document.getElementById('coach-title');
+        const specEl = document.getElementById('coach-spec');
+        const hoursEl = document.getElementById('coach-hours');
+        const picEl = document.getElementById('coach-pic');
+        const btnEl = document.getElementById('whatsapp-btn');
+        const descEl = document.getElementById('whatsapp-desc');
+
+        if (nameEl) nameEl.textContent = data.name;
+        if (titleEl) titleEl.textContent = data.title;
+        if (specEl) specEl.textContent = data.spec;
+        if (hoursEl) hoursEl.textContent = data.hours;
+        if (picEl) picEl.src = data.pic;
+        if (btnEl) btnEl.href = data.whatsapp;
+        if (descEl) descEl.textContent = `Connect with ${data.shortName} immediately to resolve hydration goals, snack alternatives, or lifestyle adjustments.`;
     },
 
     renderNoticeBoard() {
@@ -2743,8 +2789,8 @@ const app = {
         if (!tbody) return;
 
         const coaches = [
-            { name: 'Coach Francess Orenuga', key: 'sarah', hours: 'Mon - Fri, 9:00 AM - 5:00 PM EST', link: 'https://wa.me/17575130205' },
-            { name: 'Coach James Peterson', key: 'james', hours: 'Mon - Sat, 8:00 AM - 6:00 PM EST', link: 'https://wa.me/15550198' }
+            { name: 'Coach Francess Orenuga', key: 'sarah', hours: 'Mon - Fri, 9:00 AM - 5:00 PM EST', link: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.' },
+            { name: 'Coach James Peterson', key: 'james', hours: 'Mon - Sat, 8:00 AM - 6:00 PM EST', link: 'https://wa.me/15550198?text=Hello%20Coach%20James,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.' }
         ];
 
         let html = '';

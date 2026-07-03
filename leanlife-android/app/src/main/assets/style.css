@@ -1,6 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 :root {
+    /* HSL Primary Hue (LeanLife Green) */
+    --hue-primary: 152;
+
     /* Color Palette */
     --clr-primary-green: #C5F3D6;
     --clr-accent-green: #A5E332;
@@ -76,6 +79,11 @@ h1, h2, h3, h4, h5, h6 {
     flex-direction: column;
     min-height: 100vh;
     position: relative;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
 }
 
 /* Background floating elements */
@@ -375,7 +383,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Hero Carousel */
 .hero-carousel-container {
     position: relative;
-    height: 480px;
+    height: 540px;
     width: 100%;
     overflow: hidden;
 }
@@ -425,7 +433,7 @@ h1, h2, h3, h4, h5, h6 {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: linear-gradient(135deg, hsl(var(--hue-primary), 45%, 10%), hsl(var(--hue-primary), 25%, 5%));
+    background: linear-gradient(135deg, hsl(var(--hue-primary), 60%, 15%), hsl(var(--hue-primary), 65%, 8%));
     gap: 20px;
     padding: 3rem 2rem;
     width: 95%;
@@ -468,8 +476,8 @@ h1, h2, h3, h4, h5, h6 {
     bottom: 0;
     left: 0;
     width: 100%;
-    padding: 2rem;
-    background: linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0));
+    padding: 1.5rem 1.5rem 2.8rem 1.5rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.4) 60%, rgba(0, 0, 0, 0) 100%);
     color: white;
     font-family: var(--font-brand);
 }
@@ -486,19 +494,20 @@ h1, h2, h3, h4, h5, h6 {
 
 .carousel-indicators {
     position: absolute;
-    bottom: -30px;
+    bottom: 15px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
     gap: 8px;
+    align-items: center;
     z-index: 20;
 }
 
 .carousel-indicator {
-    width: 10px;
-    height: 10px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    background-color: rgba(0, 0, 0, 0.15);
+    background-color: rgba(255, 255, 255, 0.45);
     border: none;
     cursor: pointer;
     transition: var(--transition-fast);
@@ -506,8 +515,10 @@ h1, h2, h3, h4, h5, h6 {
 
 .carousel-indicator.active {
     background-color: var(--clr-accent-green);
-    width: 24px;
-    border-radius: 12px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(165, 227, 50, 0.6);
 }
 
 /* Landing Statistics */
@@ -528,18 +539,27 @@ h1, h2, h3, h4, h5, h6 {
     align-items: center;
     gap: 8px;
     padding: 1.5rem 1rem !important;
-    min-height: 120px;
+    min-height: 140px;
     height: 100%;
     box-sizing: border-box;
 }
 
+.stat-icon {
+    font-size: 2rem;
+    color: #12826D;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    filter: drop-shadow(0 2px 6px rgba(18, 130, 109, 0.15));
+}
+
 .stat-num {
-    font-size: clamp(1.4rem, 2.5vw, 2.2rem);
+    font-size: clamp(1.3rem, 2.2vw, 2rem);
     font-family: var(--font-brand);
     font-weight: 800;
     color: var(--clr-text-dark);
     word-wrap: break-word;
-    word-break: break-all;
     max-width: 100%;
     line-height: 1.2;
 }
@@ -788,17 +808,26 @@ h1, h2, h3, h4, h5, h6 {
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     position: relative;
     overflow: hidden;
 }
 
+.dash-stat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 10px;
+}
+
 .dash-stat-card .icon {
-    position: absolute;
-    right: 15px;
-    top: 15px;
-    font-size: 2.5rem;
-    opacity: 0.1;
+    font-size: 1.6rem;
+    opacity: 0.9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 
 .dash-stat-val {
@@ -1502,6 +1531,17 @@ footer {
     margin-top: auto;
 }
 
+.footer-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    width: 100%;
+}
+
 /* Mobile Responsive Adjustments */
 @media (max-width: 1024px) {
     .landing-hero {
@@ -1536,6 +1576,13 @@ footer {
 }
 
 @media (max-width: 768px) {
+    .footer-container {
+        flex-direction: column !important;
+        justify-content: center !important;
+        text-align: center !important;
+        gap: 1rem !important;
+    }
+
     .navbar {
         flex-direction: row;
         justify-content: space-between;
@@ -1581,7 +1628,9 @@ footer {
         transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s;
         box-shadow: -10px 0 30px rgba(0,0,0,0.3);
         border-left: 1px solid rgba(255,255,255,0.1);
-        padding: 6rem 2rem 2rem 2rem;
+        padding: calc(5rem + env(safe-area-inset-top, 0px)) calc(1.5rem + env(safe-area-inset-right, 0px)) calc(1.5rem + env(safe-area-inset-bottom, 0px)) calc(1.5rem + env(safe-area-inset-left, 0px));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
         visibility: hidden; /* Prevent side swipe swing */
     }
 
@@ -1629,25 +1678,55 @@ footer {
         display: none !important;
     }
 
-    .carousel-card {
-        height: 320px !important;
+    .hero-carousel-container {
+        height: 400px !important;
     }
 
-    .landing-stats-grid {
-        grid-template-columns: repeat(2, 1fr) !important;
-        gap: 1rem !important;
+    .carousel-card, .carousel-logo-card {
+        height: 100% !important;
         width: 100% !important;
     }
 
+    .carousel-logo-card {
+        padding: 1.5rem 1.25rem !important;
+        gap: 12px !important;
+    }
+
+    .carousel-logo-card img {
+        width: 140px !important;
+    }
+
+    .carousel-logo-card h3 {
+        font-size: 1.6rem !important;
+    }
+
+    .carousel-logo-card p {
+        font-size: 0.85rem !important;
+        max-width: 90% !important;
+    }
+
+    .landing-stats-grid {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
+        gap: 0.8rem !important;
+        width: 100% !important;
+        margin-top: 2rem !important;
+    }
+
     .stat-card {
-        padding: 1rem 0.5rem !important;
-        min-height: 100px;
+        padding: 1.2rem 0.5rem !important;
+        min-height: 120px !important;
         width: 100% !important;
         box-sizing: border-box !important;
     }
 
+    .stat-icon {
+        font-size: 1.6rem !important;
+        margin-bottom: 0.2rem !important;
+    }
+
     .stat-num {
-        font-size: clamp(1rem, 4vw, 1.4rem) !important;
+        font-size: clamp(1.1rem, 3.8vw, 1.35rem) !important;
     }
 
     .score-gauge-box {
@@ -1716,22 +1795,11 @@ footer {
 }
 
 @media (max-width: 600px) {
-    .landing-stats-grid {
-        grid-template-columns: 1fr !important;
-        gap: 1.2rem !important;
-        width: 100% !important;
+    .hero-carousel-container {
+        height: 330px !important;
     }
-    .stat-card {
-        padding: 1.2rem 1rem !important;
-        min-height: 100px;
-        width: 100% !important;
-        box-sizing: border-box !important;
-    }
-    .stat-num {
-        font-size: clamp(1.2rem, 5.5vw, 1.8rem) !important;
-    }
-    .carousel-card {
-        height: 250px !important;
+    .carousel-card, .carousel-logo-card {
+        height: 100% !important;
     }
     .admin-stats-grid {
         grid-template-columns: 1fr !important;
@@ -1739,6 +1807,35 @@ footer {
     .dashboard-stats-grid {
         grid-template-columns: 1fr !important;
         gap: 1rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .hero-ctas {
+        flex-direction: column !important;
+        gap: 0.8rem !important;
+        width: 100% !important;
+    }
+    .hero-ctas .btn, .hero-ctas a {
+        width: 100% !important;
+        justify-content: center !important;
+    }
+    .hero-carousel-container {
+        height: 280px !important;
+    }
+    .carousel-logo-card {
+        padding: 1rem !important;
+        gap: 8px !important;
+    }
+    .carousel-logo-card img {
+        width: 110px !important;
+    }
+    .carousel-logo-card h3 {
+        font-size: 1.25rem !important;
+    }
+    .carousel-logo-card p {
+        font-size: 0.75rem !important;
+        max-width: 95% !important;
     }
 }
 
