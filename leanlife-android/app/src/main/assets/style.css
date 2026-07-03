@@ -1687,6 +1687,21 @@ footer {
         width: 100% !important;
     }
 
+    .carousel-indicators {
+        gap: 6px !important;
+        bottom: 12px !important;
+    }
+
+    .carousel-indicator {
+        width: 4px !important;
+        height: 4px !important;
+    }
+
+    .carousel-indicator.active {
+        width: 6px !important;
+        height: 6px !important;
+    }
+
     .carousel-logo-card {
         padding: 1.5rem 1.25rem !important;
         gap: 12px !important;
