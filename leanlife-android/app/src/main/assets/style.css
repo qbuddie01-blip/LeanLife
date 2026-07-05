@@ -1828,6 +1828,20 @@ footer {
     h2 {
         font-size: clamp(1.6rem, 6vw, 2.5rem) !important;
     }
+
+    .coach-profile-header {
+        flex-direction: column !important;
+        text-align: center !important;
+        gap: 1.5rem !important;
+    }
+
+    .coach-avatar-large {
+        width: 140px !important;
+        height: 140px !important;
+        border-radius: 20px !important;
+        flex-shrink: 0 !important;
+        border-color: var(--clr-accent-green) !important;
+    }
 }
 
 @media (max-width: 600px) {
