@@ -1804,6 +1804,23 @@ footer {
         padding: 0.75rem 1.2rem !important;
     }
 
+    .carousel-indicator {
+        min-height: 10px !important;
+        min-width: 10px !important;
+        width: 10px !important;
+        height: 10px !important;
+        padding: 0 !important;
+        margin: 0 5px !important;
+    }
+    
+    .carousel-indicator.active {
+        min-height: 12px !important;
+        min-width: 12px !important;
+        width: 12px !important;
+        height: 12px !important;
+        padding: 0 !important;
+    }
+
     /* Fluid typography rules for headers */
     h1, .hero-text h1 {
         font-size: clamp(2rem, 8vw, 3.5rem) !important;
