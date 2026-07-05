@@ -1738,6 +1738,23 @@ footer {
     .features-grid {
         grid-template-columns: 1fr;
     }
+
+    .feature-card {
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        transition: transform var(--transition-smooth), box-shadow var(--transition-smooth), border-color var(--transition-smooth) !important;
+    }
+    
+    .feature-card:hover, .feature-card:active {
+        transform: translateY(-8px) scale(1.02) !important;
+        box-shadow: 0 20px 40px rgba(165, 227, 50, 0.2) !important;
+        border-color: var(--clr-accent-green) !important;
+    }
+    
+    .feature-card:hover .feature-card-bg img, .feature-card:active .feature-card-bg img {
+        transform: scale(1.1) !important;
+        filter: brightness(0.5) !important;
+    }
     
     .dashboard-stats-grid {
         grid-template-columns: repeat(2, 1fr);
