@@ -1825,6 +1825,81 @@ const app = {
         document.getElementById('consult-notes').value = '';
     },
 
+    async handleSupportEmailSubmit(e) {
+        e.preventDefault();
+        const subject = document.getElementById('support-subject').value.trim();
+        const message = document.getElementById('support-message').value.trim();
+        
+        if (!subject || !message) return;
+
+        // Add to email outbox log inside database
+        this.db.emails = this.db.emails || [];
+        this.db.emails.unshift({
+            id: 'EML-' + Date.now(),
+            timestamp: new Date().toISOString(),
+            recipient: 'support@leanlife-community.app',
+            subject: subject,
+            templateName: 'Support Query',
+            status: 'Delivered'
+        });
+        this.saveDatabase();
+
+        this.logAudit(this.currentUser.name, 'Support Email Sent', `Subject: ${subject}`);
+
+        // Dispatch real email via EmailJS API if credentials exist
+        const config = window.SUPABASE_CONFIG || {};
+        const serviceId = config.EMAILJS_SERVICE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsServiceId);
+        const templateId = config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjstemplateId) || (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId);
+        const publicKey = config.EMAILJS_PUBLIC_KEY || (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey);
+
+        if (!serviceId || !templateId || !publicKey) {
+            console.log("EmailJS credentials missing. Operating in local simulation mode.");
+            alert(`Simulation Mode: Your email with subject "${subject}" has been successfully logged in your outbox to support@leanlife-community.app.`);
+            document.getElementById('support-subject').value = '';
+            document.getElementById('support-message').value = '';
+            return;
+        }
+
+        console.log(`Sending support email to support@leanlife-community.app via EmailJS...`);
+        try {
+            const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    service_id: serviceId,
+                    template_id: templateId,
+                    user_id: publicKey,
+                    template_params: {
+                        to_name: 'Support Team',
+                        to_email: 'support@leanlife-community.app',
+                        from_name: this.currentUser.name,
+                        from_email: this.currentUser.email,
+                        message: message,
+                        subject: `LeanLife Support Request: ${subject}`
+                    }
+                })
+            });
+
+            if (response.ok) {
+                console.log("Support email successfully dispatched!");
+                alert("Your support request has been sent successfully! Our team will respond to you at " + this.currentUser.email + " shortly.");
+            } else {
+                const errText = await response.text();
+                console.error("EmailJS API returned error status:", response.status, errText);
+                alert("The email service returned an error. However, your message has been logged in our system database outbox.");
+            }
+        } catch (err) {
+            console.error("Failed to execute EmailJS HTTP request:", err);
+            alert("Unable to reach the email server. However, your message has been logged in our system database outbox.");
+        }
+
+        // Reset form
+        document.getElementById('support-subject').value = '';
+        document.getElementById('support-message').value = '';
+    },
+
     renderCoaching() {
         const coachKey = this.currentUser.preferredCoach || 'sarah';
         const coachData = {

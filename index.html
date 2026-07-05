@@ -874,6 +874,28 @@
                         <p id="whatsapp-desc" style="color: #555; max-width: 500px; margin: 0 auto 1.5rem;">Connect with Coach Francess immediately to resolve hydration goals, snack alternatives, or lifestyle adjustments.</p>
                         <a id="whatsapp-btn" href="https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan." target="_blank" class="btn btn-primary" style="background-color: #25d366; color: white; border-color: #25d366; box-shadow: 0 4px 14px rgba(37, 211, 102, 0.4);"><i class="fa-brands fa-whatsapp"></i> Start WhatsApp Chat</a>
                     </div>
+
+                    <!-- Direct Email Support -->
+                    <div class="glass-card email-support-box" style="margin-top: 2rem;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 1rem;">
+                            <i class="fa-solid fa-envelope" style="font-size: 1.8rem; color: var(--clr-primary-green);"></i>
+                            <h3 style="font-family: var(--font-brand); margin: 0;">Email Support</h3>
+                        </div>
+                        <p style="color: #555; font-size: 0.9rem; margin-bottom: 1.2rem;">
+                            Need help? Send an email to **support@leanlife-community.app** directly or fill out the form below:
+                        </p>
+                        <form onsubmit="app.handleSupportEmailSubmit(event)">
+                            <div class="form-group" style="margin-bottom: 0.8rem;">
+                                <label for="support-subject" style="font-size: 0.85rem; font-weight: 600;">Subject</label>
+                                <input type="text" id="support-subject" class="form-input" placeholder="e.g. Account issues, general query..." required>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0.8rem;">
+                                <label for="support-message" style="font-size: 0.85rem; font-weight: 600;">Message</label>
+                                <textarea id="support-message" class="form-input" style="height: 100px; resize: vertical;" placeholder="Type your message here..." required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;"><i class="fa-solid fa-paper-plane"></i> Send Message</button>
+                        </form>
+                    </div>
                 </div>
 
                 <!-- Consultations Request Form -->
