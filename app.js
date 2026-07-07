@@ -763,24 +763,22 @@ const app = {
         const subtitle = document.getElementById('auth-subtitle');
         const nameGroup = document.getElementById('group-name');
         const submitBtn = document.getElementById('btn-auth-submit');
-        const footerText = document.getElementById('auth-footer-text');
         
-        if (tab === 'register') {
-            title.textContent = 'Create Wellness Account';
-            subtitle.textContent = 'Join a premium health ecosystem guided by personalized coaching';
-            nameGroup.style.display = 'block';
-            document.getElementById('auth-fullname').required = true;
-            submitBtn.textContent = 'Join Community';
-            footerText.innerHTML = 'Already have an account? <a href="#" onclick="app.switchAuthTab(\'login\')">Login here</a>';
-            document.getElementById('auth-row-remember').style.display = 'none';
-        } else {
-            title.textContent = 'Welcome Back';
-            subtitle.textContent = 'Log in to your personalized wellness portal';
+        title.textContent = 'Welcome Back';
+        subtitle.textContent = 'Log in to your personalized wellness portal';
+        if (nameGroup) {
             nameGroup.style.display = 'none';
-            document.getElementById('auth-fullname').required = false;
+        }
+        const fullNameInput = document.getElementById('auth-fullname');
+        if (fullNameInput) {
+            fullNameInput.required = false;
+        }
+        if (submitBtn) {
             submitBtn.textContent = 'Login';
-            footerText.innerHTML = 'Don\'t have an account? <a href="#" onclick="app.switchAuthTab(\'register\')">Register here</a>';
-            document.getElementById('auth-row-remember').style.display = 'flex';
+        }
+        const rememberRow = document.getElementById('auth-row-remember');
+        if (rememberRow) {
+            rememberRow.style.display = 'flex';
         }
     },
 
