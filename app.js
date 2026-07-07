@@ -3040,7 +3040,10 @@ const app = {
 
         console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
         try {
-            const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+            // Use local proxy if running on localhost, fallback to direct EmailJS API
+            const targetUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '/send_email_api' : 'https://api.emailjs.com/api/v1.0/email/send';
+            
+            const response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

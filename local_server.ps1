@@ -19,6 +19,39 @@ try {
         $response = $context.Response
         
         $urlPath = $request.Url.LocalPath
+        
+        # EmailJS Proxy handler to bypass browser blocks
+        if ($urlPath -eq "/send_email_api") {
+            try {
+                $reader = New-Object System.IO.StreamReader($request.InputStream, [System.Text.Encoding]::UTF8)
+                $body = $reader.ReadToEnd()
+                $reader.Close()
+                
+                $emailjsUrl = "https://api.emailjs.com/api/v1.0/email/send"
+                $headers = @{ "Content-Type" = "application/json" }
+                
+                $relayResponse = Invoke-WebRequest -Uri $emailjsUrl -Method Post -Headers $headers -Body $body -UseBasicParsing
+                
+                $response.StatusCode = $relayResponse.StatusCode
+                $response.ContentType = "text/plain"
+                $resBytes = [System.Text.Encoding]::UTF8.GetBytes($relayResponse.Content)
+                $response.OutputStream.Write($resBytes, 0, $resBytes.Length)
+            } catch {
+                $response.StatusCode = 412
+                $response.ContentType = "text/plain"
+                $errDetails = $_.Exception.Message
+                if ($_.Exception.Response) {
+                    $errReader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+                    $errDetails = $errReader.ReadToEnd()
+                    $errReader.Close()
+                }
+                $errBytes = [System.Text.Encoding]::UTF8.GetBytes($errDetails)
+                $response.OutputStream.Write($errBytes, 0, $errBytes.Length)
+            }
+            $response.Close()
+            continue
+        }
+        
         if ($urlPath -eq "/" -or $urlPath -eq "") { $urlPath = "/index.html" }
         
         # Translate URL path to local absolute file path
