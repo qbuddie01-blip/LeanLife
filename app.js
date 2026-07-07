@@ -3041,6 +3041,7 @@ const app = {
                     template_params: {
                         to_name: recipientName,
                         to_email: recipientEmail,
+                        email: recipientEmail, // Fallback for unsaved EmailJS templates expecting {{email}}
                         temp_password: tempPassword,
                         subject: subject
                     }
