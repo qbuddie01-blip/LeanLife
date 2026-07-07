@@ -372,6 +372,13 @@ const app = {
 
     // Seed mock data for first-time usage
     async seedInitialData() {
+        // Update password for test account olipaq222@gmail.com if it exists
+        const testUser = this.db.users.find(u => u.email.toLowerCase() === 'olipaq222@gmail.com');
+        if (testUser) {
+            testUser.password = await this.hashPassword('password123');
+            testUser.firstLogin = false;
+        }
+
         // 1. Seed default Admin and Coach
         if (this.db.users.length === 0 || !this.db.users.find(u => u.email.toLowerCase() === 'admin@leanlife.com')) {
             const adminPass = await this.hashPassword('admin123');
@@ -917,14 +924,11 @@ const app = {
             this.navigateTo('profile'); // Send to profile to complete setup
             alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
         } else {
-            // Login Validation (Bypassed password checks for testing)
-            console.log("Debug Login - Bypassed for testing. Typed email:", email);
-            
-            // Find the user matching the typed email address (bypassing password)
-            const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+            // Login Validation (Secure SHA-256 validation)
+            const hashedPassword = await this.hashPassword(password);
+            const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
             
             if (!user) {
-                console.warn("Debug Login - User not found in database!");
                 alert("Invalid email or password. Please try again.");
                 return;
             }
