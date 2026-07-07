@@ -1,6 +1,9 @@
 # Lightweight Zero-Dependency PowerShell HTTP Server
 # Serves static files locally to bypass browser CORS / null-origin restrictions on file://
 
+# Force TLS 1.2 security protocol for outbound web requests
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
 $port = 8081
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$port/")
