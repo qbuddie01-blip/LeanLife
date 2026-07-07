@@ -60,6 +60,10 @@ try {
                     # Fallback to exception message if response stream fails to read
                 }
                 
+                # Write the error details to a local log file for the agent to inspect
+                $logFile = Join-Path $PSScriptRoot "relay_error.log"
+                [System.IO.File]::WriteAllText($logFile, $errDetails, [System.Text.Encoding]::UTF8)
+                
                 Write-Host "❌ Email Relay Error: $errDetails" -ForegroundColor Red
                 $errBytes = [System.Text.Encoding]::UTF8.GetBytes($errDetails)
                 $response.OutputStream.Write($errBytes, 0, $errBytes.Length)
