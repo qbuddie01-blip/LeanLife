@@ -3016,16 +3016,16 @@ const app = {
         const config = window.SUPABASE_CONFIG || {};
         console.log("Debug sendRealEmail - SUPABASE_CONFIG loaded:", config);
 
-        const serviceId = config.EMAILJS_SERVICE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsServiceId);
+        const serviceId = (this.db.systemSettings && this.db.systemSettings.emailjsServiceId) || config.EMAILJS_SERVICE_ID;
         
-        let templateId = config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId);
+        let templateId = (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId) || config.EMAILJS_TEMPLATE_ID;
         if (templateType === 'welcome') {
-            templateId = config.EMAILJS_WELCOME_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId);
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) || config.EMAILJS_WELCOME_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
         } else if (templateType === 'autoreply') {
-            templateId = config.EMAILJS_AUTOREPLY_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId);
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) || config.EMAILJS_AUTOREPLY_TEMPLATE_ID;
         }
 
-        const publicKey = config.EMAILJS_PUBLIC_KEY || (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey);
+        const publicKey = (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey) || config.EMAILJS_PUBLIC_KEY;
 
         console.log("Debug sendRealEmail - resolved variables:", { serviceId, templateId, publicKey, recipientEmail });
 

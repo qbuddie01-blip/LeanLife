@@ -1856,7 +1856,16 @@
 
     <!-- Application Script -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js"></script>
+    <script>
+        window.SUPABASE_CONFIG = {
+            URL: 'https://vqvbxhzxtwjhieihvoah.supabase.co',
+            KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdmJ4aHp4dHdqaGllaWh2b2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDU1NDAsImV4cCI6MjA5ODk4MTU0MH0.40ItPbKKZihVJ6IgC2BMU_cGO4pOzQFD-6-QkxEuZTk',
+            EMAILJS_SERVICE_ID: 'service_a1av3q9',
+            EMAILJS_TEMPLATE_ID: 'template_gyjh3gp',
+            EMAILJS_WELCOME_TEMPLATE_ID: 'template_gyjh3gp',
+            EMAILJS_PUBLIC_KEY: '1KO_vRCldTUVxoqtM'
+        };
+    </script>
     <script src="app.js"></script>
 </body>
 </html>
