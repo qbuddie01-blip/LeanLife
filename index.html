@@ -89,7 +89,7 @@
                 <div class="mobile-menu-buttons" style="display: none; width: 100%; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
                     <div id="mobile-auth-nav-buttons" style="display: flex; flex-direction: column; gap: 0.8rem; width: 100%;">
                         <button class="btn btn-outline" style="color: #ffffff; border-color: rgba(255,255,255,0.3); width: 100%; justify-content: center;" onclick="app.navigateTo('login')">Login</button>
-                        <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="app.navigateTo('login', {tab: 'register'})">Join Community</button>
+                        <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="app.navigateTo('login')">Join Community</button>
                     </div>
                     <div id="mobile-user-nav-dropdown" style="display: none; flex-direction: column; align-items: center; gap: 1rem; width: 100%;" onclick="app.navigateTo('profile')">
                         <div style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center;">
@@ -106,8 +106,7 @@
             <div class="nav-buttons">
                 <!-- User Profile / Auth Actions -->
                 <div id="auth-nav-buttons">
-                    <button class="btn btn-outline" onclick="app.navigateTo('login')">Login</button>
-                    <button class="btn btn-primary" onclick="app.navigateTo('login', {tab: 'register'})">Join Community</button>
+                    <button class="btn btn-primary" onclick="app.navigateTo('login')">Login to Portal</button>
                 </div>
                 <div id="user-nav-dropdown" style="display: none; align-items: center; gap: 12px; cursor: pointer;" onclick="app.navigateTo('profile')">
                     <span id="user-display-name" style="font-weight: 600; font-family: var(--font-brand);">Member</span>
@@ -141,8 +140,7 @@
                     <h1>LeanLife Wellness <span class="title-highlight">Community App</span></h1>
                     <p>Transforming Lives Through Science-Backed Wellness, Shared Accountability & Active Community</p>
                     <div class="hero-ctas">
-                        <button class="btn btn-primary" onclick="app.navigateTo('login', {tab: 'register'})">Join Community</button>
-                        <button class="btn btn-secondary" onclick="app.navigateTo('login')">Login</button>
+                        <button class="btn btn-primary" onclick="app.navigateTo('login')">Login to Portal</button>
                         <a class="btn btn-outline" href="#features-anchor">Learn More</a>
                     </div>
                 </div>
@@ -321,10 +319,6 @@
                         <button type="button" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="app.fillSimulationCreds('emma@example.com', 'password123')">Member Login</button>
                         <button type="button" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; border-color: rgba(0,0,0,0.15); color: var(--clr-text-dark);" onclick="app.fillSimulationCreds('admin@leanlife.com', 'admin123')">Admin Login</button>
                     </div>
-                </div>
-                
-                <div class="auth-footer">
-                    <p id="auth-footer-text">Don't have an account? <a href="#" onclick="app.switchAuthTab('register')">Register here</a></p>
                 </div>
             </div>
         </section>
