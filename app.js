@@ -3003,6 +3003,8 @@ const app = {
 
     async sendRealEmail(recipientName, recipientEmail, subject, tempPassword, templateType = null) {
         const config = window.SUPABASE_CONFIG || {};
+        console.log("Debug sendRealEmail - SUPABASE_CONFIG loaded:", config);
+
         const serviceId = config.EMAILJS_SERVICE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsServiceId);
         
         let templateId = config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId);
@@ -3014,8 +3016,14 @@ const app = {
 
         const publicKey = config.EMAILJS_PUBLIC_KEY || (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey);
 
+        console.log("Debug sendRealEmail - resolved variables:", { serviceId, templateId, publicKey, recipientEmail });
+
         if (!serviceId || !templateId || !publicKey) {
-            console.log("EmailJS credentials missing. Operating in local simulation outbox mode.");
+            console.warn("EmailJS credentials missing. Operating in local simulation outbox mode. Details missing:", {
+                serviceIdMissing: !serviceId,
+                templateIdMissing: !templateId,
+                publicKeyMissing: !publicKey
+            });
             return;
         }
 
