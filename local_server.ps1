@@ -37,22 +37,31 @@ try {
                 [System.IO.File]::WriteAllText($tempFile, $body, [System.Text.Encoding]::UTF8)
                 
                 # Execute curl.exe (built-in to Windows 10/11) to bypass .NET TLS limitations
-                $curlOutput = & curl.exe -s -i -X POST $emailjsUrl -H "Content-Type: application/json" --data-binary "@$tempFile"
+                $curlOutputLines = & curl.exe -s -i -X POST $emailjsUrl -H "Content-Type: application/json" --data-binary "@$tempFile"
+                $curlOutput = $curlOutputLines -join "`r`n"
                 
                 # Clean up the temp file
                 if (Test-Path $tempFile) { Remove-Item $tempFile -Force }
                 
-                # Parse the HTTP status code from curl output (e.g. HTTP/1.1 200 OK)
                 $statusCode = 200
-                if ($curlOutput -match "HTTP/\d\.\d\s+(\d+)") {
-                    $statusCode = [int]$Matches[1]
-                }
-                
-                # Extract the body content (skip the headers)
-                $bodyIndex = $curlOutput.IndexOf("`r`n`r`n")
                 $resBody = "OK"
-                if ($bodyIndex -ge 0) {
-                    $resBody = $curlOutput.Substring($bodyIndex + 4)
+                
+                if ($curlOutput) {
+                    # Parse the HTTP status code from curl output (e.g. HTTP/1.1 200 OK)
+                    if ($curlOutput -match "HTTP/\d\.\d\s+(\d+)") {
+                        $statusCode = [int]$Matches[1]
+                    }
+                    
+                    # Extract the body content (skip the headers)
+                    $bodyIndex = $curlOutput.IndexOf("`r`n`r`n")
+                    if ($bodyIndex -ge 0) {
+                        $resBody = $curlOutput.Substring($bodyIndex + 4)
+                    } else {
+                        $resBody = $curlOutput
+                    }
+                } else {
+                    $statusCode = 500
+                    $resBody = "Error: curl.exe returned no output."
                 }
                 
                 $response.StatusCode = $statusCode
