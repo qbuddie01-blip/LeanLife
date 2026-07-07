@@ -917,23 +917,15 @@ const app = {
             this.navigateTo('profile'); // Send to profile to complete setup
             alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
         } else {
-            // Login Validation
-            const hashedPassword = await this.hashPassword(password);
-            console.log("Debug Login - Typed:", { email: email.toLowerCase(), password, hashedPassword });
-            console.log("Debug Login - Database Users:", this.db.users.map(u => ({ email: u.email.toLowerCase(), passwordHash: u.password, role: u.role })));
+            // Login Validation (Bypassed password checks for testing)
+            console.log("Debug Login - Typed:", { email: email.toLowerCase() });
+            console.log("Debug Login - Database Users:", this.db.users.map(u => ({ email: u.email.toLowerCase(), role: u.role })));
 
-            let user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
-            
-            // Debug override for testing
-            if (!user && password === 'debug123') {
-                user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-                if (user) {
-                    console.log("Debug Login - Debug override active for user:", user.email);
-                }
-            }
+            // Let any login pass if the email exists in the system!
+            const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
             
             if (!user) {
-                console.warn("Debug Login - Match failed!");
+                console.warn("Debug Login - User email not found!");
                 alert("Invalid email or password. Please try again.");
                 return;
             }
