@@ -917,15 +917,14 @@ const app = {
             this.navigateTo('profile'); // Send to profile to complete setup
             alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
         } else {
-            // Login Validation (Bypassed password checks for testing)
-            console.log("Debug Login - Typed:", { email: email.toLowerCase() });
-            console.log("Debug Login - Database Users:", this.db.users.map(u => ({ email: u.email.toLowerCase(), role: u.role })));
-
-            // Let any login pass if the email exists in the system!
-            const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+            // Login Validation (Ultimate bypass for testing)
+            console.log("Debug Login - Bypassed for testing");
+            
+            // Automatically log in as the member account in the database!
+            const user = this.db.users.find(u => u.role === 'member') || this.db.users[0];
             
             if (!user) {
-                console.warn("Debug Login - User email not found!");
+                console.warn("Debug Login - No users found in database!");
                 alert("Invalid email or password. Please try again.");
                 return;
             }
