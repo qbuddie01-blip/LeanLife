@@ -377,6 +377,7 @@ const app = {
         if (testUser) {
             testUser.password = await this.hashPassword('password123');
             testUser.firstLogin = false;
+            await this.saveDatabase();
         }
 
         // 1. Seed default Admin and Coach
