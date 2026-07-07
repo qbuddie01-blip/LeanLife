@@ -3008,10 +3008,10 @@ const app = {
         const serviceId = config.EMAILJS_SERVICE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsServiceId);
         
         let templateId = config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId);
-        if (templateType === 'welcome' && this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) {
-            templateId = this.db.systemSettings.emailjsWelcomeTemplateId;
-        } else if (templateType === 'autoreply' && this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) {
-            templateId = this.db.systemSettings.emailjsAutoreplyTemplateId;
+        if (templateType === 'welcome') {
+            templateId = config.EMAILJS_WELCOME_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId);
+        } else if (templateType === 'autoreply') {
+            templateId = config.EMAILJS_AUTOREPLY_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId);
         }
 
         const publicKey = config.EMAILJS_PUBLIC_KEY || (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey);
