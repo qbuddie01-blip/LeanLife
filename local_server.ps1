@@ -1,7 +1,7 @@
 # Lightweight Zero-Dependency PowerShell HTTP Server
 # Serves static files locally to bypass browser CORS / null-origin restrictions on file://
 
-$port = 8080
+$port = 8081
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$port/")
 
