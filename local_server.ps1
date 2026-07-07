@@ -46,11 +46,20 @@ try {
                 $response.StatusCode = 412
                 $response.ContentType = "text/plain"
                 $errDetails = $_.Exception.Message
-                if ($_.Exception.Response) {
-                    $errReader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-                    $errDetails = $errReader.ReadToEnd()
-                    $errReader.Close()
+                
+                try {
+                    if ($_.Exception.Response) {
+                        $resStream = $_.Exception.Response.GetResponseStream()
+                        if ($resStream) {
+                            $errReader = New-Object System.IO.StreamReader($resStream)
+                            $errDetails = $errReader.ReadToEnd()
+                            $errReader.Close()
+                        }
+                    }
+                } catch {
+                    # Fallback to exception message if response stream fails to read
                 }
+                
                 Write-Host "❌ Email Relay Error: $errDetails" -ForegroundColor Red
                 $errBytes = [System.Text.Encoding]::UTF8.GetBytes($errDetails)
                 $response.OutputStream.Write($errBytes, 0, $errBytes.Length)
