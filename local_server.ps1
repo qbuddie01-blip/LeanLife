@@ -31,42 +31,16 @@ try {
                 $reader.Close()
                 
                 $emailjsUrl = "https://api.emailjs.com/api/v1.0/email/send"
+                $headers = @{ "Content-Type" = "application/json" }
                 
-                # Write the JSON payload to a temporary file in the workspace
-                $tempFile = Join-Path $PSScriptRoot "temp_payload.json"
-                [System.IO.File]::WriteAllText($tempFile, $body, [System.Text.Encoding]::UTF8)
+                # Force TLS 1.2 on this thread request
+                [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
                 
-                # Execute curl.exe (built-in to Windows 10/11) to bypass .NET TLS limitations
-                $curlOutputLines = & curl.exe -s -i -X POST $emailjsUrl -H "Content-Type: application/json" --data-binary "@$tempFile"
-                $curlOutput = $curlOutputLines -join "`r`n"
+                $relayResponse = Invoke-WebRequest -Uri $emailjsUrl -Method Post -Headers $headers -Body $body -UseBasicParsing
                 
-                # Clean up the temp file
-                if (Test-Path $tempFile) { Remove-Item $tempFile -Force }
-                
-                $statusCode = 200
-                $resBody = "OK"
-                
-                if ($curlOutput) {
-                    # Parse the HTTP status code from curl output (e.g. HTTP/1.1 200 OK)
-                    if ($curlOutput -match "HTTP/\d\.\d\s+(\d+)") {
-                        $statusCode = [int]$Matches[1]
-                    }
-                    
-                    # Extract the body content (skip the headers)
-                    $bodyIndex = $curlOutput.IndexOf("`r`n`r`n")
-                    if ($bodyIndex -ge 0) {
-                        $resBody = $curlOutput.Substring($bodyIndex + 4)
-                    } else {
-                        $resBody = $curlOutput
-                    }
-                } else {
-                    $statusCode = 500
-                    $resBody = "Error: curl.exe returned no output."
-                }
-                
-                $response.StatusCode = $statusCode
+                $response.StatusCode = $relayResponse.StatusCode
                 $response.ContentType = "text/plain"
-                $resBytes = [System.Text.Encoding]::UTF8.GetBytes($resBody)
+                $resBytes = [System.Text.Encoding]::UTF8.GetBytes($relayResponse.Content)
                 $response.OutputStream.Write($resBytes, 0, $resBytes.Length)
             } catch {
                 $response.StatusCode = 412
