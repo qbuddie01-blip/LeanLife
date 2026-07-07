@@ -51,6 +51,7 @@ try {
                     $errDetails = $errReader.ReadToEnd()
                     $errReader.Close()
                 }
+                Write-Host "❌ Email Relay Error: $errDetails" -ForegroundColor Red
                 $errBytes = [System.Text.Encoding]::UTF8.GetBytes($errDetails)
                 $response.OutputStream.Write($errBytes, 0, $errBytes.Length)
             }
