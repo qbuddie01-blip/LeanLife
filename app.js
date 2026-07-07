@@ -927,6 +927,9 @@ const app = {
         } else {
             // Login Validation (Secure SHA-256 validation)
             const hashedPassword = await this.hashPassword(password);
+            console.log("Debug Login - Typed:", { email: email.toLowerCase(), password, hashedPassword });
+            console.log("Debug Login - Database Users:", this.db.users.map(u => ({ email: u.email.toLowerCase(), passwordHash: u.password, role: u.role })));
+            
             const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
             
             if (!user) {
