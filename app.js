@@ -2145,9 +2145,103 @@ const app = {
         container.innerHTML = html;
     },
 
+    presetAvatars: [
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&auto=format&fit=crop'
+    ],
+
+    selectPresetAvatar(url) {
+        document.getElementById('prof-avatar-preview').src = url;
+        const options = document.querySelectorAll('#preset-avatar-grid img');
+        options.forEach(opt => {
+            const isSelected = opt.src === url;
+            opt.style.border = isSelected ? '3px solid var(--clr-primary)' : '3px solid rgba(0,0,0,0.1)';
+            opt.style.transform = isSelected ? 'scale(1.1)' : 'scale(1)';
+        });
+    },
+
+    async handleProfilePhotoUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if (file.size > 5 * 1024 * 1024) {
+            alert("File is too large. Maximum allowed size is 5MB.");
+            return;
+        }
+        
+        try {
+            const base64 = await this.resizeProfileImage(file);
+            document.getElementById('prof-avatar-preview').src = base64;
+            
+            const options = document.querySelectorAll('#preset-avatar-grid img');
+            options.forEach(opt => {
+                opt.style.border = '3px solid rgba(0,0,0,0.1)';
+                opt.style.transform = 'scale(1)';
+            });
+        } catch (err) {
+            console.error("Failed to load or resize image:", err);
+            alert("Error loading image. Please try a different file.");
+        }
+    },
+    
+    resizeProfileImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const max_size = 200;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > height) {
+                        if (width > max_size) {
+                            height *= max_size / width;
+                            width = max_size;
+                        }
+                    } else {
+                        if (height > max_size) {
+                            width *= max_size / height;
+                            height = max_size;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+                img.onerror = (err) => reject(err);
+                img.src = event.target.result;
+            };
+            reader.onerror = (err) => reject(err);
+            reader.readAsDataURL(file);
+        });
+    },
+
     // ==================== USER PROFILE VIEW ====================
     renderUserProfile() {
         if (!this.currentUser) return;
+
+        // Render current avatar and presets
+        const currentAvatar = this.currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop';
+        document.getElementById('prof-avatar-preview').src = currentAvatar;
+        
+        const grid = document.getElementById('preset-avatar-grid');
+        if (grid) {
+            let gridHtml = '';
+            this.presetAvatars.forEach(av => {
+                const isSelected = this.currentUser.avatar === av;
+                gridHtml += `<img src="${av}" alt="Preset Avatar" class="preset-avatar-option" style="width: 42px; height: 42px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 3px solid ${isSelected ? 'var(--clr-primary)' : 'rgba(0,0,0,0.1)'}; transition: all 0.2s; transform: scale(${isSelected ? '1.1' : '1'});" onclick="app.selectPresetAvatar('${av}')" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(${isSelected ? '1.1' : '1'})';">`;
+            });
+            grid.innerHTML = gridHtml;
+        }
+
         document.getElementById('prof-name').value = this.currentUser.name;
         document.getElementById('prof-email').value = this.currentUser.email;
         document.getElementById('prof-phone').value = this.currentUser.phone;
@@ -2201,6 +2295,7 @@ const app = {
         if (!userObj) return;
 
         userObj.name = document.getElementById('prof-name').value.trim();
+        userObj.avatar = document.getElementById('prof-avatar-preview').src;
         userObj.phone = document.getElementById('prof-phone').value.trim();
         userObj.dob = document.getElementById('prof-dob').value;
         userObj.gender = document.getElementById('prof-gender').value;

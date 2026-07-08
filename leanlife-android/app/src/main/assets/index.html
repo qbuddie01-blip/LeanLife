@@ -1006,6 +1006,29 @@
                     </div>
 
                     <form onsubmit="app.handleProfileSave(event)">
+                        <!-- Profile Photo / Avatar Selector -->
+                        <div class="form-group" style="grid-column: span 2; display: flex; flex-direction: column; align-items: center; margin-bottom: 2rem; border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 2rem;">
+                            <label style="font-weight: 600; font-size: 1rem; margin-bottom: 1rem;">Profile Picture</label>
+                            <div style="position: relative; width: 120px; height: 120px; margin-bottom: 1rem;">
+                                <img id="prof-avatar-preview" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop" alt="Avatar Preview" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid var(--clr-primary); box-shadow: 0 4px 10px rgba(0,0,0,0.15);">
+                                <label for="prof-photo-upload" style="position: absolute; bottom: 0; right: 0; background: var(--clr-primary); color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: all 0.2s;" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(1)';">
+                                    <i class="fa-solid fa-camera" style="font-size: 0.9rem;"></i>
+                                </label>
+                                <input type="file" id="prof-photo-upload" accept="image/*" style="display: none;" onchange="app.handleProfilePhotoUpload(event)">
+                            </div>
+                            
+                            <div style="text-align: center; margin-bottom: 1rem;">
+                                <span style="font-size: 0.8rem; color: #777;">PNG, JPG up to 5MB (Auto-compressed)</span>
+                            </div>
+                            
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 100%;">
+                                <span style="font-size: 0.85rem; font-weight: 500; color: #555;">Or choose a premium preset:</span>
+                                <div style="display: flex; gap: 0.8rem; justify-content: center; flex-wrap: wrap; margin-top: 0.25rem;" id="preset-avatar-grid">
+                                    <!-- Preset avatars loaded via JS -->
+                                </div>
+                            </div>
+                        </div>
+
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem;">
                             <div class="form-group">
                                 <label for="prof-name">Full Name</label>
