@@ -12,6 +12,7 @@ const app = {
     stepsChartMode: 'week', // 'week' or 'month'
     activeAdminTab: 'users',
     activeCommunityCategory: 'all',
+    isCloudSyncOk: false,
     
     // Live countdown timer state for Frannie's AI report
     activeCountdown: null,
@@ -234,6 +235,10 @@ const app = {
 
         // Supabase Cloud Sync
         if (this.supabase) {
+            if (!this.isCloudSyncOk) {
+                console.warn("Supabase Cloud Sync skipped: database has not been successfully loaded/synced from cloud in this session to prevent overwriting cloud database.");
+                return;
+            }
             try {
                 const { error } = await this.supabase
                     .from('system_settings')
@@ -297,6 +302,7 @@ const app = {
             persona: 'encouraging'
         };
 
+        this.isCloudSyncOk = false;
         // Supabase Cloud Load Sync
         if (this.supabase) {
             console.log("Syncing database with Supabase cloud...");
@@ -310,12 +316,18 @@ const app = {
                 if (data && data.data) {
                     console.log("Supabase Cloud DB found. Syncing collections...");
                     this.mergeCloudDatabase(data.data);
-                } else if (error && error.code !== 'PGRST116') {
+                    this.isCloudSyncOk = true;
+                } else if (error && error.code === 'PGRST116') {
+                    console.log("Supabase Cloud DB row not found. Assuming new deployment.");
+                    this.isCloudSyncOk = true;
+                } else {
                     console.warn("Supabase fetch returned error:", error);
                 }
             } catch (err) {
                 console.error("Failed to fetch data from Supabase:", err);
             }
+        } else {
+            this.isCloudSyncOk = true; // Local-only mode
         }
     },
 
@@ -372,6 +384,18 @@ const app = {
 
     // Seed mock data for first-time usage
     async seedInitialData() {
+        if (!this.isCloudSyncOk) {
+            console.warn("Skipping seeding and saving to prevent overwriting cloud database due to load sync failure.");
+            return;
+        }
+        // Update password for test account olipaq222@gmail.com if it exists
+        const testUser = this.db.users.find(u => u.email.toLowerCase() === 'olipaq222@gmail.com');
+        if (testUser) {
+            testUser.password = await this.hashPassword('password123');
+            testUser.firstLogin = false;
+            await this.saveDatabase();
+        }
+
         // 1. Seed default Admin and Coach
         if (this.db.users.length === 0 || !this.db.users.find(u => u.email.toLowerCase() === 'admin@leanlife.com')) {
             const adminPass = await this.hashPassword('admin123');
@@ -755,24 +779,22 @@ const app = {
         const subtitle = document.getElementById('auth-subtitle');
         const nameGroup = document.getElementById('group-name');
         const submitBtn = document.getElementById('btn-auth-submit');
-        const footerText = document.getElementById('auth-footer-text');
         
-        if (tab === 'register') {
-            title.textContent = 'Create Wellness Account';
-            subtitle.textContent = 'Join a premium health ecosystem guided by personalized coaching';
-            nameGroup.style.display = 'block';
-            document.getElementById('auth-fullname').required = true;
-            submitBtn.textContent = 'Join Community';
-            footerText.innerHTML = 'Already have an account? <a href="#" onclick="app.switchAuthTab(\'login\')">Login here</a>';
-            document.getElementById('auth-row-remember').style.display = 'none';
-        } else {
-            title.textContent = 'Welcome Back';
-            subtitle.textContent = 'Log in to your personalized wellness portal';
+        title.textContent = 'Welcome Back';
+        subtitle.textContent = 'Log in to your personalized wellness portal';
+        if (nameGroup) {
             nameGroup.style.display = 'none';
-            document.getElementById('auth-fullname').required = false;
+        }
+        const fullNameInput = document.getElementById('auth-fullname');
+        if (fullNameInput) {
+            fullNameInput.required = false;
+        }
+        if (submitBtn) {
             submitBtn.textContent = 'Login';
-            footerText.innerHTML = 'Don\'t have an account? <a href="#" onclick="app.switchAuthTab(\'register\')">Register here</a>';
-            document.getElementById('auth-row-remember').style.display = 'flex';
+        }
+        const rememberRow = document.getElementById('auth-row-remember');
+        if (rememberRow) {
+            rememberRow.style.display = 'flex';
         }
     },
 
@@ -917,8 +939,11 @@ const app = {
             this.navigateTo('profile'); // Send to profile to complete setup
             alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
         } else {
-            // Login Validation
+            // Login Validation (Secure SHA-256 validation)
             const hashedPassword = await this.hashPassword(password);
+            console.log("Debug Login - Typed:", { email: email.toLowerCase(), password, hashedPassword });
+            console.log("Debug Login - Database Users:", this.db.users.map(u => ({ email: u.email.toLowerCase(), passwordHash: u.password, role: u.role })));
+            
             const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
             
             if (!user) {
@@ -3003,25 +3028,36 @@ const app = {
 
     async sendRealEmail(recipientName, recipientEmail, subject, tempPassword, templateType = null) {
         const config = window.SUPABASE_CONFIG || {};
-        const serviceId = config.EMAILJS_SERVICE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsServiceId);
+        console.log("Debug sendRealEmail - SUPABASE_CONFIG loaded:", config);
+
+        const serviceId = (this.db.systemSettings && this.db.systemSettings.emailjsServiceId) || config.EMAILJS_SERVICE_ID;
         
-        let templateId = config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId);
-        if (templateType === 'welcome' && this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) {
-            templateId = this.db.systemSettings.emailjsWelcomeTemplateId;
-        } else if (templateType === 'autoreply' && this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) {
-            templateId = this.db.systemSettings.emailjsAutoreplyTemplateId;
+        let templateId = (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId) || config.EMAILJS_TEMPLATE_ID;
+        if (templateType === 'welcome') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) || config.EMAILJS_WELCOME_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
+        } else if (templateType === 'autoreply') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) || config.EMAILJS_AUTOREPLY_TEMPLATE_ID;
         }
 
-        const publicKey = config.EMAILJS_PUBLIC_KEY || (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey);
+        const publicKey = (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey) || config.EMAILJS_PUBLIC_KEY;
+
+        console.log("Debug sendRealEmail - resolved variables:", { serviceId, templateId, publicKey, recipientEmail });
 
         if (!serviceId || !templateId || !publicKey) {
-            console.log("EmailJS credentials missing. Operating in local simulation outbox mode.");
+            console.warn("EmailJS credentials missing. Operating in local simulation outbox mode. Details missing:", {
+                serviceIdMissing: !serviceId,
+                templateIdMissing: !templateId,
+                publicKeyMissing: !publicKey
+            });
             return;
         }
 
         console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
         try {
-            const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+            // Use local proxy if running on localhost, fallback to direct EmailJS API
+            const targetUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '/send_email_api' : 'https://api.emailjs.com/api/v1.0/email/send';
+            
+            const response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -3033,6 +3069,7 @@ const app = {
                     template_params: {
                         to_name: recipientName,
                         to_email: recipientEmail,
+                        email: recipientEmail, // Fallback for unsaved EmailJS templates expecting {{email}}
                         temp_password: tempPassword,
                         subject: subject
                     }

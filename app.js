@@ -12,6 +12,7 @@ const app = {
     stepsChartMode: 'week', // 'week' or 'month'
     activeAdminTab: 'users',
     activeCommunityCategory: 'all',
+    isCloudSyncOk: false,
     
     // Live countdown timer state for Frannie's AI report
     activeCountdown: null,
@@ -234,6 +235,10 @@ const app = {
 
         // Supabase Cloud Sync
         if (this.supabase) {
+            if (!this.isCloudSyncOk) {
+                console.warn("Supabase Cloud Sync skipped: database has not been successfully loaded/synced from cloud in this session to prevent overwriting cloud database.");
+                return;
+            }
             try {
                 const { error } = await this.supabase
                     .from('system_settings')
@@ -297,6 +302,7 @@ const app = {
             persona: 'encouraging'
         };
 
+        this.isCloudSyncOk = false;
         // Supabase Cloud Load Sync
         if (this.supabase) {
             console.log("Syncing database with Supabase cloud...");
@@ -310,12 +316,18 @@ const app = {
                 if (data && data.data) {
                     console.log("Supabase Cloud DB found. Syncing collections...");
                     this.mergeCloudDatabase(data.data);
-                } else if (error && error.code !== 'PGRST116') {
+                    this.isCloudSyncOk = true;
+                } else if (error && error.code === 'PGRST116') {
+                    console.log("Supabase Cloud DB row not found. Assuming new deployment.");
+                    this.isCloudSyncOk = true;
+                } else {
                     console.warn("Supabase fetch returned error:", error);
                 }
             } catch (err) {
                 console.error("Failed to fetch data from Supabase:", err);
             }
+        } else {
+            this.isCloudSyncOk = true; // Local-only mode
         }
     },
 
@@ -372,6 +384,10 @@ const app = {
 
     // Seed mock data for first-time usage
     async seedInitialData() {
+        if (!this.isCloudSyncOk) {
+            console.warn("Skipping seeding and saving to prevent overwriting cloud database due to load sync failure.");
+            return;
+        }
         // Update password for test account olipaq222@gmail.com if it exists
         const testUser = this.db.users.find(u => u.email.toLowerCase() === 'olipaq222@gmail.com');
         if (testUser) {
