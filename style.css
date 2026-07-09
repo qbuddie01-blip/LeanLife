@@ -1566,42 +1566,75 @@ h1, h2, h3, h4, h5, h6 {
 /* --- SUPER ADMIN DASHBOARD --- */
 .admin-tab-nav {
     display: flex;
-    gap: 1rem;
-    border-bottom: 2px solid rgba(0,0,0,0.06);
-    padding-bottom: 8px;
-    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    background: #FAF6EE;              /* Soothing Light Cream */
+    border: 1px solid rgba(18, 130, 109, 0.08);
+    border-radius: var(--radius-lg);
+    padding: 0.8rem !important;
+    margin-bottom: 2.5rem;
+    box-shadow: var(--shadow-soft);
+    justify-content: center;
 }
 
 .admin-tab-btn {
-    background: none;
+    background: transparent;
     border: none;
-    padding: 0.5rem 1rem;
+    padding: 0.6rem 1.2rem;
     font-family: var(--font-brand);
-    font-weight: 600;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--clr-text-dark);
     cursor: pointer;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    gap: 8px;
     transition: var(--transition-fast);
 }
 
+.admin-tab-btn:hover {
+    background: rgba(18, 130, 109, 0.05);
+    color: var(--clr-teal-green);
+}
+
 .admin-tab-btn.active {
-    color: var(--clr-accent-green-hover);
-    border-bottom: 2px solid var(--clr-accent-green);
+    background: var(--clr-teal-green) !important;
+    color: white !important;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(18, 130, 109, 0.15);
+    border-bottom: none !important;
 }
 
 .admin-table {
     width: 100%;
     border-collapse: collapse;
     margin: 1.5rem 0;
+    background: #ffffff;
+    border-radius: var(--radius-md);
+    overflow: hidden;
 }
 
 .admin-table th, .admin-table td {
     padding: 1rem;
     text-align: left;
-    border-bottom: 1px solid rgba(0,0,0,0.06);
+    border-bottom: 1px solid #f9f6f0;
 }
 
 .admin-table th {
-    background-color: rgba(0,0,0,0.02);
+    background-color: #fbf9f5;         /* Soft warm cream for headers */
+    color: var(--clr-teal-green);
     font-family: var(--font-brand);
+    font-weight: 600;
+    border-bottom: 2px solid rgba(18, 130, 109, 0.08);
+}
+
+.admin-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.admin-table tbody tr:hover {
+    background-color: #FAF6EE;         /* Soothing row highlight on hover */
 }
 
 /* --- FOOTER --- */

@@ -3049,56 +3049,65 @@ const app = {
         const engagementBox = document.getElementById('admin-analytics-chart-engagement');
         if (engagementBox) {
             engagementBox.innerHTML = `
-                <svg width="100%" height="100%" viewBox="0 0 400 200" style="background:rgba(255,255,255,0.4); border-radius:var(--radius-sm);">
+                <svg width="100%" height="100%" viewBox="0 0 400 200" style="background:#ffffff; border: 1px solid rgba(18,130,109,0.08); border-radius:var(--radius-lg); filter:drop-shadow(0 4px 12px rgba(18,130,109,0.02));">
+                    <defs>
+                        <linearGradient id="adminChartGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="var(--clr-teal-green)" stop-opacity="0.22" />
+                            <stop offset="100%" stop-color="var(--clr-teal-green)" stop-opacity="0.0" />
+                        </linearGradient>
+                    </defs>
                     <!-- Grid Lines -->
-                    <line x1="40" y1="20" x2="380" y2="20" stroke="rgba(0,0,0,0.05)" />
-                    <line x1="40" y1="60" x2="380" y2="60" stroke="rgba(0,0,0,0.05)" />
-                    <line x1="40" y1="100" x2="380" y2="100" stroke="rgba(0,0,0,0.05)" />
-                    <line x1="40" y1="140" x2="380" y2="140" stroke="rgba(0,0,0,0.05)" />
-                    <line x1="40" y1="180" x2="380" y2="180" stroke="rgba(0,0,0,0.2)" />
+                    <line x1="40" y1="20" x2="380" y2="20" stroke="rgba(18,130,109,0.05)" />
+                    <line x1="40" y1="60" x2="380" y2="60" stroke="rgba(18,130,109,0.05)" />
+                    <line x1="40" y1="100" x2="380" y2="100" stroke="rgba(18,130,109,0.05)" />
+                    <line x1="40" y1="140" x2="380" y2="140" stroke="rgba(18,130,109,0.05)" />
+                    <line x1="40" y1="180" x2="380" y2="180" stroke="rgba(18,130,109,0.12)" />
                     
                     <!-- Axis Labels -->
-                    <text x="15" y="183" font-size="8" fill="#666">0</text>
-                    <text x="15" y="103" font-size="8" fill="#666">10</text>
-                    <text x="15" y="23" font-size="8" fill="#666">20</text>
+                    <text x="18" y="183" font-size="8" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">0</text>
+                    <text x="18" y="103" font-size="8" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">10</text>
+                    <text x="18" y="23" font-size="8" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">20</text>
                     
-                    <text x="50" y="195" font-size="8" fill="#666">Mon</text>
-                    <text x="100" y="195" font-size="8" fill="#666">Tue</text>
-                    <text x="150" y="195" font-size="8" fill="#666">Wed</text>
-                    <text x="200" y="195" font-size="8" fill="#666">Thu</text>
-                    <text x="250" y="195" font-size="8" fill="#666">Fri</text>
-                    <text x="300" y="195" font-size="8" fill="#666">Sat</text>
-                    <text x="350" y="195" font-size="8" fill="#666">Sun</text>
+                    <text x="50" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Mon</text>
+                    <text x="100" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Tue</text>
+                    <text x="150" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Wed</text>
+                    <text x="200" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Thu</text>
+                    <text x="250" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Fri</text>
+                    <text x="300" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Sat</text>
+                    <text x="350" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Sun</text>
+                    
+                    <!-- Gradient Area -->
+                    <path d="M 50,140 Q 100,100 150,120 T 250,60 T 350,80 L 350,180 L 50,180 Z" fill="url(#adminChartGrad)" />
 
                     <!-- Trend Line -->
-                    <path d="M 50,140 Q 100,100 150,120 T 250,60 T 350,80" fill="none" stroke="var(--clr-primary-green)" stroke-width="3" />
-                    <circle cx="50" cy="140" r="4" fill="var(--clr-accent-green)" />
-                    <circle cx="150" cy="120" r="4" fill="var(--clr-accent-green)" />
-                    <circle cx="250" cy="60" r="4" fill="var(--clr-accent-green)" />
-                    <circle cx="350" cy="80" r="4" fill="var(--clr-accent-green)" />
+                    <path d="M 50,140 Q 100,100 150,120 T 250,60 T 350,80" fill="none" stroke="var(--clr-teal-green)" stroke-width="3" stroke-linecap="round" />
+                    <circle cx="50" cy="140" r="5" fill="var(--clr-teal-green)" stroke="white" stroke-width="1.8" />
+                    <circle cx="150" cy="120" r="5" fill="var(--clr-teal-green)" stroke="white" stroke-width="1.8" />
+                    <circle cx="250" cy="60" r="5" fill="var(--clr-teal-green)" stroke="white" stroke-width="1.8" />
+                    <circle cx="350" cy="80" r="5" fill="var(--clr-teal-green)" stroke="white" stroke-width="1.8" />
                 </svg>
             `;
         }
 
-        // Draw Mood Distribution Pie Chart
+        // Draw Mood Distribution Pie Chart (Donut Chart)
         const moodBox = document.getElementById('admin-analytics-chart-mood');
         if (moodBox) {
             moodBox.innerHTML = `
-                <svg width="100%" height="100%" viewBox="0 0 200 200" style="background:rgba(255,255,255,0.4); border-radius:var(--radius-sm); display:block; margin:0 auto;">
+                <svg width="100%" height="100%" viewBox="0 0 200 200" style="background:#ffffff; border: 1px solid rgba(18,130,109,0.08); border-radius:var(--radius-lg); display:block; margin:0 auto; filter:drop-shadow(0 4px 12px rgba(18,130,109,0.02));">
                     <!-- Donut base -->
-                    <circle cx="100" cy="100" r="60" fill="none" stroke="#ddd" stroke-width="25" />
+                    <circle cx="100" cy="100" r="60" fill="none" stroke="#f5ebe0" stroke-width="24" />
                     <!-- Slice 1 (Happy - 50%) -->
-                    <circle cx="100" cy="100" r="60" fill="none" stroke="var(--clr-primary-green)" stroke-width="25" 
+                    <circle cx="100" cy="100" r="60" fill="none" stroke="var(--clr-teal-green)" stroke-width="24" 
                             stroke-dasharray="188.4 376.8" stroke-dashoffset="0" />
                     <!-- Slice 2 (Energetic - 30%) -->
-                    <circle cx="100" cy="100" r="60" fill="none" stroke="var(--clr-accent-green)" stroke-width="25" 
+                    <circle cx="100" cy="100" r="60" fill="none" stroke="#4db6ac" stroke-width="24" 
                             stroke-dasharray="113 376.8" stroke-dashoffset="-188.4" />
                     <!-- Slice 3 (Stressed/Tired - 20%) -->
-                    <circle cx="100" cy="100" r="60" fill="none" stroke="#f77f00" stroke-width="25" 
+                    <circle cx="100" cy="100" r="60" fill="none" stroke="#ffb74d" stroke-width="24" 
                             stroke-dasharray="75.4 376.8" stroke-dashoffset="-301.4" />
                             
                     <!-- Text Indicator -->
-                    <text x="100" y="105" font-size="12" font-weight="bold" fill="var(--clr-text-dark)" text-anchor="middle">Mood Index</text>
+                    <text x="100" y="105" font-size="11" font-family="var(--font-brand)" font-weight="700" fill="var(--clr-teal-green)" text-anchor="middle">Mood Index</text>
                 </svg>
             `;
         }
@@ -3118,7 +3127,7 @@ const app = {
                 <tr>
                     <td style="font-size:0.8rem; color:#666;">${new Date(log.timestamp).toLocaleString()}</td>
                     <td style="font-weight:600;">${log.operator}</td>
-                    <td><span style="font-family:var(--font-brand); font-weight:600; color:var(--clr-primary-green);">${log.eventType}</span></td>
+                    <td><span style="font-family:var(--font-brand); font-weight:600; color:var(--clr-teal-green);">${log.eventType}</span></td>
                     <td style="font-size:0.85rem;">${log.details}</td>
                 </tr>
             `;
