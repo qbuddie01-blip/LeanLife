@@ -605,7 +605,8 @@ h1, h2, h3, h4, h5, h6 {
     cursor: pointer;
 }
 
-.feature-card:hover {
+.feature-card:hover,
+.feature-card.active-tap {
     transform: translateY(-8px) scale(1.02);
     box-shadow: 0 20px 40px rgba(165, 227, 50, 0.2);
     border-color: var(--clr-accent-green);
@@ -629,7 +630,8 @@ h1, h2, h3, h4, h5, h6 {
     filter: brightness(0.65) saturate(0.9);
 }
 
-.feature-card:hover .feature-card-bg img {
+.feature-card:hover .feature-card-bg img,
+.feature-card.active-tap .feature-card-bg img {
     transform: scale(1.1);
     filter: brightness(0.5);
 }
@@ -1745,13 +1747,13 @@ footer {
         transition: transform var(--transition-smooth), box-shadow var(--transition-smooth), border-color var(--transition-smooth) !important;
     }
     
-    .feature-card:hover, .feature-card:active {
+    .feature-card:hover, .feature-card:active, .feature-card.active-tap {
         transform: translateY(-8px) scale(1.02) !important;
         box-shadow: 0 20px 40px rgba(165, 227, 50, 0.2) !important;
         border-color: var(--clr-accent-green) !important;
     }
     
-    .feature-card:hover .feature-card-bg img, .feature-card:active .feature-card-bg img {
+    .feature-card:hover .feature-card-bg img, .feature-card:active .feature-card-bg img, .feature-card.active-tap .feature-card-bg img {
         transform: scale(1.1) !important;
         filter: brightness(0.5) !important;
     }

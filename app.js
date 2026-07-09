@@ -654,7 +654,20 @@ const app = {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
-    navigateToFeature(featureName) {
+    navigateToFeature(featureName, element = null) {
+        const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        if (element && isTouch) {
+            element.classList.add('active-tap');
+            setTimeout(() => {
+                element.classList.remove('active-tap');
+                this.executeNavigationToFeature(featureName);
+            }, 200);
+        } else {
+            this.executeNavigationToFeature(featureName);
+        }
+    },
+
+    executeNavigationToFeature(featureName) {
         if (!this.currentUser) {
             this.navigateTo('login');
         } else {
