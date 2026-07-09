@@ -156,6 +156,7 @@ const app = {
 
         // Initialize smart scroll header
         this.initScrollHeader();
+        this.initMobileScrollEffects();
 
         // Close mobile drawer on Esc key
         document.addEventListener('keydown', (e) => {
@@ -214,6 +215,31 @@ const app = {
                 navbar.classList.remove('header-hidden');
             }
             lastScrollY = currentScrollY;
+        }, { passive: true });
+    },
+
+    // Highlight features cards when they are scrolled to the center of the screen on mobile
+    initMobileScrollEffects() {
+        window.addEventListener('scroll', () => {
+            const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            if (!isTouch) return;
+
+            const cards = document.querySelectorAll('.feature-card');
+            const viewportHeight = window.innerHeight;
+            const centerY = viewportHeight / 2;
+
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                const cardCenterY = rect.top + rect.height / 2;
+                const distance = Math.abs(cardCenterY - centerY);
+                const threshold = viewportHeight * 0.22; // 22% of screen height
+
+                if (distance < threshold) {
+                    card.classList.add('scroll-active');
+                } else {
+                    card.classList.remove('scroll-active');
+                }
+            });
         }, { passive: true });
     },
 
@@ -655,19 +681,6 @@ const app = {
     },
 
     navigateToFeature(featureName, element = null) {
-        const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-        if (element && isTouch) {
-            element.classList.add('active-tap');
-            setTimeout(() => {
-                element.classList.remove('active-tap');
-                this.executeNavigationToFeature(featureName);
-            }, 200);
-        } else {
-            this.executeNavigationToFeature(featureName);
-        }
-    },
-
-    executeNavigationToFeature(featureName) {
         if (!this.currentUser) {
             this.navigateTo('login');
         } else {
