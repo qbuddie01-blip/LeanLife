@@ -1,16 +1,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-    /* HSL Primary Hue (LeanLife Teal) */
-    --hue-primary: 168;
+    /* HSL Primary Hue (LeanLife Green) */
+    --hue-primary: 152;
 
     /* Color Palette */
-    --clr-primary-green: #E0F2F1;        /* Light Teal Cream */
-    --clr-accent-green: #12826D;         /* Soothing Calming Teal Green */
-    --clr-accent-green-hover: #0a5849;   /* Deep Forest Teal Green */
+    --clr-primary-green: #C5F3D6;        /* Reverted light green */
+    --clr-accent-green: #A5E332;         /* Reverted previous bright lime green for all buttons/landing icons */
+    --clr-accent-green-hover: #8fca24;   /* Reverted hover color */
     --clr-bg-base: #FAF6EE;              /* Soothing Warm Cream Base */
     --clr-text-dark: #0F2D26;            /* Deep Forest Green/Slate for softer, cozier reading */
     --clr-text-light: #FFFFFF;
+    
+    /* Decoupled Calming Dashboard Teal Palette */
+    --clr-teal-green: #12826D;           /* Soothing Calming Teal Green */
+    --clr-teal-green-hover: #0a5849;     /* Deep Forest Teal Green */
+    --clr-teal-light: #E0F2F1;           /* Light Teal Cream */
     
     /* Semantic Colors */
     --clr-glass: rgba(255, 255, 255, 0.85);
@@ -749,7 +754,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Dashboard Summary Card */
 .dashboard-welcome {
     position: relative;
-    background: linear-gradient(135deg, #0b4c3f 0%, #12826d 100%);
+    background: linear-gradient(135deg, #0b4c3f 0%, var(--clr-teal-green) 100%);
     border-radius: var(--radius-xl);
     padding: 2.5rem;
     display: flex;
@@ -1283,7 +1288,7 @@ h1, h2, h3, h4, h5, h6 {
     width: 100px;
     height: 100px;
     border-radius: 50%;
-    background: conic-gradient(var(--clr-accent-green) 0% 85%, #f5ebe0 85% 100%);
+    background: conic-gradient(var(--clr-teal-green) 0% 85%, #f5ebe0 85% 100%);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -1306,7 +1311,7 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 1.8rem;
     font-weight: 700;
     font-family: var(--font-brand);
-    color: var(--clr-accent-green);
+    color: var(--clr-teal-green);
 }
 
 .ai-report-details {
