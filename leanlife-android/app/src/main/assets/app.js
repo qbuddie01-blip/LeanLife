@@ -1110,42 +1110,63 @@ const app = {
 
         // Mock weekly data or actual historical data
         const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        const scores = [70, 75, 82, 78, 85, 90, 88]; // Mock weights or score trends
+        const scores = [70, 75, 82, 78, 85, 90, 88];
         
         let width = container.clientWidth || 500;
         let height = 180;
+        
         let svg = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--clr-accent-green)" stop-opacity="0.25" />
+                    <stop offset="100%" stop-color="var(--clr-accent-green)" stop-opacity="0.0" />
+                </linearGradient>
+            </defs>
             <!-- Grid lines -->
-            <line x1="40" y1="20" x2="${width - 20}" y2="20" stroke="rgba(0,0,0,0.05)" stroke-width="1"/>
-            <line x1="40" y1="65" x2="${width - 20}" y2="65" stroke="rgba(0,0,0,0.05)" stroke-width="1"/>
-            <line x1="40" y1="110" x2="${width - 20}" y2="110" stroke="rgba(0,0,0,0.05)" stroke-width="1"/>
-            <line x1="40" y1="150" x2="${width - 20}" y2="150" stroke="rgba(0,0,0,0.1)" stroke-width="1"/>
+            <line x1="40" y1="20" x2="${width - 20}" y2="20" stroke="rgba(18,130,109,0.06)" stroke-width="1"/>
+            <line x1="40" y1="65" x2="${width - 20}" y2="65" stroke="rgba(18,130,109,0.06)" stroke-width="1"/>
+            <line x1="40" y1="110" x2="${width - 20}" y2="110" stroke="rgba(18,130,109,0.06)" stroke-width="1"/>
+            <line x1="40" y1="150" x2="${width - 20}" y2="150" stroke="rgba(18,130,109,0.12)" stroke-width="1"/>
             
             <!-- Axes label values -->
-            <text x="15" y="24" font-size="10" font-family="var(--font-brand)" fill="#666">100</text>
-            <text x="15" y="69" font-size="10" font-family="var(--font-brand)" fill="#666">70</text>
-            <text x="15" y="114" font-size="10" font-family="var(--font-brand)" fill="#666">40</text>
-            <text x="15" y="154" font-size="10" font-family="var(--font-brand)" fill="#666">0</text>
+            <text x="15" y="24" font-size="10" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">100</text>
+            <text x="15" y="69" font-size="10" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">70</text>
+            <text x="15" y="114" font-size="10" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">40</text>
+            <text x="15" y="154" font-size="10" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">0</text>
         `;
 
         const spacing = (width - 80) / 6;
         let points = [];
+        let gradPoints = [];
         
-        // Draw trend line
+        gradPoints.push(`40,150`); // Start bottom left
+        
         for(let i=0; i<7; i++) {
             let x = 50 + (i * spacing);
             let scoreVal = scores[i];
             let y = 150 - ((scoreVal / 100) * 130);
             points.push(`${x},${y}`);
-            
-            // Render Column Points
-            svg += `<circle cx="${x}" cy="${y}" r="6" fill="var(--clr-accent-green)" stroke="white" stroke-width="2" style="cursor:pointer; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1))"/>`;
-            // Label
-            svg += `<text x="${x}" y="170" font-size="11" font-family="var(--font-brand)" font-weight="600" text-anchor="middle" fill="#333">${weekDays[i]}</text>`;
-            svg += `<text x="${x}" y="${y - 10}" font-size="10" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#333">${scoreVal}</text>`;
+            gradPoints.push(`${x},${y}`);
+        }
+        
+        gradPoints.push(`${50 + 6 * spacing},150`); // End bottom right
+
+        // 1. Draw gradient area first (at the back)
+        svg += `<polygon points="${gradPoints.join(' ')}" fill="url(#chartGrad)"/>`;
+
+        // 2. Draw trend line
+        svg += `<polyline fill="none" stroke="var(--clr-accent-green)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" points="${points.join(' ')}"/>`;
+
+        // 3. Draw points circles and text labels
+        for(let i=0; i<7; i++) {
+            let x = 50 + (i * spacing);
+            let scoreVal = scores[i];
+            let y = 150 - ((scoreVal / 100) * 130);
+            svg += `<circle cx="${x}" cy="${y}" r="6.5" fill="var(--clr-accent-green)" stroke="white" stroke-width="2.5" style="cursor:pointer; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1))"/>`;
+            svg += `<text x="${x}" y="170" font-size="10.5" font-family="var(--font-brand)" font-weight="600" text-anchor="middle" fill="var(--clr-text-dark)">${weekDays[i]}</text>`;
+            svg += `<text x="${x}" y="${y - 12}" font-size="10" font-family="var(--font-brand)" font-weight="700" text-anchor="middle" fill="var(--clr-accent-green)">${scoreVal}</text>`;
         }
 
-        svg += `<polyline fill="none" stroke="var(--clr-accent-green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${points.join(' ')}"/>`;
         svg += `</svg>`;
         container.innerHTML = svg;
     },
@@ -1275,11 +1296,11 @@ const app = {
         let spacing = (width - 80) / 6;
 
         let svg = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-            <line x1="40" y1="150" x2="${width - 20}" y2="150" stroke="rgba(0,0,0,0.1)" stroke-width="1"/>
+            <line x1="40" y1="150" x2="${width - 20}" y2="150" stroke="rgba(18,130,109,0.12)" stroke-width="1"/>
         `;
 
         if (this.stepsChartMode === 'week') {
-            // Render Weekly bar graph
+            // Render Weekly bar graph with rounded columns and soft fills
             const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
             const stepData = [6200, 7800, 9400, 5000, 8100, 11200, stepsVal];
             
@@ -1289,30 +1310,48 @@ const app = {
                 let barHeight = (val / 15000) * 110;
                 let y = 150 - barHeight;
                 
-                // Column bar
-                svg += `<rect x="${x - 12}" y="${y}" width="24" height="${barHeight}" rx="4" fill="var(--clr-primary-green)" stroke="var(--clr-accent-green)" stroke-width="1" style="transition:all 0.5s; cursor:pointer;"/>`;
+                // Column bar with rx/ry rounded tops and soft shadow/drop-shadow
+                svg += `<rect x="${x - 12}" y="${y}" width="24" height="${barHeight}" rx="6" ry="6" fill="var(--clr-accent-green)" fill-opacity="0.85" stroke="var(--clr-accent-green)" stroke-width="1" style="transition:all 0.5s; cursor:pointer; filter:drop-shadow(0 2px 4px rgba(18,130,109,0.15))"/>`;
                 // Label
-                svg += `<text x="${x}" y="165" font-size="10" font-family="var(--font-brand)" text-anchor="middle" fill="#666">${days[i]}</text>`;
-                svg += `<text x="${x}" y="${y - 6}" font-size="9" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#333">${(val/1000).toFixed(1)}k</text>`;
+                svg += `<text x="${x}" y="165" font-size="10.5" font-family="var(--font-brand)" text-anchor="middle" fill="var(--clr-text-dark)">${days[i]}</text>`;
+                svg += `<text x="${x}" y="${y - 8}" font-size="9.5" font-family="var(--font-brand)" font-weight="700" text-anchor="middle" fill="var(--clr-accent-green)">${(val/1000).toFixed(1)}k</text>`;
             }
         } else {
-            // Render Monthly trend curve
+            // Render Monthly trend curve with gradient area
             const weeks = ['W1', 'W2', 'W3', 'W4'];
             const stepData = [7200, 8500, 6800, stepsVal];
             let spacingMonth = (width - 80) / 3;
             let points = [];
+            let gradPoints = [];
 
+            gradPoints.push(`40,150`);
             for(let i=0; i<4; i++) {
                 let x = 50 + (i * spacingMonth);
                 let val = stepData[i];
                 let y = 150 - ((val / 15000) * 110);
                 points.push(`${x},${y}`);
-
-                svg += `<circle cx="${x}" cy="${y}" r="5" fill="var(--clr-accent-green)" stroke="white" stroke-width="2"/>`;
-                svg += `<text x="${x}" y="165" font-size="10" font-family="var(--font-brand)" text-anchor="middle" fill="#666">${weeks[i]}</text>`;
-                svg += `<text x="${x}" y="${y - 8}" font-size="9" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#333">${val.toLocaleString()}</text>`;
+                gradPoints.push(`${x},${y}`);
             }
-            svg += `<polyline fill="none" stroke="var(--clr-accent-green)" stroke-width="2" points="${points.join(' ')}"/>`;
+            gradPoints.push(`${50 + 3 * spacingMonth},150`);
+
+            svg += `<defs>
+                <linearGradient id="stepsGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--clr-accent-green)" stop-opacity="0.25" />
+                    <stop offset="100%" stop-color="var(--clr-accent-green)" stop-opacity="0.0" />
+                </linearGradient>
+            </defs>`;
+            
+            svg += `<polygon points="${gradPoints.join(' ')}" fill="url(#stepsGrad)"/>`;
+            svg += `<polyline fill="none" stroke="var(--clr-accent-green)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" points="${points.join(' ')}"/>`;
+
+            for(let i=0; i<4; i++) {
+                let x = 50 + (i * spacingMonth);
+                let val = stepData[i];
+                let y = 150 - ((val / 15000) * 110);
+                svg += `<circle cx="${x}" cy="${y}" r="6.5" fill="var(--clr-accent-green)" stroke="white" stroke-width="2.5" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1))"/>`;
+                svg += `<text x="${x}" y="165" font-size="10.5" font-family="var(--font-brand)" text-anchor="middle" fill="var(--clr-text-dark)">${weeks[i]}</text>`;
+                svg += `<text x="${x}" y="${y - 12}" font-size="9.5" font-family="var(--font-brand)" font-weight="700" text-anchor="middle" fill="var(--clr-accent-green)">${val.toLocaleString()}</text>`;
+            }
         }
 
         svg += `</svg>`;
