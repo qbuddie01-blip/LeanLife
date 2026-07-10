@@ -1468,15 +1468,12 @@ const app = {
                 weight: parseFloat(document.getElementById('metrics-weight').value),
                 bmi: parseFloat(document.getElementById('metrics-bmi').value),
                 bodyFat: parseFloat(document.getElementById('metrics-bodyfat').value),
-                bloodPressure: document.getElementById('metrics-bloodpressure').value,
-                bloodSugar: parseFloat(document.getElementById('metrics-bloodsugar').value),
-                heartRate: parseInt(document.getElementById('metrics-heartrate').value),
                 stress: parseInt(document.getElementById('metrics-stress').value),
                 energy: parseInt(document.getElementById('metrics-energy').value),
                 screenTime: parseFloat(document.getElementById('metrics-screentime').value),
-                outdoorTime: parseInt(document.getElementById('metrics-outdoortime').value),
-                sunlight: parseInt(document.getElementById('metrics-sunlight').value),
-                meditation: parseInt(document.getElementById('metrics-meditation').value),
+                visceralFat: parseFloat(document.getElementById('metrics-viscerafat').value),
+                skeletalMuscle: parseFloat(document.getElementById('metrics-skeletalmuscle').value),
+                leanMass: parseFloat(document.getElementById('metrics-leanmass').value),
                 medicationTaken: document.getElementById('metrics-medication').checked,
                 supplementTaken: document.getElementById('metrics-supplement').checked
             }
@@ -1768,7 +1765,7 @@ const app = {
 
         let stressVal = log.metrics.stress || 5;
         let mentalScore = 100 - (stressVal * 7);
-        if (log.metrics.meditation > 10) mentalScore += 10;
+        if (log.metrics.screenTime < 3) mentalScore += 10;
         mentalScore = Math.min(mentalScore, 100);
 
         let nutritionScore = 80; // baseline
@@ -2837,9 +2834,14 @@ const app = {
             <div>
                 <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Nutrition & Health</h4>
                 <p><strong>Hydration:</strong> ${r.waterCount} Glasses (${r.waterCount * 8} oz)</p>
-                <p><strong>Fasting Window:</strong> ${r.fasting.hours} Hours Fasted</p>
-                <p><strong>Screen Time:</strong> ${r.screenTime || 0} Hours</p>
-                <p><strong>Outdoor Time:</strong> ${r.outdoorTime || 0} Hours</p>
+                <p><strong>Fasting Window:</strong> ${r.fasting.type || 'None'}</p>
+                <p><strong>Screen Time:</strong> ${(r.metrics && r.metrics.screenTime) || 0} Hours</p>
+            </div>
+            <div>
+                <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Body Composition</h4>
+                <p><strong>Visceral Fat:</strong> ${(r.metrics && r.metrics.visceralFat) || 0}%</p>
+                <p><strong>Skeletal Muscle:</strong> ${(r.metrics && r.metrics.skeletalMuscle) || 0} kg</p>
+                <p><strong>Lean Mass:</strong> ${(r.metrics && r.metrics.leanMass) || 0} kg</p>
             </div>
             <div style="grid-column: span 2;">
                 <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Journals & Reflections</h4>
