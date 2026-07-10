@@ -245,6 +245,22 @@ const app = {
 
     // Save current db to IndexedDB and localStorage (redundancy) and sync to Supabase Cloud
     async saveDatabase() {
+        // Fetch and merge latest cloud database before saving to prevent overwriting updates from other sessions
+        if (this.supabase && this.isCloudSyncOk) {
+            try {
+                const { data } = await this.supabase
+                    .from('system_settings')
+                    .select('data')
+                    .eq('id', 'leanlife_cloud_db')
+                    .single();
+                if (data && data.data) {
+                    this.mergeCloudDatabase(data.data);
+                }
+            } catch (e) {
+                console.warn("Failed to fetch cloud db for merge before saving:", e);
+            }
+        }
+
         localStorage.setItem('leanlife_db', JSON.stringify(this.db));
         try {
             const db = await this.openDB();
@@ -364,10 +380,29 @@ const app = {
         
         const mergeLists = (localList, cloudList, key = 'email') => {
             const map = new Map();
+            const dateKeys = ['updatedAt', 'updated_at', 'timestamp', 'created_at'];
+            const getTimestamp = (item) => {
+                for (const dk of dateKeys) {
+                    if (item[dk]) {
+                        const t = new Date(item[dk]).getTime();
+                        if (!isNaN(t)) return t;
+                    }
+                }
+                return 0;
+            };
             (localList || []).forEach(item => map.set(item[key]?.toLowerCase() || item[key] || item.id, item));
             (cloudList || []).forEach(item => {
                 const itemKey = item[key]?.toLowerCase() || item[key] || item.id;
-                map.set(itemKey, item);
+                if (map.has(itemKey)) {
+                    const localItem = map.get(itemKey);
+                    const localTime = getTimestamp(localItem);
+                    const cloudTime = getTimestamp(item);
+                    if (cloudTime >= localTime) {
+                        map.set(itemKey, item);
+                    }
+                } else {
+                    map.set(itemKey, item);
+                }
             });
             return Array.from(map.values());
         };
@@ -419,6 +454,7 @@ const app = {
         if (testUser) {
             testUser.password = await this.hashPassword('password123');
             testUser.firstLogin = false;
+            testUser.updatedAt = new Date().toISOString();
             await this.saveDatabase();
         }
 
@@ -440,7 +476,8 @@ const app = {
                     weight: 75,
                     goal: 'Manage platform operations',
                     status: 'Active',
-                    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop'
+                    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop',
+                    updatedAt: new Date().toISOString()
                 },
                 {
                     name: 'Coach Francess Orenuga',
@@ -454,7 +491,8 @@ const app = {
                     weight: 60,
                     goal: 'Coaching excellence',
                     status: 'Active',
-                    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop'
+                    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop',
+                    updatedAt: new Date().toISOString()
                 },
                 {
                     name: 'Emma Watson',
@@ -479,7 +517,8 @@ const app = {
                     preferredCoach: 'sarah',
                     dietPreference: 'Vegetarian',
                     activityLevel: 'Active',
-                    streakCount: 3
+                    streakCount: 3,
+                    updatedAt: new Date().toISOString()
                 }
             ];
             await this.saveDatabase();
@@ -951,7 +990,8 @@ const app = {
                 avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
                 firstLogin: false,
                 streakCount: 1,
-                preferredCoach: 'sarah'
+                preferredCoach: 'sarah',
+                updatedAt: new Date().toISOString()
             };
 
             this.db.users.push(newUser);
@@ -991,6 +1031,7 @@ const app = {
                 if (newPwd && newPwd.trim() !== '') {
                     user.password = await this.hashPassword(newPwd);
                     user.firstLogin = false;
+                    user.updatedAt = new Date().toISOString();
                     await this.saveDatabase();
                     this.logAudit(user.name, 'Password Updated', 'First login temporary password replaced');
                     alert("Password updated successfully!");
@@ -2377,6 +2418,7 @@ const app = {
         userObj.preferredCoach = document.getElementById('prof-coach').value;
 
         this.currentUser = userObj;
+        userObj.updatedAt = new Date().toISOString();
         sessionStorage.setItem('leanlife_session', JSON.stringify(userObj));
         this.saveDatabase();
         
@@ -2399,6 +2441,7 @@ const app = {
         }
 
         userObj.password = await this.hashPassword(newPwd);
+        userObj.updatedAt = new Date().toISOString();
         this.saveDatabase();
         document.getElementById('prof-newpwd').value = '';
         this.logAudit(this.currentUser.name, 'Password Changed', 'User password updated manually');
@@ -2604,6 +2647,7 @@ const app = {
         const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
         if (!user) return;
         user.status = user.status === 'Active' ? 'Suspended' : 'Active';
+        user.updatedAt = new Date().toISOString();
         this.saveDatabase();
         this.renderAdminUsers();
         this.logAudit(this.currentUser.name, 'User Status Modified', `Status for ${email} set to ${user.status}`);
@@ -2617,6 +2661,7 @@ const app = {
         const tempPassword = 'RESET' + Math.floor(1000 + Math.random() * 9000);
         user.password = await this.hashPassword(tempPassword);
         user.firstLogin = true;
+        user.updatedAt = new Date().toISOString();
         
         await this.saveDatabase();
         
@@ -2704,7 +2749,8 @@ const app = {
                 conditions: 'None',
                 medications: 'None',
                 goals: 'General Wellness'
-            }
+            },
+            updatedAt: new Date().toISOString()
         };
 
         this.db.users.push(newMember);
