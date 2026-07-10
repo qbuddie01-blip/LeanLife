@@ -128,7 +128,7 @@ const app = {
             consultDateInput.addEventListener('change', () => {
                 const dateStr = consultDateInput.value;
                 this.db.blockedDates = this.db.blockedDates || [];
-                if (this.db.blockedDates.includes(dateStr)) {
+                if (this.db.blockedDates.some(d => d.id === dateStr && d.status === 'blocked')) {
                     alert(`Sorry, this date (${new Date(dateStr).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}) is blocked and unavailable for booking. Please select another date.`);
                     consultDateInput.value = '';
                 }
@@ -3604,5 +3604,25 @@ const app = {
     }
 };
 
+// Merge real app implementation into window.app stub (for early interaction support)
+if (window.app) {
+    const queue = window.app._queue || [];
+    
+    // Copy all properties to window.app
+    Object.assign(window.app, app);
+    window.app.initialized = true;
+    
+    // Bind methods to keep correct context
+    window.app.realNavigateTo = app.navigateTo.bind(window.app);
+    window.app.realLogout = app.logout.bind(window.app);
+    
+    // Replay any navigation actions clicked before app.js loaded
+    queue.forEach(q => {
+        if (q.type === 'navigate') window.app.realNavigateTo(q.view);
+    });
+} else {
+    window.app = app;
+}
+
 // Start application on DOM loaded
-window.addEventListener('DOMContentLoaded', () => app.init());
+window.addEventListener('DOMContentLoaded', () => window.app.init());

@@ -8,6 +8,34 @@
     <!-- FontAwesome for Premium Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
+        // Stub global app object to prevent ReferenceErrors if elements are clicked before app.js loads
+        window.app = {
+            _queue: [],
+            navigateTo: function(view) {
+                if (window.app.initialized) {
+                    window.app.realNavigateTo(view);
+                } else {
+                    window.app._queue.push({ type: 'navigate', view: view });
+                }
+            },
+            logout: function() {
+                if (window.app.initialized) window.app.realLogout();
+            },
+            handleAuthSubmit: function(e) { if(e) e.preventDefault(); },
+            handleCoachRequest: function(e) { if(e) e.preventDefault(); },
+            handleNewPostSubmit: function(e) { if(e) e.preventDefault(); },
+            handleProfileSave: function(e) { if(e) e.preventDefault(); },
+            handlePasswordChange: function(e) { if(e) e.preventDefault(); },
+            handleBlockDate: function(e) { if(e) e.preventDefault(); },
+            toggleUserStatus: function() {},
+            adminResetPassword: function() {},
+            selectMood: function() {},
+            switchAdminTab: function() {},
+            filterCommunity: function() {},
+            openAdminLogDetails: function() {}
+        };
+    </script>
+    <script>
         window.onerror = function(message, source, lineno, colno, error) {
             const errorDiv = document.createElement('div');
             errorDiv.id = 'fatal-error-banner';
