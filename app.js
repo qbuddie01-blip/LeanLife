@@ -121,6 +121,19 @@ const app = {
         this.renderNoticeBoard();
         this.renderCommunityFeed();
         this.animateStats();
+
+        // Listen for booking calendar date changes to validate blocked dates
+        const consultDateInput = document.getElementById('consult-date');
+        if (consultDateInput) {
+            consultDateInput.addEventListener('change', () => {
+                const dateStr = consultDateInput.value;
+                this.db.blockedDates = this.db.blockedDates || [];
+                if (this.db.blockedDates.includes(dateStr)) {
+                    alert(`Sorry, this date (${new Date(dateStr).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}) is blocked and unavailable for booking. Please select another date.`);
+                    consultDateInput.value = '';
+                }
+            });
+        }
         
         // Form submissions
         const authForm = document.getElementById('auth-form');
@@ -336,6 +349,7 @@ const app = {
         this.db.emails = this.db.emails || [];
         this.db.notifications = this.db.notifications || [];
         this.db.automationJobs = this.db.automationJobs || [];
+        this.db.blockedDates = this.db.blockedDates || [];
         this.db.automationFailures = this.db.automationFailures !== undefined ? this.db.automationFailures : 0;
         this.db.automationRetries = this.db.automationRetries !== undefined ? this.db.automationRetries : 0;
         this.db.systemSettings = this.db.systemSettings || {
@@ -417,6 +431,7 @@ const app = {
         this.db.emails = mergeLists(this.db.emails, cloudDb.emails, 'id');
         this.db.notifications = mergeLists(this.db.notifications, cloudDb.notifications, 'id');
         this.db.automationJobs = mergeLists(this.db.automationJobs, cloudDb.automationJobs, 'id');
+        this.db.blockedDates = mergeLists(this.db.blockedDates, cloudDb.blockedDates, 'id');
         
         if (cloudDb.systemSettings) {
             this.db.systemSettings = cloudDb.systemSettings;
@@ -1915,6 +1930,12 @@ const app = {
         const time = document.getElementById('consult-time').value;
         const notes = document.getElementById('consult-notes').value;
 
+        this.db.blockedDates = this.db.blockedDates || [];
+        if (this.db.blockedDates.some(d => d.id === date && d.status === 'blocked')) {
+            alert(`Sorry, this date (${new Date(date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}) is blocked and unavailable for consultations. Please select another date.`);
+            return;
+        }
+
         const newAppt = {
             id: 'APT-' + Date.now(),
             userEmail: this.currentUser.email,
@@ -3076,6 +3097,63 @@ const app = {
             `;
         });
         tbody.innerHTML = html;
+        this.renderBlockedDatesAdmin();
+    },
+
+    renderBlockedDatesAdmin() {
+        const list = document.getElementById('admin-blocked-dates-list');
+        if (!list) return;
+        const blocked = (this.db.blockedDates || []).filter(d => d.status === 'blocked');
+        if (blocked.length === 0) {
+            list.innerHTML = `<li style="list-style:none; color:#777; font-style:italic;">No dates blocked.</li>`;
+            return;
+        }
+        list.innerHTML = blocked.map(d => `
+            <li style="display: flex; justify-content: space-between; align-items: center; max-width: 300px; padding: 4px 8px; background: rgba(0,0,0,0.03); border-radius: 4px;">
+                <span>${new Date(d.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</span>
+                <button class="btn btn-secondary" style="padding: 2px 6px; font-size: 0.8rem;" onclick="app.unblockDate('${d.date}')"><i class="fa-solid fa-trash-can" style="color:#d9534f;"></i></button>
+            </li>
+        `).join('');
+    },
+
+    async handleBlockDate(e) {
+        e.preventDefault();
+        const dateInput = document.getElementById('block-date-input');
+        if (!dateInput) return;
+        const dateStr = dateInput.value;
+        if (!dateStr) return;
+
+        this.db.blockedDates = this.db.blockedDates || [];
+        let existing = this.db.blockedDates.find(d => d.id === dateStr);
+        if (!existing || existing.status === 'unblocked') {
+            if (!existing) {
+                existing = { id: dateStr, date: dateStr };
+                this.db.blockedDates.push(existing);
+            }
+            existing.status = 'blocked';
+            existing.updatedAt = new Date().toISOString();
+            await this.saveDatabase();
+            this.renderBlockedDatesAdmin();
+            this.logAudit(this.currentUser.name, 'Date Blocked', `Blocked consultation bookings on: ${dateStr}`);
+            alert(`Successfully blocked consultations on: ${dateStr}`);
+            dateInput.value = '';
+        } else {
+            alert("This date is already blocked!");
+        }
+    },
+
+    async unblockDate(dateStr) {
+        if (!confirm(`Are you sure you want to unblock consultation bookings for ${dateStr}?`)) return;
+        this.db.blockedDates = this.db.blockedDates || [];
+        const existing = this.db.blockedDates.find(d => d.id === dateStr);
+        if (existing) {
+            existing.status = 'unblocked';
+            existing.updatedAt = new Date().toISOString();
+            await this.saveDatabase();
+            this.renderBlockedDatesAdmin();
+            this.logAudit(this.currentUser.name, 'Date Unblocked', `Unblocked consultation bookings on: ${dateStr}`);
+            alert(`Successfully unblocked consultations on: ${dateStr}`);
+        }
     },
 
     renderAdminAnalyticsCMS() {

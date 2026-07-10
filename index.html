@@ -1494,6 +1494,21 @@
                         </table>
                     </div>
                 </div>
+                <div class="glass-card" style="margin-top: 2rem;">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.5rem;"><i class="fa-solid fa-calendar-minus"></i> Block Off Consultation Dates</h3>
+                    <form onsubmit="app.handleBlockDate(event)" style="display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem;">
+                        <div class="form-group" style="margin: 0; flex: 1;">
+                            <label for="block-date-input">Select Date to Block</label>
+                            <input type="date" id="block-date-input" class="form-input" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="height: 42px;">Block Date</button>
+                    </form>
+                    
+                    <h4 style="font-family: var(--font-brand); margin-bottom: 0.8rem;">Currently Blocked Dates</h4>
+                    <ul id="admin-blocked-dates-list" style="display: flex; flex-direction: column; gap: 8px; padding-left: 1.2rem; font-size: 0.95rem;">
+                        <!-- Dynamic -->
+                    </ul>
+                </div>
             </div>
 
             <!-- SUBVIEW 8: ANALYTICS DASHBOARD -->
