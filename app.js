@@ -1177,16 +1177,17 @@ const app = {
             if (debugLogHash) debugLogHash.textContent = hashedPassword;
             
             // Generate detailed debug trace
-            let trace = '';
+            let trace = `this===window.app: ${this === window.app} | this.db.users.len: ${this.db ? (this.db.users ? this.db.users.length : 'no_users') : 'no_db'} | window.app.db.users.len: ${window.app.db ? (window.app.db.users ? window.app.db.users.length : 'no_users') : 'no_db'} | `;
             const typedCodes = Array.from(email.toLowerCase()).map(c => c.charCodeAt(0)).join(',');
             trace += `Typed: "${email.toLowerCase()}" [${typedCodes}] | `;
             
-            const dbMatch = this.db.users.find(u => u.email.toLowerCase().includes('qbuddie01'));
+            const usersList = (this.db && this.db.users) ? this.db.users : [];
+            const dbMatch = usersList.find(u => u.email.toLowerCase().includes('qbuddie01'));
             if (dbMatch) {
                 const dbCodes = Array.from(dbMatch.email.toLowerCase()).map(c => c.charCodeAt(0)).join(',');
                 trace += `DB: "${dbMatch.email.toLowerCase()}" [${dbCodes}]`;
             } else {
-                trace += `No qbuddie01 in DB users! List: ` + this.db.users.map(u => u.email).join(', ');
+                trace += `No qbuddie01 in DB users! List: ` + usersList.map(u => u.email).join(', ');
             }
             
             if (debugLogMatch) {
