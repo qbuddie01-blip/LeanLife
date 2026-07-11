@@ -374,14 +374,64 @@ const app = {
                     this.isCloudSyncOk = true;
                 } else {
                     console.warn("Supabase fetch returned error:", error);
+                    this.updateAuthSyncStatus('offline');
                 }
             } catch (err) {
                 console.error("Failed to fetch data from Supabase:", err);
+                this.updateAuthSyncStatus('offline');
             }
         } else {
             this.isCloudSyncOk = true; // Local-only mode
+            this.updateAuthSyncStatus('local-only');
+        }
+        if (this.isCloudSyncOk) {
+            this.updateAuthSyncStatus('connected');
         }
     },
+
+    updateAuthSyncStatus(status) {
+        const dot = document.getElementById('auth-sync-dot');
+        const text = document.getElementById('auth-sync-status');
+        if (!dot || !text) return;
+        
+        if (status === 'connected') {
+            dot.style.backgroundColor = '#2ecc71'; // Green
+            text.textContent = 'Connected to Cloud DB';
+        } else if (status === 'offline') {
+            dot.style.backgroundColor = '#e74c3c'; // Red
+            text.textContent = 'Offline Mode (Cloud Sync Error)';
+        } else if (status === 'local-only') {
+            dot.style.backgroundColor = '#95a5a6'; // Gray
+            text.textContent = 'Local-only database mode';
+        }
+    },
+
+    async clearLocalDatabaseCache() {
+        console.log("Clearing local database caches...");
+        try {
+            // Clear localStorage
+            localStorage.removeItem('leanlife_db');
+            
+            // Clear IndexedDB
+            const db = await this.openDB();
+            const tx = db.transaction('store', 'readwrite');
+            const store = tx.objectStore('store');
+            store.delete('leanlife_db');
+            await new Promise((resolve, reject) => {
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+            
+            alert("App cache cleared successfully! Reloading page for a fresh database sync...");
+            window.location.reload();
+        } catch (e) {
+            console.error("Failed to clear IndexedDB cache:", e);
+            localStorage.removeItem('leanlife_db');
+            alert("Local storage cache cleared! Reloading page...");
+            window.location.reload();
+        }
+    },
+
 
     // Merge Cloud DB lists with Local DB lists (Cloud takes priority)
     mergeCloudDatabase(cloudDb) {

@@ -347,6 +347,15 @@
                         <button type="button" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; border-color: rgba(0,0,0,0.15); color: var(--clr-text-dark);" onclick="app.fillSimulationCreds('admin@leanlife.com', 'admin123')">Admin Login</button>
                     </div>
                 </div>
+                
+                <!-- Cloud Database Sync Status & Reset Cache -->
+                <div id="auth-status-container" style="margin-top: 1.5rem; border-top: 1px solid rgba(0, 0, 0, 0.08); padding-top: 1rem; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span id="auth-sync-dot" style="width: 8px; height: 8px; border-radius: 50%; background-color: #f5a623; display: inline-block;"></span>
+                        <span id="auth-sync-status" style="font-weight: 500; color: #555;">Syncing cloud database...</span>
+                    </div>
+                    <button type="button" class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; border-color: rgba(0,0,0,0.12); color: var(--clr-text-dark);" onclick="app.clearLocalDatabaseCache()">Reset App Cache</button>
+                </div>
             </div>
         </section>
 
@@ -1913,7 +1922,7 @@
             EMAILJS_PUBLIC_KEY: '1KO_vRCldTUVxoqtM'
         };
     </script>
-    <script src="app.js?v=2.2"></script>
+    <script src="app.js?v=2.3"></script>
 </body>
 </html>
 <!-- live deployment sync -->
