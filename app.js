@@ -135,11 +135,6 @@ const app = {
             });
         }
         
-        // Form submissions
-        const authForm = document.getElementById('auth-form');
-        if (authForm) {
-            authForm.addEventListener('submit', (e) => this.handleAuthSubmit(e));
-        }
 
         // Secret developer quick login toggle (5 clicks on "Welcome Back" title)
         const authTitle = document.getElementById('auth-title');
