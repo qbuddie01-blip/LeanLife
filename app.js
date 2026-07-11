@@ -83,7 +83,8 @@ const app = {
     async init() {
         console.log("Initializing LeanLife App...");
         this.initSupabase();
-        await this.loadDatabase();
+        this.dbLoadedPromise = this.loadDatabase();
+        await this.dbLoadedPromise;
         await this.seedInitialData();
 
         // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga
@@ -885,6 +886,9 @@ const app = {
     },
 
     async fillSimulationCreds(email, password) {
+        if (this.dbLoadedPromise) {
+            await this.dbLoadedPromise;
+        }
         this.switchAuthTab('login');
         
         const hashedPassword = await this.hashPassword(password);
@@ -971,7 +975,12 @@ const app = {
     },
 
     async handleAuthSubmit(e) {
-        e.preventDefault();
+        if (e && typeof e.preventDefault === 'function') {
+            e.preventDefault();
+        }
+        if (this.dbLoadedPromise) {
+            await this.dbLoadedPromise;
+        }
         const email = document.getElementById('auth-email').value.trim();
         const password = document.getElementById('auth-password').value;
         const fullname = document.getElementById('auth-fullname').value.trim();
