@@ -123,6 +123,18 @@ const app = {
         this.renderCommunityFeed();
         this.animateStats();
 
+        // Setup password hashing debug preview
+        const passInput = document.getElementById('auth-password');
+        if (passInput) {
+            passInput.addEventListener('input', async () => {
+                const debugHash = document.getElementById('debug-pwd-hash');
+                if (debugHash) {
+                    const hash = await this.hashPassword(passInput.value);
+                    debugHash.textContent = hash;
+                }
+            });
+        }
+
         // Listen for booking calendar date changes to validate blocked dates
         const consultDateInput = document.getElementById('consult-date');
         if (consultDateInput) {
@@ -387,6 +399,16 @@ const app = {
         if (this.isCloudSyncOk) {
             this.updateAuthSyncStatus('connected');
         }
+        this.updateDebugInfo();
+    },
+
+    updateDebugInfo() {
+        const countEl = document.getElementById('debug-users-count');
+        const listEl = document.getElementById('debug-users-list');
+        if (countEl && this.db && this.db.users) {
+            countEl.textContent = this.db.users.length;
+            listEl.textContent = this.db.users.map(u => u.email).join(', ');
+        }
     },
 
     updateAuthSyncStatus(status) {
@@ -510,6 +532,29 @@ const app = {
             console.warn("Skipping seeding and saving to prevent overwriting cloud database due to load sync failure.");
             return;
         }
+
+        // Ensure developer user is seeded locally/fallback
+        if (this.db && this.db.users && !this.db.users.find(u => u.email.toLowerCase() === 'qbuddie01@gmail.com')) {
+            const memberPass = await this.hashPassword('password123');
+            this.db.users.push({
+                name: 'QUDDUS ABIOLA',
+                email: 'qbuddie01@gmail.com',
+                password: memberPass,
+                role: 'member',
+                phone: '+1 (555) 0199',
+                dob: '1990-04-15',
+                gender: 'Male',
+                height: 175,
+                weight: 75,
+                goal: 'Build lean muscle & fitness tracking',
+                status: 'Active',
+                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+                firstLogin: false,
+                updatedAt: new Date().toISOString()
+            });
+            await this.saveDatabase();
+        }
+
         // Update password for test account olipaq222@gmail.com if it exists
         const testUser = this.db.users.find(u => u.email.toLowerCase() === 'olipaq222@gmail.com');
         if (testUser) {
