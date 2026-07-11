@@ -533,27 +533,7 @@ const app = {
             console.warn("Cloud sync load failure: Seeding database locally to prevent lockout.");
         }
 
-        // Ensure developer user is seeded locally/fallback
-        if (this.db && this.db.users && !this.db.users.find(u => u.email.toLowerCase() === 'qbuddie01@gmail.com')) {
-            const memberPass = await this.hashPassword('password123');
-            this.db.users.push({
-                name: 'QUDDUS ABIOLA',
-                email: 'qbuddie01@gmail.com',
-                password: memberPass,
-                role: 'member',
-                phone: '+1 (555) 0199',
-                dob: '1990-04-15',
-                gender: 'Male',
-                height: 175,
-                weight: 75,
-                goal: 'Build lean muscle & fitness tracking',
-                status: 'Active',
-                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
-                firstLogin: false,
-                updatedAt: new Date().toISOString()
-            });
-            await this.saveDatabase();
-        }
+
 
         // Update password for test account olipaq222@gmail.com if it exists
         const testUser = this.db.users.find(u => u.email.toLowerCase() === 'olipaq222@gmail.com');
@@ -625,8 +605,46 @@ const app = {
                     activityLevel: 'Active',
                     streakCount: 3,
                     updatedAt: new Date().toISOString()
+                },
+                {
+                    name: 'QUDDUS ABIOLA',
+                    email: 'qbuddie01@gmail.com',
+                    password: memberPass,
+                    role: 'member',
+                    phone: '+1 (555) 0199',
+                    dob: '1990-04-15',
+                    gender: 'Male',
+                    height: 175,
+                    weight: 75,
+                    goal: 'Build lean muscle & fitness tracking',
+                    status: 'Active',
+                    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+                    firstLogin: false,
+                    updatedAt: new Date().toISOString()
                 }
             ];
+            await this.saveDatabase();
+        }
+
+        // Post-seeding validation: Ensure developer user is present locally/fallback
+        if (this.db && this.db.users && !this.db.users.find(u => u.email.toLowerCase() === 'qbuddie01@gmail.com')) {
+            const memberPass = await this.hashPassword('password123');
+            this.db.users.push({
+                name: 'QUDDUS ABIOLA',
+                email: 'qbuddie01@gmail.com',
+                password: memberPass,
+                role: 'member',
+                phone: '+1 (555) 0199',
+                dob: '1990-04-15',
+                gender: 'Male',
+                height: 175,
+                weight: 75,
+                goal: 'Build lean muscle & fitness tracking',
+                status: 'Active',
+                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+                firstLogin: false,
+                updatedAt: new Date().toISOString()
+            });
             await this.saveDatabase();
         }
 
