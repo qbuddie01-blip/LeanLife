@@ -123,6 +123,18 @@ const app = {
         this.renderCommunityFeed();
         this.animateStats();
 
+        // Setup password hashing debug preview
+        const passInput = document.getElementById('auth-password');
+        if (passInput) {
+            passInput.addEventListener('input', async () => {
+                const debugHash = document.getElementById('debug-pwd-hash');
+                if (debugHash) {
+                    const hash = await this.hashPassword(passInput.value);
+                    debugHash.textContent = hash;
+                }
+            });
+        }
+
 
         // Listen for booking calendar date changes to validate blocked dates
         const consultDateInput = document.getElementById('consult-date');
@@ -375,12 +387,71 @@ const app = {
                     this.isCloudSyncOk = true;
                 } else {
                     console.warn("Supabase fetch returned error:", error);
+                    this.updateAuthSyncStatus('offline');
                 }
             } catch (err) {
                 console.error("Failed to fetch data from Supabase:", err);
+                this.updateAuthSyncStatus('offline');
             }
         } else {
             this.isCloudSyncOk = true; // Local-only mode
+            this.updateAuthSyncStatus('local-only');
+        }
+        if (this.isCloudSyncOk) {
+            this.updateAuthSyncStatus('connected');
+        }
+        this.updateDebugInfo();
+    },
+
+    updateDebugInfo() {
+        const countEl = document.getElementById('debug-users-count');
+        const listEl = document.getElementById('debug-users-list');
+        if (countEl && this.db && this.db.users) {
+            countEl.textContent = this.db.users.length;
+            listEl.textContent = this.db.users.map(u => u.email).join(', ');
+        }
+    },
+
+    updateAuthSyncStatus(status) {
+        const dot = document.getElementById('auth-sync-dot');
+        const text = document.getElementById('auth-sync-status');
+        if (!dot || !text) return;
+        
+        if (status === 'connected') {
+            dot.style.backgroundColor = '#2ecc71'; // Green
+            text.textContent = 'Connected to Cloud DB';
+        } else if (status === 'offline') {
+            dot.style.backgroundColor = '#e74c3c'; // Red
+            text.textContent = 'Offline Mode (Cloud Sync Error)';
+        } else if (status === 'local-only') {
+            dot.style.backgroundColor = '#95a5a6'; // Gray
+            text.textContent = 'Local-only database mode';
+        }
+    },
+
+    async clearLocalDatabaseCache() {
+        console.log("Clearing local database caches...");
+        try {
+            // Clear localStorage
+            localStorage.removeItem('leanlife_db');
+            
+            // Clear IndexedDB
+            const db = await this.openDB();
+            const tx = db.transaction('store', 'readwrite');
+            const store = tx.objectStore('store');
+            store.delete('leanlife_db');
+            await new Promise((resolve, reject) => {
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+            
+            alert("App cache cleared successfully! Reloading page for a fresh database sync...");
+            window.location.reload();
+        } catch (e) {
+            console.error("Failed to clear IndexedDB cache:", e);
+            localStorage.removeItem('leanlife_db');
+            alert("Local storage cache cleared! Reloading page...");
+            window.location.reload();
         }
     },
 

@@ -347,6 +347,21 @@
                         <button type="button" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; border-color: rgba(0,0,0,0.15); color: var(--clr-text-dark);" onclick="app.fillSimulationCreds('admin@leanlife.com', 'admin123')">Admin Login</button>
                     </div>
                 </div>
+                
+                <!-- System Diagnostics (Muted/Collapsible for developer use) -->
+                <details style="margin-top: 1.5rem; font-size: 0.7rem; color: rgba(0,0,0,0.35); cursor: pointer; text-align: center; border-top: 1px solid rgba(0,0,0,0.06); padding-top: 0.8rem;">
+                    <summary style="outline: none; list-style: none; user-select: none;">System Diagnostics</summary>
+                    <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 4px; font-family: monospace; text-align: left; background: rgba(0,0,0,0.02); padding: 0.6rem; border-radius: 4px; color: #555; cursor: default;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span id="auth-sync-dot" style="width: 6px; height: 6px; border-radius: 50%; background-color: #f5a623; display: inline-block;"></span>
+                            <span id="auth-sync-status" style="font-weight: 500;">Syncing cloud database...</span>
+                        </div>
+                        <div>Users Count: <span id="debug-users-count" style="font-weight: bold;">0</span></div>
+                        <div style="word-break: break-all; max-height: 50px; overflow-y: auto;">Emails: <span id="debug-users-list" style="color: #4a90e2;">None</span></div>
+                        <div style="word-break: break-all;">Password Hash: <span id="debug-pwd-hash" style="color: #e67e22; font-weight: bold;">None</span></div>
+                        <button type="button" class="btn btn-outline" style="margin-top: 6px; padding: 0.2rem 0.4rem; font-size: 0.65rem; align-self: flex-start; border-color: rgba(0,0,0,0.1); color: var(--clr-text-dark);" onclick="app.clearLocalDatabaseCache()">Reset App Cache</button>
+                    </div>
+                </details>
             </div>
         </section>
 
@@ -1913,7 +1928,7 @@
             EMAILJS_PUBLIC_KEY: '1KO_vRCldTUVxoqtM'
         };
     </script>
-    <script src="app.js?v=2.5"></script>
+    <script src="app.js?v=2.6"></script>
 </body>
 </html>
 <!-- live deployment sync -->
