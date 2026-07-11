@@ -83,39 +83,43 @@ const app = {
     async init() {
         console.log("Initializing LeanLife App...");
         this.initSupabase();
-        this.dbLoadedPromise = this.loadDatabase();
-        await this.dbLoadedPromise;
-        await this.seedInitialData();
+        
+        this.dbLoadedPromise = (async () => {
+            await this.loadDatabase();
+            await this.seedInitialData();
 
-        // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga
-        let migrated = false;
-        if (this.db && this.db.users) {
-            this.db.users.forEach(u => {
-                if (u.name === 'Dr. Sarah Jenkins') {
-                    u.name = 'Coach Francess Orenuga';
-                    migrated = true;
-                }
-            });
-        }
-        if (this.db && this.db.posts) {
-            this.db.posts.forEach(p => {
-                if (p.author === 'Dr. Sarah Jenkins') {
-                    p.author = 'Coach Francess Orenuga';
-                    migrated = true;
-                }
-                if (p.comments) {
-                    p.comments.forEach(c => {
-                        if (c.author === 'Dr. Sarah Jenkins') {
-                            c.author = 'Coach Francess Orenuga';
-                            migrated = true;
-                        }
-                    });
-                }
-            });
-        }
-        if (migrated) {
-            await this.saveDatabase();
-        }
+            // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga
+            let migrated = false;
+            if (this.db && this.db.users) {
+                this.db.users.forEach(u => {
+                    if (u.name === 'Dr. Sarah Jenkins') {
+                        u.name = 'Coach Francess Orenuga';
+                        migrated = true;
+                    }
+                });
+            }
+            if (this.db && this.db.posts) {
+                this.db.posts.forEach(p => {
+                    if (p.author === 'Dr. Sarah Jenkins') {
+                        p.author = 'Coach Francess Orenuga';
+                        migrated = true;
+                    }
+                    if (p.comments) {
+                        p.comments.forEach(c => {
+                            if (c.author === 'Dr. Sarah Jenkins') {
+                                c.author = 'Coach Francess Orenuga';
+                                migrated = true;
+                            }
+                        });
+                    }
+                });
+            }
+            if (migrated) {
+                await this.saveDatabase();
+            }
+        })();
+
+        await this.dbLoadedPromise;
 
         this.checkSession();
         this.startCarousel();
@@ -783,6 +787,7 @@ const app = {
             ];
             this.saveDatabase();
         }
+        this.updateDebugInfo();
     },
 
     // Session validation
