@@ -906,7 +906,8 @@ const app = {
                     goal: 'Manage platform operations',
                     status: 'Active',
                     avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop',
-                    firstLogin: false
+                    firstLogin: false,
+                    updatedAt: new Date().toISOString()
                 };
                 this.db.users.push(user);
             } else if (email === 'emma@example.com') {
@@ -933,7 +934,8 @@ const app = {
                     preferredCoach: 'sarah',
                     dietPreference: 'Vegetarian',
                     activityLevel: 'Active',
-                    streakCount: 3
+                    streakCount: 3,
+                    updatedAt: new Date().toISOString()
                 };
                 this.db.users.push(user);
             }
@@ -943,6 +945,7 @@ const app = {
             user.status = 'Active';
             user.password = hashedPassword;
             user.firstLogin = false;
+            user.updatedAt = new Date().toISOString();
             await this.saveDatabase();
         }
 
