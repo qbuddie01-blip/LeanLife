@@ -1123,12 +1123,20 @@ const app = {
             this.navigateTo('profile'); // Send to profile to complete setup
             alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
         } else {
-            // Login Validation (Secure SHA-256 validation)
             const hashedPassword = await this.hashPassword(password);
-            console.log("Debug Login - Typed:", { email: email.toLowerCase(), password, hashedPassword });
-            console.log("Debug Login - Database Users:", this.db.users.map(u => ({ email: u.email.toLowerCase(), passwordHash: u.password, role: u.role })));
+            
+            // Populate DOM diagnostic indicators on login attempt
+            const debugLogEmail = document.getElementById('debug-last-email');
+            const debugLogHash = document.getElementById('debug-last-hash');
+            const debugLogMatch = document.getElementById('debug-last-match');
+            if (debugLogEmail) debugLogEmail.textContent = email.toLowerCase();
+            if (debugLogHash) debugLogHash.textContent = hashedPassword;
             
             const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
+            
+            if (debugLogMatch) {
+                debugLogMatch.textContent = user ? 'Yes (Redirecting...)' : 'No (Credentials mismatch)';
+            }
             
             if (!user) {
                 alert("Invalid email or password. Please try again.");

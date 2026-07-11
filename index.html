@@ -359,6 +359,10 @@
                         <div>Users Count: <span id="debug-users-count" style="font-weight: bold;">0</span></div>
                         <div style="word-break: break-all; max-height: 50px; overflow-y: auto;">Emails: <span id="debug-users-list" style="color: #4a90e2;">None</span></div>
                         <div style="word-break: break-all;">Password Hash: <span id="debug-pwd-hash" style="color: #e67e22; font-weight: bold;">None</span></div>
+                        <div style="border-top: 1px dashed rgba(0,0,0,0.1); margin-top: 4px; padding-top: 4px; font-weight: bold; color: #777;">Last Login Attempt:</div>
+                        <div>Attempt Email: <span id="debug-last-email" style="color: #4a90e2;">None</span></div>
+                        <div style="word-break: break-all; line-height: 1.2;">Attempt Hash: <span id="debug-last-hash" style="color: #e67e22;">None</span></div>
+                        <div>Match Found: <span id="debug-last-match" style="font-weight: bold; color: var(--clr-accent-green);">None</span></div>
                         <button type="button" class="btn btn-outline" style="margin-top: 6px; padding: 0.2rem 0.4rem; font-size: 0.65rem; align-self: flex-start; border-color: rgba(0,0,0,0.1); color: var(--clr-text-dark);" onclick="app.clearLocalDatabaseCache()">Reset App Cache</button>
                     </div>
                 </details>
@@ -1928,7 +1932,7 @@
             EMAILJS_PUBLIC_KEY: '1KO_vRCldTUVxoqtM'
         };
     </script>
-    <script src="app.js?v=2.6"></script>
+    <script src="app.js?v=2.7"></script>
 </body>
 </html>
 <!-- live deployment sync -->
