@@ -347,25 +347,6 @@
                         <button type="button" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; border-color: rgba(0,0,0,0.15); color: var(--clr-text-dark);" onclick="app.fillSimulationCreds('admin@leanlife.com', 'admin123')">Admin Login</button>
                     </div>
                 </div>
-                
-                <!-- Cloud Database Sync Status & Reset Cache -->
-                <div id="auth-status-container" style="margin-top: 1.5rem; border-top: 1px solid rgba(0, 0, 0, 0.08); padding-top: 1rem; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <span id="auth-sync-dot" style="width: 8px; height: 8px; border-radius: 50%; background-color: #f5a623; display: inline-block;"></span>
-                        <span id="auth-sync-status" style="font-weight: 500; color: #555;">Syncing cloud database...</span>
-                    </div>
-                    <button type="button" class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; border-color: rgba(0,0,0,0.12); color: var(--clr-text-dark);" onclick="app.clearLocalDatabaseCache()">Reset App Cache</button>
-                </div>
-                
-                <!-- Developer Debug Diagnostics Collapsible -->
-                <details style="margin-top: 1rem; font-size: 0.75rem; color: #666; cursor: pointer; text-align: left; background: rgba(0,0,0,0.03); padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(0,0,0,0.05);">
-                    <summary style="font-weight: 600; outline: none;">Developer Debug Diagnostics</summary>
-                    <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 6px; font-family: monospace; user-select: text;">
-                        <div>Memory Users Count: <span id="debug-users-count" style="font-weight: bold; color: var(--clr-accent-green);">0</span></div>
-                        <div style="word-break: break-all; line-height: 1.3;">Seeded / Synced Emails: <span id="debug-users-list" style="color: #4a90e2;">None</span></div>
-                        <div style="word-break: break-all; line-height: 1.3;">Typed Password Hash (SHA-256): <span id="debug-pwd-hash" style="color: #e67e22; font-weight: bold;">None</span></div>
-                    </div>
-                </details>
             </div>
         </section>
 
@@ -1932,7 +1913,7 @@
             EMAILJS_PUBLIC_KEY: '1KO_vRCldTUVxoqtM'
         };
     </script>
-    <script src="app.js?v=2.4"></script>
+    <script src="app.js?v=2.5"></script>
 </body>
 </html>
 <!-- live deployment sync -->
