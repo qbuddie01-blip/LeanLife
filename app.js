@@ -530,8 +530,7 @@ const app = {
     // Seed mock data for first-time usage
     async seedInitialData() {
         if (!this.isCloudSyncOk) {
-            console.warn("Skipping seeding and saving to prevent overwriting cloud database due to load sync failure.");
-            return;
+            console.warn("Cloud sync load failure: Seeding database locally to prevent lockout.");
         }
 
         // Ensure developer user is seeded locally/fallback
