@@ -3777,13 +3777,19 @@ const app = {
 if (window.app) {
     const queue = window.app._queue || [];
     
-    // Copy all properties to window.app
-    Object.assign(window.app, app);
+    // Copy and bind all properties to window.app to keep correct execution context
+    for (const key in app) {
+        if (typeof app[key] === 'function') {
+            window.app[key] = app[key].bind(window.app);
+        } else {
+            window.app[key] = app[key];
+        }
+    }
     window.app.initialized = true;
     
     // Bind methods to keep correct context
-    window.app.realNavigateTo = app.navigateTo.bind(window.app);
-    window.app.realLogout = app.logout.bind(window.app);
+    window.app.realNavigateTo = window.app.navigateTo;
+    window.app.realLogout = window.app.logout;
     
     // Replay any navigation actions clicked before app.js loaded
     queue.forEach(q => {
