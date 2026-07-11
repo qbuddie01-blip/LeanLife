@@ -1,7 +1,7 @@
 // LeanLife Wellness Community Web App - Core Application Engine
 
 // ==================== STATE MANAGEMENT & DATABASE INITIALIZATION ====================
-const app = {
+const leanLifeAppCore = {
     // Current Active Session
     currentUser: null,
     activeView: 'home',
@@ -3778,11 +3778,11 @@ if (window.app) {
     const queue = window.app._queue || [];
     
     // Copy and bind all properties to window.app to keep correct execution context
-    for (const key in app) {
-        if (typeof app[key] === 'function') {
-            window.app[key] = app[key].bind(window.app);
+    for (const key in leanLifeAppCore) {
+        if (typeof leanLifeAppCore[key] === 'function') {
+            window.app[key] = leanLifeAppCore[key].bind(window.app);
         } else {
-            window.app[key] = app[key];
+            window.app[key] = leanLifeAppCore[key];
         }
     }
     window.app.initialized = true;
@@ -3796,7 +3796,7 @@ if (window.app) {
         if (q.type === 'navigate') window.app.realNavigateTo(q.view);
     });
 } else {
-    window.app = app;
+    window.app = leanLifeAppCore;
 }
 
 // Start application immediately if DOM is already ready, otherwise on DOMContentLoaded
