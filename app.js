@@ -1132,14 +1132,21 @@ const app = {
             if (debugLogEmail) debugLogEmail.textContent = email.toLowerCase();
             if (debugLogHash) debugLogHash.textContent = hashedPassword;
             
-            const matchedUsersByEmail = this.db.users.filter(u => u.email.toLowerCase() === email.toLowerCase());
+            // Generate detailed debug trace
+            let trace = '';
+            const typedCodes = Array.from(email.toLowerCase()).map(c => c.charCodeAt(0)).join(',');
+            trace += `Typed: "${email.toLowerCase()}" [${typedCodes}] | `;
+            
+            const dbMatch = this.db.users.find(u => u.email.toLowerCase().includes('qbuddie01'));
+            if (dbMatch) {
+                const dbCodes = Array.from(dbMatch.email.toLowerCase()).map(c => c.charCodeAt(0)).join(',');
+                trace += `DB: "${dbMatch.email.toLowerCase()}" [${dbCodes}]`;
+            } else {
+                trace += `No qbuddie01 in DB users! List: ` + this.db.users.map(u => u.email).join(', ');
+            }
+            
             if (debugLogMatch) {
-                if (matchedUsersByEmail.length === 0) {
-                    debugLogMatch.textContent = 'No user found with this email';
-                } else {
-                    const firstMatch = matchedUsersByEmail[0];
-                    debugLogMatch.textContent = `Email found. DB Hash: ${firstMatch.password || 'undefined'}. Match: ${firstMatch.password === hashedPassword ? 'YES' : 'NO'}`;
-                }
+                debugLogMatch.textContent = trace;
             }
             
             const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
