@@ -3787,5 +3787,9 @@ if (window.app) {
     window.app = app;
 }
 
-// Start application on DOM loaded
-window.addEventListener('DOMContentLoaded', () => window.app.init());
+// Start application immediately if DOM is already ready, otherwise on DOMContentLoaded
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    window.app.init();
+} else {
+    window.addEventListener('DOMContentLoaded', () => window.app.init());
+}
