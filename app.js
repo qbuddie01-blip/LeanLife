@@ -1479,8 +1479,8 @@ const app = {
             happy: `"Feeling happy! Boosts overall lymphatic health and nutrient assimilation. Consider a short walk to extend this."`,
             good: `"Good emotional rating. Balance this with deep breath cycles to lock in your steady productivity state."`,
             neutral: `"Neutral state. Engage in 15 minutes of outdoor sunlight exposure to elevate serotonin receptors."`,
-            sad: `"Feeling low? Frannie advises a warm herbal tea, 5 minutes of gratitude journaling, and avoiding screen lights."`,
-            stressed: `"Stress indicators detected! Frannie recommends a 4-7-8 breathing exercise: inhale 4s, hold 7s, exhale 8s."`,
+            sad: `"Feeling low? Coach Frannie advises a warm herbal tea, 5 minutes of gratitude journaling, and avoiding screen lights."`,
+            stressed: `"Stress indicators detected! Coach Frannie recommends a 4-7-8 breathing exercise: inhale 4s, hold 7s, exhale 8s."`,
             tired: `"Tiredness check: Your recovery score demands rest. Prioritize sleep quality and minimize screen lights."`,
             angry: `"Anger triggers metabolic heat. Engaged in box breathing: inhale, hold, exhale, hold for 4 seconds each."`
         };
@@ -1975,11 +1975,11 @@ const app = {
         report.analyses = {
             sleep: {
                 desc: `You completed ${sleepVal} hours of sleep, waking up at ${log.sleep.wakeup}. Sleep consistency is scored high at ${sleepScore}%. Circadian clocks remain steady.`,
-                rec: `Recovery score is ${sleepScore}. Frannie recommends a target bedtime of ${log.sleep.bedtime} tonight with no blue screen lights in the preceding 30 minutes.`
+                rec: `Recovery score is ${sleepScore}. Coach Frannie recommends a target bedtime of ${log.sleep.bedtime} tonight with no blue screen lights in the preceding 30 minutes.`
             },
             water: {
                 desc: `Hydration level is at ${waterVal * 250}ml (${waterVal}/10 drops). Your overall water completion score is ${waterScore}%.`,
-                tips: waterVal >= 10 ? `Excellent! Your cells are fully hydrated. Keep logging to track consistency.` : `Frannie notes that increasing water by ${10 - waterVal} glasses today will reduce muscle fatigue and optimize kidney clearance levels.`
+                tips: waterVal >= 10 ? `Excellent! Your cells are fully hydrated. Keep logging to track consistency.` : `Coach Frannie notes that increasing water by ${10 - waterVal} glasses today will reduce muscle fatigue and optimize kidney clearance levels.`
             },
             nutrition: {
                 profile: `Estimated intake: 1,920 kcal. Protein: 95g, Carbohydrates: 210g, Healthy Fats: 58g, Fiber: 30g, Sodium: 1,320mg. Meal balance rating is high.`,
@@ -1992,7 +1992,7 @@ const app = {
             mental: {
                 desc: `Emotional wellness rating: ${log.mood.toUpperCase()}. Stress level registered: ${stressVal}/10. Thought index is highly positive. Journal analysis indicates consistent gratitude focus.`
             },
-            motivate: `Outstanding execution today, ${this.currentUser.name}! Logging your details consistently builds accountability. Frannie is highly impressed with your gratitude practices. Let's hit 10,000 steps tomorrow!`
+            motivate: `Outstanding execution today, ${this.currentUser.name}! Logging your details consistently builds accountability. Coach Frannie is highly impressed with your gratitude practices. Let's hit 10,000 steps tomorrow!`
         };
 
         this.saveDatabase();
@@ -2001,7 +2001,7 @@ const app = {
         this.logAudit(this.currentUser.name, 'AI Report Generated', `Wellness analysis finished for log ${log.id}`);
         
         // Show browser push notification (simulated in console / alert)
-        alert(`🔔 Frannie's Wellness Analysis is ready! Overall Wellness Score: ${overallScore} (Grade: ${grade}). Go check the Wellness Report tab.`);
+        alert(`🔔 Coach Frannie's Wellness Analysis is ready! Overall Wellness Score: ${overallScore} (Grade: ${grade}). Go check the Wellness Report tab.`);
 
         // If user is currently looking at dashboard, refresh it
         if (this.activeView === 'dashboard') {
