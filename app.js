@@ -1132,11 +1132,17 @@ const app = {
             if (debugLogEmail) debugLogEmail.textContent = email.toLowerCase();
             if (debugLogHash) debugLogHash.textContent = hashedPassword;
             
-            const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
-            
+            const matchedUsersByEmail = this.db.users.filter(u => u.email.toLowerCase() === email.toLowerCase());
             if (debugLogMatch) {
-                debugLogMatch.textContent = user ? 'Yes (Redirecting...)' : 'No (Credentials mismatch)';
+                if (matchedUsersByEmail.length === 0) {
+                    debugLogMatch.textContent = 'No user found with this email';
+                } else {
+                    const firstMatch = matchedUsersByEmail[0];
+                    debugLogMatch.textContent = `Email found. DB Hash: ${firstMatch.password || 'undefined'}. Match: ${firstMatch.password === hashedPassword ? 'YES' : 'NO'}`;
+                }
             }
+            
+            const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
             
             if (!user) {
                 alert("Invalid email or password. Please try again.");
