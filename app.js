@@ -134,7 +134,29 @@ const app = {
                 }
             });
         }
-
+        // Setup hidden developer backdoor: click logo 5 times within 3 seconds to reveal Diagnostics Panel
+        const logo = document.querySelector('.brand-logo-container');
+        if (logo) {
+            let clickCount = 0;
+            let firstClickTime = 0;
+            logo.addEventListener('click', () => {
+                const now = Date.now();
+                if (now - firstClickTime > 3000) {
+                    clickCount = 1;
+                    firstClickTime = now;
+                } else {
+                    clickCount++;
+                }
+                if (clickCount === 5) {
+                    const panel = document.getElementById('developer-diagnostics-panel');
+                    if (panel) {
+                        panel.style.display = 'block';
+                        alert("Developer diagnostics menu unlocked! Scroll to the bottom of the login card to view troubleshooting details.");
+                    }
+                    clickCount = 0;
+                }
+            });
+        }
 
         // Listen for booking calendar date changes to validate blocked dates
         const consultDateInput = document.getElementById('consult-date');
