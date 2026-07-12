@@ -593,7 +593,7 @@ const leanLifeAppCore = {
                 },
                 {
                     name: 'Coach Francess Orenuga',
-                    email: 'sarah@leanlife.com',
+                    email: 'francessronke21@gmail.com',
                     password: coachPass,
                     role: 'coach',
                     phone: '+1 (555) 0199',
