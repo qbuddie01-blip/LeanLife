@@ -8,6 +8,34 @@
     <!-- FontAwesome for Premium Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
+        // Stub global app object to prevent ReferenceErrors if elements are clicked before app.js loads
+        window.app = {
+            _queue: [],
+            navigateTo: function(view) {
+                if (window.app.initialized) {
+                    window.app.realNavigateTo(view);
+                } else {
+                    window.app._queue.push({ type: 'navigate', view: view });
+                }
+            },
+            logout: function() {
+                if (window.app.initialized) window.app.realLogout();
+            },
+            handleAuthSubmit: function(e) { if(e) e.preventDefault(); },
+            handleCoachRequest: function(e) { if(e) e.preventDefault(); },
+            handleNewPostSubmit: function(e) { if(e) e.preventDefault(); },
+            handleProfileSave: function(e) { if(e) e.preventDefault(); },
+            handlePasswordChange: function(e) { if(e) e.preventDefault(); },
+            handleBlockDate: function(e) { if(e) e.preventDefault(); },
+            toggleUserStatus: function() {},
+            adminResetPassword: function() {},
+            selectMood: function() {},
+            switchAdminTab: function() {},
+            filterCommunity: function() {},
+            openAdminLogDetails: function() {}
+        };
+    </script>
+    <script>
         window.onerror = function(message, source, lineno, colno, error) {
             const errorDiv = document.createElement('div');
             errorDiv.id = 'fatal-error-banner';
@@ -88,8 +116,7 @@
                 <!-- Mobile Menu Account / Buttons (Mobile only) -->
                 <div class="mobile-menu-buttons" style="display: none; width: 100%; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
                     <div id="mobile-auth-nav-buttons" style="display: flex; flex-direction: column; gap: 0.8rem; width: 100%;">
-                        <button class="btn btn-outline" style="color: #ffffff; border-color: rgba(255,255,255,0.3); width: 100%; justify-content: center;" onclick="app.navigateTo('login')">Login</button>
-                        <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="app.navigateTo('login', {tab: 'register'})">Join Community</button>
+                        <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="app.navigateTo('login')">Login to Portal</button>
                     </div>
                     <div id="mobile-user-nav-dropdown" style="display: none; flex-direction: column; align-items: center; gap: 1rem; width: 100%;" onclick="app.navigateTo('profile')">
                         <div style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center;">
@@ -106,8 +133,7 @@
             <div class="nav-buttons">
                 <!-- User Profile / Auth Actions -->
                 <div id="auth-nav-buttons">
-                    <button class="btn btn-outline" onclick="app.navigateTo('login')">Login</button>
-                    <button class="btn btn-primary" onclick="app.navigateTo('login', {tab: 'register'})">Join Community</button>
+                    <button class="btn btn-primary" onclick="app.navigateTo('login')">Login to Portal</button>
                 </div>
                 <div id="user-nav-dropdown" style="display: none; align-items: center; gap: 12px; cursor: pointer;" onclick="app.navigateTo('profile')">
                     <span id="user-display-name" style="font-weight: 600; font-family: var(--font-brand);">Member</span>
@@ -126,8 +152,8 @@
             </div>
             <h2 style="font-family: var(--font-brand); font-size: 2.2rem;">Wellness Log Saved!</h2>
             <div class="glass-card" style="max-width: 500px; text-align: center;">
-                <p style="font-style: italic; margin-bottom: 1rem;">"Thank you for completing your Daily Wellness Log. Frannie is analyzing your Daily Wellness Log and will respond shortly."</p>
-                <span class="speedup-badge" onclick="app.triggerAISpeedUp()">Speed Up Analysis (Simulate 1 Hour)</span>
+                <p style="font-style: italic; margin-bottom: 1rem;">"Thank you for completing your Daily Wellness Log. Coach Frannie is analyzing your Daily Wellness Log and will respond shortly."</p>
+                <span class="speedup-badge" onclick="app.triggerAISpeedUp()">Speed Up Analysis (1 Hour)</span>
             </div>
             <button class="btn btn-primary" onclick="app.closeSuccessOverlay()">Go to Dashboard</button>
         </div>
@@ -141,8 +167,7 @@
                     <h1>LeanLife Wellness <span class="title-highlight">Community App</span></h1>
                     <p>Transforming Lives Through Science-Backed Wellness, Shared Accountability & Active Community</p>
                     <div class="hero-ctas">
-                        <button class="btn btn-primary" onclick="app.navigateTo('login', {tab: 'register'})">Join Community</button>
-                        <button class="btn btn-secondary" onclick="app.navigateTo('login')">Login</button>
+                        <button class="btn btn-primary" onclick="app.navigateTo('login')">Login to Portal</button>
                         <a class="btn btn-outline" href="#features-anchor">Learn More</a>
                     </div>
                 </div>
@@ -238,7 +263,7 @@
             <div id="features-anchor">
                 <h2 class="features-section-title">Explore App Features</h2>
                 <div class="features-grid">
-                    <div class="feature-card" onclick="app.navigateToFeature('wellness-log')">
+                    <div class="feature-card" onclick="app.navigateToFeature('wellness-log', this)">
                         <div class="feature-card-bg">
                             <img src="assets/card_log.png" alt="Daily Log">
                         </div>
@@ -248,7 +273,7 @@
                             <p>Track steps, hydration, meals, mood, sleep and fasting under Frannie's coaching.</p>
                         </div>
                     </div>
-                    <div class="feature-card" onclick="app.navigateToFeature('coaching')">
+                    <div class="feature-card" onclick="app.navigateToFeature('coaching', this)">
                         <div class="feature-card-bg">
                             <img src="assets/card_coach.png" alt="Speak with Coach">
                         </div>
@@ -258,7 +283,7 @@
                             <p>Direct WhatsApp integration and virtual consultations with certified premium healthcare specialists.</p>
                         </div>
                     </div>
-                    <div class="feature-card" onclick="app.navigateToFeature('community')">
+                    <div class="feature-card" onclick="app.navigateToFeature('community', this)">
                         <div class="feature-card-bg">
                             <img src="assets/card_community.png" alt="Community">
                         </div>
@@ -268,7 +293,7 @@
                             <p>Discuss recipes, share progress photos, join fitness challenges, and earn member badges.</p>
                         </div>
                     </div>
-                    <div class="feature-card" onclick="app.navigateToFeature('notice-board')">
+                    <div class="feature-card" onclick="app.navigateToFeature('notice-board', this)">
                         <div class="feature-card-bg">
                             <img src="assets/card_board.png" alt="Notice Board">
                         </div>
@@ -293,15 +318,15 @@
                 <form id="auth-form" onsubmit="app.handleAuthSubmit(event)">
                     <div class="form-group" id="group-name" style="display: none;">
                         <label for="auth-fullname">Full Name</label>
-                        <input type="text" id="auth-fullname" class="form-input" placeholder="Emma Watson" autocapitalize="words" autocorrect="off">
+                        <input type="text" id="auth-fullname" class="form-input" placeholder="Emma Watson">
                     </div>
                     <div class="form-group">
                         <label for="auth-email">Email Address</label>
-                        <input type="email" id="auth-email" class="form-input" placeholder="emma@example.com" required autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email">
+                        <input type="email" id="auth-email" class="form-input" placeholder="emma@example.com" required>
                     </div>
                     <div class="form-group">
                         <label for="auth-password">Password</label>
-                        <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required autocapitalize="none" autocorrect="off" spellcheck="false">
+                        <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required>
                     </div>
                     
                     <div class="form-row" id="auth-row-remember">
@@ -323,9 +348,24 @@
                     </div>
                 </div>
                 
-                <div class="auth-footer">
-                    <p id="auth-footer-text">Don't have an account? <a href="#" onclick="app.switchAuthTab('register')">Register here</a></p>
-                </div>
+                <!-- System Diagnostics (Muted/Collapsible for developer use) -->
+                <details id="developer-diagnostics-panel" style="display: none; margin-top: 1.5rem; font-size: 0.7rem; color: rgba(0,0,0,0.35); cursor: pointer; text-align: center; border-top: 1px solid rgba(0,0,0,0.06); padding-top: 0.8rem;">
+                    <summary style="outline: none; list-style: none; user-select: none;">System Diagnostics</summary>
+                    <div style="margin-top: 0.5rem; display: flex; flex-direction: column; gap: 4px; font-family: monospace; text-align: left; background: rgba(0,0,0,0.02); padding: 0.6rem; border-radius: 4px; color: #555; cursor: default;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span id="auth-sync-dot" style="width: 6px; height: 6px; border-radius: 50%; background-color: #f5a623; display: inline-block;"></span>
+                            <span id="auth-sync-status" style="font-weight: 500;">Syncing cloud database...</span>
+                        </div>
+                        <div>Users Count: <span id="debug-users-count" style="font-weight: bold;">0</span></div>
+                        <div style="word-break: break-all; max-height: 50px; overflow-y: auto;">Emails: <span id="debug-users-list" style="color: #4a90e2;">None</span></div>
+                        <div style="word-break: break-all;">Password Hash: <span id="debug-pwd-hash" style="color: #e67e22; font-weight: bold;">None</span></div>
+                        <div style="border-top: 1px dashed rgba(0,0,0,0.1); margin-top: 4px; padding-top: 4px; font-weight: bold; color: #777;">Last Login Attempt:</div>
+                        <div>Attempt Email: <span id="debug-last-email" style="color: #4a90e2;">None</span></div>
+                        <div style="word-break: break-all; line-height: 1.2;">Attempt Hash: <span id="debug-last-hash" style="color: #e67e22;">None</span></div>
+                        <div>Match Found: <span id="debug-last-match" style="font-weight: bold; color: var(--clr-accent-green);">None</span></div>
+                        <button type="button" class="btn btn-outline" style="margin-top: 6px; padding: 0.2rem 0.4rem; font-size: 0.65rem; align-self: flex-start; border-color: rgba(0,0,0,0.1); color: var(--clr-text-dark);" onclick="app.clearLocalDatabaseCache()">Reset App Cache</button>
+                    </div>
+                </details>
             </div>
         </section>
 
@@ -337,7 +377,7 @@
                 <div class="dashboard-main">
                     <div class="dashboard-welcome">
                         <div class="welcome-info">
-                            <h2>Hello, <span id="dash-user-name">Member</span>!</h2>
+                            <h2><i class="fa-solid fa-seedling" style="color: #a5e332; font-size: 1.8rem; filter: drop-shadow(0 2px 4px rgba(165,227,50,0.25));"></i> Hello, <span id="dash-user-name">Member</span>!</h2>
                             <p id="dash-greeting-msg">Ready to elevate your wellness targets today? Let's stay accountable!</p>
                         </div>
                         <div class="streak-badge">
@@ -415,7 +455,7 @@
                                 <div class="timer-unit" id="timer-min">59</div>
                                 <div class="timer-unit" id="timer-sec">59</div>
                             </div>
-                            <span class="speedup-badge" onclick="app.triggerAISpeedUp()">Speed Up Analysis (Simulate 1 Hour)</span>
+                            <span class="speedup-badge" onclick="app.triggerAISpeedUp()">Speed Up Analysis (1 Hour)</span>
                         </div>
                     </div>
 
@@ -994,6 +1034,29 @@
                     </div>
 
                     <form onsubmit="app.handleProfileSave(event)">
+                        <!-- Profile Photo / Avatar Selector -->
+                        <div class="form-group" style="grid-column: span 2; display: flex; flex-direction: column; align-items: center; margin-bottom: 2rem; border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 2rem;">
+                            <label style="font-weight: 600; font-size: 1rem; margin-bottom: 1rem;">Profile Picture</label>
+                            <div style="position: relative; width: 120px; height: 120px; margin-bottom: 1rem;">
+                                <img id="prof-avatar-preview" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop" alt="Avatar Preview" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid var(--clr-primary); box-shadow: 0 4px 10px rgba(0,0,0,0.15);">
+                                <label for="prof-photo-upload" style="position: absolute; bottom: 0; right: 0; background: var(--clr-primary); color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: all 0.2s;" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(1)';">
+                                    <i class="fa-solid fa-camera" style="font-size: 0.9rem;"></i>
+                                </label>
+                                <input type="file" id="prof-photo-upload" accept="image/*" style="display: none;" onchange="app.handleProfilePhotoUpload(event)">
+                            </div>
+                            
+                            <div style="text-align: center; margin-bottom: 1rem;">
+                                <span style="font-size: 0.8rem; color: #777;">PNG, JPG up to 5MB (Auto-compressed)</span>
+                            </div>
+                            
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 100%;">
+                                <span style="font-size: 0.85rem; font-weight: 500; color: #555;">Or choose a premium preset:</span>
+                                <div style="display: flex; gap: 0.8rem; justify-content: center; flex-wrap: wrap; margin-top: 0.25rem;" id="preset-avatar-grid">
+                                    <!-- Preset avatars loaded via JS -->
+                                </div>
+                            </div>
+                        </div>
+
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem;">
                             <div class="form-group">
                                 <label for="prof-name">Full Name</label>
@@ -1094,7 +1157,7 @@
         <section id="view-admin" class="view-section">
             <h2 style="font-family: var(--font-brand); font-size: 2.2rem; margin-bottom: 2rem; text-align: center;">Super Admin Console</h2>
             
-            <div class="admin-tab-nav" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 2rem; justify-content: center;">
+            <div class="admin-tab-nav">
                 <button class="admin-tab-btn active" id="btn-admin-users" onclick="app.switchAdminTab('users')"><i class="fa-solid fa-users"></i> Users</button>
                 <button class="admin-tab-btn" id="btn-admin-logs-cms" onclick="app.switchAdminTab('logs-cms')"><i class="fa-solid fa-pen-to-square"></i> Wellness Logs</button>
                 <button class="admin-tab-btn" id="btn-admin-reports-cms" onclick="app.switchAdminTab('reports-cms')"><i class="fa-solid fa-square-poll-horizontal"></i> Reports Archive</button>
@@ -1478,6 +1541,21 @@
                         </table>
                     </div>
                 </div>
+                <div class="glass-card" style="margin-top: 2rem;">
+                    <h3 style="font-family: var(--font-brand); margin-bottom: 1.5rem;"><i class="fa-solid fa-calendar-minus"></i> Block Off Consultation Dates</h3>
+                    <form onsubmit="app.handleBlockDate(event)" style="display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem;">
+                        <div class="form-group" style="margin: 0; flex: 1;">
+                            <label for="block-date-input">Select Date to Block</label>
+                            <input type="date" id="block-date-input" class="form-input" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="height: 42px;">Block Date</button>
+                    </form>
+                    
+                    <h4 style="font-family: var(--font-brand); margin-bottom: 0.8rem;">Currently Blocked Dates</h4>
+                    <ul id="admin-blocked-dates-list" style="display: flex; flex-direction: column; gap: 8px; padding-left: 1.2rem; font-size: 0.95rem;">
+                        <!-- Dynamic -->
+                    </ul>
+                </div>
             </div>
 
             <!-- SUBVIEW 8: ANALYTICS DASHBOARD -->
@@ -1844,7 +1922,17 @@
 
     <!-- Application Script -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=1.0.2"></script>
-    <script src="app.js?v=1.0.2"></script>
+    <script>
+        window.SUPABASE_CONFIG = {
+            URL: 'https://fgjjeyonzhuipnbdebvr.supabase.co',
+            KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnampleW9uemh1aXBuYmRlYnZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NjE0NDYsImV4cCI6MjA5OTQzNzQ0Nn0.l1Gy0IXP1L_CnWy84QjeQCjrGvRa1F7vkOoCc_aOONY',
+            EMAILJS_SERVICE_ID: 'service_a1av3q9',
+            EMAILJS_TEMPLATE_ID: 'template_gyjh3gp',
+            EMAILJS_WELCOME_TEMPLATE_ID: 'template_gyjh3gp',
+            EMAILJS_PUBLIC_KEY: '1KO_vRCldTUVxoqtM'
+        };
+    </script>
+    <script src="app.js?v=4.0"></script>
 </body>
 </html>
+<!-- live deployment sync -->

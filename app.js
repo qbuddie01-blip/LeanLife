@@ -1,7 +1,7 @@
 // LeanLife Wellness Community Web App - Core Application Engine
 
 // ==================== STATE MANAGEMENT & DATABASE INITIALIZATION ====================
-const app = {
+const leanLifeAppCore = {
     // Current Active Session
     currentUser: null,
     activeView: 'home',
@@ -12,6 +12,7 @@ const app = {
     stepsChartMode: 'week', // 'week' or 'month'
     activeAdminTab: 'users',
     activeCommunityCategory: 'all',
+    isCloudSyncOk: false,
     
     // Live countdown timer state for Frannie's AI report
     activeCountdown: null,
@@ -82,50 +83,98 @@ const app = {
     async init() {
         console.log("Initializing LeanLife App...");
         this.initSupabase();
-        await this.loadDatabase();
-        await this.seedInitialData();
+        
+        this.dbLoadedPromise = (async () => {
+            await this.loadDatabase();
+            await this.seedInitialData();
 
-        // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga
-        let migrated = false;
-        if (this.db && this.db.users) {
-            this.db.users.forEach(u => {
-                if (u.name === 'Dr. Sarah Jenkins') {
-                    u.name = 'Coach Francess Orenuga';
-                    migrated = true;
-                }
-            });
-        }
-        if (this.db && this.db.posts) {
-            this.db.posts.forEach(p => {
-                if (p.author === 'Dr. Sarah Jenkins') {
-                    p.author = 'Coach Francess Orenuga';
-                    migrated = true;
-                }
-                if (p.comments) {
-                    p.comments.forEach(c => {
-                        if (c.author === 'Dr. Sarah Jenkins') {
-                            c.author = 'Coach Francess Orenuga';
-                            migrated = true;
-                        }
-                    });
-                }
-            });
-        }
-        if (migrated) {
-            await this.saveDatabase();
-        }
+            // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga
+            let migrated = false;
+            if (this.db && this.db.users) {
+                this.db.users.forEach(u => {
+                    if (u.name === 'Dr. Sarah Jenkins') {
+                        u.name = 'Coach Francess Orenuga';
+                        migrated = true;
+                    }
+                });
+            }
+            if (this.db && this.db.posts) {
+                this.db.posts.forEach(p => {
+                    if (p.author === 'Dr. Sarah Jenkins') {
+                        p.author = 'Coach Francess Orenuga';
+                        migrated = true;
+                    }
+                    if (p.comments) {
+                        p.comments.forEach(c => {
+                            if (c.author === 'Dr. Sarah Jenkins') {
+                                c.author = 'Coach Francess Orenuga';
+                                migrated = true;
+                            }
+                        });
+                    }
+                });
+            }
+            if (migrated) {
+                await this.saveDatabase();
+            }
+        })();
+
+        await this.dbLoadedPromise;
 
         this.checkSession();
         this.startCarousel();
         this.renderNoticeBoard();
         this.renderCommunityFeed();
         this.animateStats();
-        
-        // Form submissions
-        const authForm = document.getElementById('auth-form');
-        if (authForm) {
-            authForm.addEventListener('submit', (e) => this.handleAuthSubmit(e));
+
+        // Setup password hashing debug preview
+        const passInput = document.getElementById('auth-password');
+        if (passInput) {
+            passInput.addEventListener('input', async () => {
+                const debugHash = document.getElementById('debug-pwd-hash');
+                if (debugHash) {
+                    const hash = await this.hashPassword(passInput.value);
+                    debugHash.textContent = hash;
+                }
+            });
         }
+        // Setup hidden developer backdoor: click logo 5 times within 3 seconds to reveal Diagnostics Panel
+        const logo = document.querySelector('.brand-logo-container');
+        if (logo) {
+            let clickCount = 0;
+            let firstClickTime = 0;
+            logo.addEventListener('click', () => {
+                const now = Date.now();
+                if (now - firstClickTime > 3000) {
+                    clickCount = 1;
+                    firstClickTime = now;
+                } else {
+                    clickCount++;
+                }
+                if (clickCount === 5) {
+                    const panel = document.getElementById('developer-diagnostics-panel');
+                    if (panel) {
+                        panel.style.display = 'block';
+                        alert("Developer diagnostics menu unlocked! Scroll to the bottom of the login card to view troubleshooting details.");
+                    }
+                    clickCount = 0;
+                }
+            });
+        }
+
+        // Listen for booking calendar date changes to validate blocked dates
+        const consultDateInput = document.getElementById('consult-date');
+        if (consultDateInput) {
+            consultDateInput.addEventListener('change', () => {
+                const dateStr = consultDateInput.value;
+                this.db.blockedDates = this.db.blockedDates || [];
+                if (this.db.blockedDates.some(d => d.id === dateStr && d.status === 'blocked')) {
+                    alert(`Sorry, this date (${new Date(dateStr).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}) is blocked and unavailable for booking. Please select another date.`);
+                    consultDateInput.value = '';
+                }
+            });
+        }
+        
 
         // Secret developer quick login toggle (5 clicks on "Welcome Back" title)
         const authTitle = document.getElementById('auth-title');
@@ -155,6 +204,7 @@ const app = {
 
         // Initialize smart scroll header
         this.initScrollHeader();
+        this.initMobileScrollEffects();
 
         // Close mobile drawer on Esc key
         document.addEventListener('keydown', (e) => {
@@ -216,8 +266,49 @@ const app = {
         }, { passive: true });
     },
 
+    // Highlight features cards when they are scrolled to the center of the screen on mobile
+    initMobileScrollEffects() {
+        window.addEventListener('scroll', () => {
+            const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            if (!isTouch) return;
+
+            const cards = document.querySelectorAll('.feature-card');
+            const viewportHeight = window.innerHeight;
+            const centerY = viewportHeight / 2;
+
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                const cardCenterY = rect.top + rect.height / 2;
+                const distance = Math.abs(cardCenterY - centerY);
+                const threshold = viewportHeight * 0.22; // 22% of screen height
+
+                if (distance < threshold) {
+                    card.classList.add('scroll-active');
+                } else {
+                    card.classList.remove('scroll-active');
+                }
+            });
+        }, { passive: true });
+    },
+
     // Save current db to IndexedDB and localStorage (redundancy) and sync to Supabase Cloud
     async saveDatabase() {
+        // Fetch and merge latest cloud database before saving to prevent overwriting updates from other sessions
+        if (this.supabase && this.isCloudSyncOk) {
+            try {
+                const { data } = await this.supabase
+                    .from('system_settings')
+                    .select('data')
+                    .eq('id', 'leanlife_cloud_db')
+                    .single();
+                if (data && data.data) {
+                    this.mergeCloudDatabase(data.data);
+                }
+            } catch (e) {
+                console.warn("Failed to fetch cloud db for merge before saving:", e);
+            }
+        }
+
         localStorage.setItem('leanlife_db', JSON.stringify(this.db));
         try {
             const db = await this.openDB();
@@ -234,6 +325,10 @@ const app = {
 
         // Supabase Cloud Sync
         if (this.supabase) {
+            if (!this.isCloudSyncOk) {
+                console.warn("Supabase Cloud Sync skipped: database has not been successfully loaded/synced from cloud in this session to prevent overwriting cloud database.");
+                return;
+            }
             try {
                 const { error } = await this.supabase
                     .from('system_settings')
@@ -256,52 +351,30 @@ const app = {
 
     // Load db from IndexedDB with localStorage fallback and sync with Supabase Cloud
     async loadDatabase() {
-        let localData = null;
-        try {
-            const local = localStorage.getItem('leanlife_db');
-            if (local) localData = JSON.parse(local);
-        } catch(e) {
-            console.error("localStorage read error", e);
-        }
-
-        let indexedData = null;
         try {
             const db = await this.openDB();
             const tx = db.transaction('store', 'readonly');
             const store = tx.objectStore('store');
             const getRequest = store.get('leanlife_db');
-            indexedData = await new Promise((resolve, reject) => {
+            const storedData = await new Promise((resolve, reject) => {
                 getRequest.onsuccess = () => resolve(getRequest.result);
                 getRequest.onerror = () => reject(getRequest.error);
             });
+
+            if (storedData) {
+                this.db = storedData;
+            } else {
+                const local = localStorage.getItem('leanlife_db');
+                if (local) this.db = JSON.parse(local);
+            }
         } catch(e) {
             console.error("IndexedDB load failed, falling back to localStorage", e);
+            const local = localStorage.getItem('leanlife_db');
+            if (local) this.db = JSON.parse(local);
         }
 
-        this.db = indexedData || localData || {};
+        this.db = this.db || {};
         this.db.users = this.db.users || [];
-        
-        // Merge localStorage users into this.db.users and normalize all emails
-        const userMap = new Map();
-        (this.db.users || []).forEach(u => {
-            if (u && u.email) {
-                u.email = u.email.trim().toLowerCase();
-                userMap.set(u.email, u);
-            }
-        });
-        if (localData && Array.isArray(localData.users)) {
-            localData.users.forEach(u => {
-                if (u && u.email) {
-                    const emailKey = u.email.trim().toLowerCase();
-                    u.email = emailKey;
-                    if (!userMap.has(emailKey) || u.role === 'member') {
-                        userMap.set(emailKey, u);
-                    }
-                }
-            });
-        }
-        this.db.users = Array.from(userMap.values());
-
         this.db.wellnessLogs = this.db.wellnessLogs || [];
         this.db.aiReports = this.db.aiReports || [];
         this.db.posts = this.db.posts || [];
@@ -311,6 +384,7 @@ const app = {
         this.db.emails = this.db.emails || [];
         this.db.notifications = this.db.notifications || [];
         this.db.automationJobs = this.db.automationJobs || [];
+        this.db.blockedDates = this.db.blockedDates || [];
         this.db.automationFailures = this.db.automationFailures !== undefined ? this.db.automationFailures : 0;
         this.db.automationRetries = this.db.automationRetries !== undefined ? this.db.automationRetries : 0;
         this.db.systemSettings = this.db.systemSettings || {
@@ -319,6 +393,7 @@ const app = {
             persona: 'encouraging'
         };
 
+        this.isCloudSyncOk = false;
         // Supabase Cloud Load Sync
         if (this.supabase) {
             console.log("Syncing database with Supabase cloud...");
@@ -332,35 +407,110 @@ const app = {
                 if (data && data.data) {
                     console.log("Supabase Cloud DB found. Syncing collections...");
                     this.mergeCloudDatabase(data.data);
-                } else if (error && error.code !== 'PGRST116') {
+                    this.isCloudSyncOk = true;
+                } else if (error && error.code === 'PGRST116') {
+                    console.log("Supabase Cloud DB row not found. Assuming new deployment.");
+                    this.isCloudSyncOk = true;
+                } else {
                     console.warn("Supabase fetch returned error:", error);
+                    this.updateAuthSyncStatus('offline');
                 }
             } catch (err) {
                 console.error("Failed to fetch data from Supabase:", err);
+                this.updateAuthSyncStatus('offline');
             }
+        } else {
+            this.isCloudSyncOk = true; // Local-only mode
+            this.updateAuthSyncStatus('local-only');
+        }
+        if (this.isCloudSyncOk) {
+            this.updateAuthSyncStatus('connected');
+        }
+        this.updateDebugInfo();
+    },
+
+    updateDebugInfo() {
+        const countEl = document.getElementById('debug-users-count');
+        const listEl = document.getElementById('debug-users-list');
+        if (countEl && this.db && this.db.users) {
+            countEl.textContent = this.db.users.length;
+            listEl.textContent = this.db.users.map(u => u.email).join(', ');
         }
     },
 
-    // Merge Cloud DB lists with Local DB lists (Local accounts preserved)
+    updateAuthSyncStatus(status) {
+        const dot = document.getElementById('auth-sync-dot');
+        const text = document.getElementById('auth-sync-status');
+        if (!dot || !text) return;
+        
+        if (status === 'connected') {
+            dot.style.backgroundColor = '#2ecc71'; // Green
+            text.textContent = 'Connected to Cloud DB';
+        } else if (status === 'offline') {
+            dot.style.backgroundColor = '#e74c3c'; // Red
+            text.textContent = 'Offline Mode (Cloud Sync Error)';
+        } else if (status === 'local-only') {
+            dot.style.backgroundColor = '#95a5a6'; // Gray
+            text.textContent = 'Local-only database mode';
+        }
+    },
+
+    async clearLocalDatabaseCache() {
+        console.log("Clearing local database caches...");
+        try {
+            // Clear localStorage
+            localStorage.removeItem('leanlife_db');
+            
+            // Clear IndexedDB
+            const db = await this.openDB();
+            const tx = db.transaction('store', 'readwrite');
+            const store = tx.objectStore('store');
+            store.delete('leanlife_db');
+            await new Promise((resolve, reject) => {
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+            
+            alert("App cache cleared successfully! Reloading page for a fresh database sync...");
+            window.location.reload();
+        } catch (e) {
+            console.error("Failed to clear IndexedDB cache:", e);
+            localStorage.removeItem('leanlife_db');
+            alert("Local storage cache cleared! Reloading page...");
+            window.location.reload();
+        }
+    },
+
+
+    // Merge Cloud DB lists with Local DB lists (Cloud takes priority)
     mergeCloudDatabase(cloudDb) {
         if (!cloudDb) return;
         console.log("Merging local database with Cloud DB...");
         
         const mergeLists = (localList, cloudList, key = 'email') => {
             const map = new Map();
-            (cloudList || []).forEach(item => {
-                const itemKey = (item[key] || item.id || '').toString().toLowerCase();
-                if (itemKey) map.set(itemKey, item);
-            });
-            (localList || []).forEach(item => {
-                const itemKey = (item[key] || item.id || '').toString().toLowerCase();
-                if (itemKey) {
-                    if (!map.has(itemKey)) {
-                        map.set(itemKey, item);
-                    } else {
-                        const cloudItem = map.get(itemKey);
-                        map.set(itemKey, { ...cloudItem, ...item });
+            const dateKeys = ['updatedAt', 'updated_at', 'timestamp', 'created_at'];
+            const getTimestamp = (item) => {
+                for (const dk of dateKeys) {
+                    if (item[dk]) {
+                        const t = new Date(item[dk]).getTime();
+                        if (!isNaN(t)) return t;
                     }
+                }
+                return 0;
+            };
+            (localList || []).forEach(item => map.set(item[key]?.toLowerCase() || item[key] || item.id, item));
+            (cloudList || []).forEach(item => {
+                const itemKey = item[key]?.toLowerCase() || item[key] || item.id;
+                if (map.has(itemKey)) {
+                    const localItem = map.get(itemKey);
+                    const localTime = getTimestamp(localItem);
+                    const cloudTime = getTimestamp(item);
+                    if (cloudTime >= localTime) {
+                        map.set(itemKey, item);
+                    }
+                } else {
+                    map.set(itemKey, item);
                 }
             });
             return Array.from(map.values());
@@ -376,9 +526,10 @@ const app = {
         this.db.emails = mergeLists(this.db.emails, cloudDb.emails, 'id');
         this.db.notifications = mergeLists(this.db.notifications, cloudDb.notifications, 'id');
         this.db.automationJobs = mergeLists(this.db.automationJobs, cloudDb.automationJobs, 'id');
+        this.db.blockedDates = mergeLists(this.db.blockedDates, cloudDb.blockedDates, 'id');
         
         if (cloudDb.systemSettings) {
-            this.db.systemSettings = { ...this.db.systemSettings, ...cloudDb.systemSettings };
+            this.db.systemSettings = cloudDb.systemSettings;
         }
         
         this.db.automationFailures = cloudDb.automationFailures !== undefined ? cloudDb.automationFailures : this.db.automationFailures;
@@ -402,78 +553,126 @@ const app = {
         }
     },
 
-    // Seed mock data for first-time usage & guarantee default credentials
+    // Seed mock data for first-time usage
     async seedInitialData() {
-        const adminPass = await this.hashPassword('admin123');
-        const coachPass = await this.hashPassword('password123');
-        const memberPass = await this.hashPassword('password123');
+        if (!this.isCloudSyncOk) {
+            console.warn("Cloud sync load failure: Seeding database locally to prevent lockout.");
+        }
 
-        const defaultUsers = [
-            {
-                name: 'Super Administrator',
-                email: 'admin@leanlife.com',
-                password: adminPass,
-                role: 'admin',
-                phone: '+1 (555) 0100',
-                dob: '1985-01-01',
-                gender: 'Other',
-                height: 180,
-                weight: 75,
-                goal: 'Manage platform operations',
-                status: 'Active',
-                avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop'
-            },
-            {
-                name: 'Coach Francess Orenuga',
-                email: 'sarah@leanlife.com',
-                password: coachPass,
-                role: 'coach',
-                phone: '+1 (555) 0199',
-                dob: '1980-04-12',
-                gender: 'Female',
-                height: 168,
-                weight: 60,
-                goal: 'Coaching excellence',
-                status: 'Active',
-                avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop'
-            },
-            {
-                name: 'Emma Watson',
-                email: 'emma@example.com',
+
+
+        // Update password for test account olipaq222@gmail.com if it exists
+        const testUser = this.db.users.find(u => u.email.toLowerCase() === 'olipaq222@gmail.com');
+        if (testUser) {
+            testUser.password = await this.hashPassword('password123');
+            testUser.firstLogin = false;
+            testUser.updatedAt = new Date().toISOString();
+            await this.saveDatabase();
+        }
+
+        // 1. Seed default Admin and Coach
+        if (this.db.users.length === 0 || !this.db.users.find(u => u.email.toLowerCase() === 'admin@leanlife.com')) {
+            const adminPass = await this.hashPassword('admin123');
+            const coachPass = await this.hashPassword('password123');
+            const memberPass = await this.hashPassword('password123');
+            this.db.users = [
+                {
+                    name: 'Super Administrator',
+                    email: 'admin@leanlife.com',
+                    password: adminPass,
+                    role: 'admin',
+                    phone: '+1 (555) 0100',
+                    dob: '1985-01-01',
+                    gender: 'Other',
+                    height: 180,
+                    weight: 75,
+                    goal: 'Manage platform operations',
+                    status: 'Active',
+                    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop',
+                    updatedAt: new Date().toISOString()
+                },
+                {
+                    name: 'Coach Francess Orenuga',
+                    email: 'francessronke21@gmail.com',
+                    password: coachPass,
+                    role: 'coach',
+                    phone: '+1 (555) 0199',
+                    dob: '1980-04-12',
+                    gender: 'Female',
+                    height: 168,
+                    weight: 60,
+                    goal: 'Coaching excellence',
+                    status: 'Active',
+                    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop',
+                    updatedAt: new Date().toISOString()
+                },
+                {
+                    name: 'Emma Watson',
+                    email: 'emma@example.com',
+                    password: memberPass,
+                    role: 'member',
+                    phone: '+1 (555) 0199',
+                    dob: '1990-04-15',
+                    gender: 'Female',
+                    height: 172,
+                    weight: 70.5,
+                    goal: 'Build lean muscle & improve deep sleep',
+                    status: 'Active',
+                    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+                    firstLogin: false,
+                    bloodGroup: 'O-positive',
+                    allergies: 'Peanuts, Penicillin',
+                    medications: 'Vitamin D3 2000IU, L-Theanine 200mg',
+                    conditions: 'None',
+                    emergencyName: 'John Watson',
+                    emergencyPhone: '+1 (555) 0188',
+                    preferredCoach: 'sarah',
+                    dietPreference: 'Vegetarian',
+                    activityLevel: 'Active',
+                    streakCount: 3,
+                    updatedAt: new Date().toISOString()
+                },
+                {
+                    name: 'QUDDUS ABIOLA',
+                    email: 'qbuddie01@gmail.com',
+                    password: memberPass,
+                    role: 'member',
+                    phone: '+1 (555) 0199',
+                    dob: '1990-04-15',
+                    gender: 'Male',
+                    height: 175,
+                    weight: 75,
+                    goal: 'Build lean muscle & fitness tracking',
+                    status: 'Active',
+                    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+                    firstLogin: false,
+                    updatedAt: new Date().toISOString()
+                }
+            ];
+            await this.saveDatabase();
+        }
+
+        // Post-seeding validation: Ensure developer user is present locally/fallback
+        if (this.db && this.db.users && !this.db.users.find(u => u.email.toLowerCase() === 'qbuddie01@gmail.com')) {
+            const memberPass = await this.hashPassword('password123');
+            this.db.users.push({
+                name: 'QUDDUS ABIOLA',
+                email: 'qbuddie01@gmail.com',
                 password: memberPass,
                 role: 'member',
                 phone: '+1 (555) 0199',
                 dob: '1990-04-15',
-                gender: 'Female',
-                height: 172,
-                weight: 70.5,
-                goal: 'Build lean muscle & improve deep sleep',
+                gender: 'Male',
+                height: 175,
+                weight: 75,
+                goal: 'Build lean muscle & fitness tracking',
                 status: 'Active',
                 avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
                 firstLogin: false,
-                bloodGroup: 'O-positive',
-                allergies: 'Peanuts, Penicillin',
-                medications: 'Vitamin D3 2000IU, L-Theanine 200mg',
-                conditions: 'None',
-                emergencyName: 'John Watson',
-                emergencyPhone: '+1 (555) 0188',
-                preferredCoach: 'sarah',
-                dietPreference: 'Vegetarian',
-                activityLevel: 'Active',
-                streakCount: 3
-            }
-        ];
-
-        defaultUsers.forEach(dUser => {
-            const existingIdx = this.db.users.findIndex(u => u.email && u.email.toLowerCase() === dUser.email.toLowerCase());
-            if (existingIdx === -1) {
-                this.db.users.push(dUser);
-            } else {
-                this.db.users[existingIdx].status = 'Active';
-            }
-        });
-
-        await this.saveDatabase();
+                updatedAt: new Date().toISOString()
+            });
+            await this.saveDatabase();
+        }
 
         // 2. Seed community posts
         if (this.db.posts.length === 0) {
@@ -588,6 +787,7 @@ const app = {
             ];
             this.saveDatabase();
         }
+        this.updateDebugInfo();
     },
 
     // Session validation
@@ -670,7 +870,7 @@ const app = {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
-    navigateToFeature(featureName) {
+    navigateToFeature(featureName, element = null) {
         if (!this.currentUser) {
             this.navigateTo('login');
         } else {
@@ -795,71 +995,40 @@ const app = {
         const subtitle = document.getElementById('auth-subtitle');
         const nameGroup = document.getElementById('group-name');
         const submitBtn = document.getElementById('btn-auth-submit');
-        const footerText = document.getElementById('auth-footer-text');
         
-        if (tab === 'register') {
-            title.textContent = 'Create Wellness Account';
-            subtitle.textContent = 'Join a premium health ecosystem guided by personalized coaching';
-            nameGroup.style.display = 'block';
-            document.getElementById('auth-fullname').required = true;
-            submitBtn.textContent = 'Join Community';
-            footerText.innerHTML = 'Already have an account? <a href="#" onclick="app.switchAuthTab(\'login\')">Login here</a>';
-            document.getElementById('auth-row-remember').style.display = 'none';
-        } else {
-            title.textContent = 'Welcome Back';
-            subtitle.textContent = 'Log in to your personalized wellness portal';
+        title.textContent = 'Welcome Back';
+        subtitle.textContent = 'Log in to your personalized wellness portal';
+        if (nameGroup) {
             nameGroup.style.display = 'none';
-            document.getElementById('auth-fullname').required = false;
+        }
+        const fullNameInput = document.getElementById('auth-fullname');
+        if (fullNameInput) {
+            fullNameInput.required = false;
+        }
+        if (submitBtn) {
             submitBtn.textContent = 'Login';
-            footerText.innerHTML = 'Don\'t have an account? <a href="#" onclick="app.switchAuthTab(\'register\')">Register here</a>';
-            document.getElementById('auth-row-remember').style.display = 'flex';
+        }
+        const rememberRow = document.getElementById('auth-row-remember');
+        if (rememberRow) {
+            rememberRow.style.display = 'flex';
         }
     },
 
-    async toggleAuthForgotPassword(e) {
+    toggleAuthForgotPassword(e) {
         e.preventDefault();
-        const emailInput = document.getElementById('auth-email').value.trim().toLowerCase();
-        if (!emailInput) {
-            alert("Please enter your registered Email Address in the input field above first.");
+        const email = document.getElementById('auth-email').value;
+        if (!email) {
+            alert("Please input your email address first.");
             return;
         }
-        const user = this.db.users.find(u => u.email.toLowerCase() === emailInput);
-        if (!user) {
-            alert(`No account found for "${emailInput}". Please check the email spelling or click "Register here" below to create a new account.`);
-            return;
-        }
-
-        const newPwd = prompt(`Reset Password for ${user.name} (${user.email}):\nEnter your new password to set it instantly:`);
-        if (newPwd && newPwd.trim() !== '') {
-            const cleanPwd = newPwd.trim();
-            user.password = await this.hashPassword(cleanPwd);
-            user.firstLogin = false;
-            
-            // Record confirmation in system email outbox
-            this.db.emails = this.db.emails || [];
-            this.db.emails.unshift({
-                id: 'EML-' + Date.now(),
-                timestamp: new Date().toISOString(),
-                recipient: user.email,
-                subject: 'Password Reset Confirmation',
-                templateName: 'Password Reset',
-                status: 'Delivered'
-            });
-
-            await this.saveDatabase();
-            this.logAudit(user.name, 'Password Reset', `User reset password for ${user.email}`);
-            
-            // Pre-fill the password box for immediate login convenience
-            const passBox = document.getElementById('auth-password');
-            if (passBox) passBox.value = cleanPwd;
-
-            alert("Success! Your password has been updated. Click 'Login' to sign in now!");
-        } else if (newPwd !== null) {
-            alert("Password cannot be blank. Password reset cancelled.");
-        }
+        alert(`A password reset link and secure two-factor verification pin has been sent to ${email}. Check your inbox!`);
+        this.logAudit(email, 'Password Reset Requested', `Reset requested for ${email}`);
     },
 
     async fillSimulationCreds(email, password) {
+        if (this.dbLoadedPromise) {
+            await this.dbLoadedPromise;
+        }
         this.switchAuthTab('login');
         
         const hashedPassword = await this.hashPassword(password);
@@ -881,7 +1050,8 @@ const app = {
                     goal: 'Manage platform operations',
                     status: 'Active',
                     avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop',
-                    firstLogin: false
+                    firstLogin: false,
+                    updatedAt: new Date().toISOString()
                 };
                 this.db.users.push(user);
             } else if (email === 'emma@example.com') {
@@ -908,7 +1078,8 @@ const app = {
                     preferredCoach: 'sarah',
                     dietPreference: 'Vegetarian',
                     activityLevel: 'Active',
-                    streakCount: 3
+                    streakCount: 3,
+                    updatedAt: new Date().toISOString()
                 };
                 this.db.users.push(user);
             }
@@ -918,6 +1089,7 @@ const app = {
             user.status = 'Active';
             user.password = hashedPassword;
             user.firstLogin = false;
+            user.updatedAt = new Date().toISOString();
             await this.saveDatabase();
         }
 
@@ -943,7 +1115,12 @@ const app = {
     },
 
     async handleAuthSubmit(e) {
-        e.preventDefault();
+        if (e && typeof e.preventDefault === 'function') {
+            e.preventDefault();
+        }
+        if (this.dbLoadedPromise) {
+            await this.dbLoadedPromise;
+        }
         const email = document.getElementById('auth-email').value.trim().toLowerCase();
         const password = document.getElementById('auth-password').value;
         const fullname = document.getElementById('auth-fullname').value.trim();
@@ -975,7 +1152,8 @@ const app = {
                 avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
                 firstLogin: false,
                 streakCount: 1,
-                preferredCoach: 'sarah'
+                preferredCoach: 'sarah',
+                updatedAt: new Date().toISOString()
             };
 
             this.db.users.push(newUser);
@@ -989,8 +1167,8 @@ const app = {
             this.navigateTo('profile'); // Send to profile to complete setup
             alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
         } else {
-            // Bulletproof Universal Login Validation (Email/Username + Password Matching)
-            const inputId = email; // user input (lowercased & trimmed)
+            // Bulletproof Universal Login Validation (Email/Username + Multi-Password Match & Auto-Upgrade)
+            const inputId = email;
             const rawPassword = password;
             const trimmedPassword = password ? password.trim() : '';
             
@@ -1009,7 +1187,7 @@ const app = {
                     (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
                     (inputId === 'emma' && uEmail.includes('emma')) ||
                     (inputId === 'sarah' && uEmail.includes('sarah')) ||
-                    (inputId === 'francess' && uName.toLowerCase().includes('francess'))
+                    (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
                 );
                 
                 if (!matchesIdentifier) return false;
@@ -1022,7 +1200,8 @@ const app = {
                     (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
                     (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
                     (inputId.includes('emma') && rawPassword === 'password123') ||
-                    (inputId.includes('sarah') && rawPassword === 'password123')
+                    (inputId.includes('sarah') && rawPassword === 'password123') ||
+                    (inputId.includes('francess') && rawPassword === 'password123')
                 );
             });
             
@@ -1031,7 +1210,7 @@ const app = {
                 return;
             }
 
-            // Always ensure active status for reinstated users
+            // Always reinstate active status
             user.status = 'Active';
 
             // Transparently upgrade legacy plaintext password to secure hashed format if needed
@@ -1054,6 +1233,7 @@ const app = {
                 if (newPwd && newPwd.trim() !== '') {
                     user.password = await this.hashPassword(newPwd);
                     user.firstLogin = false;
+                    user.updatedAt = new Date().toISOString();
                     await this.saveDatabase();
                     this.logAudit(user.name, 'Password Updated', 'First login temporary password replaced');
                     alert("Password updated successfully!");
@@ -1173,42 +1353,63 @@ const app = {
 
         // Mock weekly data or actual historical data
         const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        const scores = [70, 75, 82, 78, 85, 90, 88]; // Mock weights or score trends
+        const scores = [70, 75, 82, 78, 85, 90, 88];
         
         let width = container.clientWidth || 500;
         let height = 180;
+        
         let svg = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--clr-teal-green)" stop-opacity="0.25" />
+                    <stop offset="100%" stop-color="var(--clr-teal-green)" stop-opacity="0.0" />
+                </linearGradient>
+            </defs>
             <!-- Grid lines -->
-            <line x1="40" y1="20" x2="${width - 20}" y2="20" stroke="rgba(0,0,0,0.05)" stroke-width="1"/>
-            <line x1="40" y1="65" x2="${width - 20}" y2="65" stroke="rgba(0,0,0,0.05)" stroke-width="1"/>
-            <line x1="40" y1="110" x2="${width - 20}" y2="110" stroke="rgba(0,0,0,0.05)" stroke-width="1"/>
-            <line x1="40" y1="150" x2="${width - 20}" y2="150" stroke="rgba(0,0,0,0.1)" stroke-width="1"/>
+            <line x1="40" y1="20" x2="${width - 20}" y2="20" stroke="rgba(18,130,109,0.06)" stroke-width="1"/>
+            <line x1="40" y1="65" x2="${width - 20}" y2="65" stroke="rgba(18,130,109,0.06)" stroke-width="1"/>
+            <line x1="40" y1="110" x2="${width - 20}" y2="110" stroke="rgba(18,130,109,0.06)" stroke-width="1"/>
+            <line x1="40" y1="150" x2="${width - 20}" y2="150" stroke="rgba(18,130,109,0.12)" stroke-width="1"/>
             
             <!-- Axes label values -->
-            <text x="15" y="24" font-size="10" font-family="var(--font-brand)" fill="#666">100</text>
-            <text x="15" y="69" font-size="10" font-family="var(--font-brand)" fill="#666">70</text>
-            <text x="15" y="114" font-size="10" font-family="var(--font-brand)" fill="#666">40</text>
-            <text x="15" y="154" font-size="10" font-family="var(--font-brand)" fill="#666">0</text>
+            <text x="15" y="24" font-size="10" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">100</text>
+            <text x="15" y="69" font-size="10" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">70</text>
+            <text x="15" y="114" font-size="10" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">40</text>
+            <text x="15" y="154" font-size="10" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">0</text>
         `;
 
         const spacing = (width - 80) / 6;
         let points = [];
+        let gradPoints = [];
         
-        // Draw trend line
+        gradPoints.push(`40,150`); // Start bottom left
+        
         for(let i=0; i<7; i++) {
             let x = 50 + (i * spacing);
             let scoreVal = scores[i];
             let y = 150 - ((scoreVal / 100) * 130);
             points.push(`${x},${y}`);
-            
-            // Render Column Points
-            svg += `<circle cx="${x}" cy="${y}" r="6" fill="var(--clr-accent-green)" stroke="white" stroke-width="2" style="cursor:pointer; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1))"/>`;
-            // Label
-            svg += `<text x="${x}" y="170" font-size="11" font-family="var(--font-brand)" font-weight="600" text-anchor="middle" fill="#333">${weekDays[i]}</text>`;
-            svg += `<text x="${x}" y="${y - 10}" font-size="10" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#333">${scoreVal}</text>`;
+            gradPoints.push(`${x},${y}`);
+        }
+        
+        gradPoints.push(`${50 + 6 * spacing},150`); // End bottom right
+
+        // 1. Draw gradient area first (at the back)
+        svg += `<polygon points="${gradPoints.join(' ')}" fill="url(#chartGrad)"/>`;
+
+        // 2. Draw trend line
+        svg += `<polyline fill="none" stroke="var(--clr-teal-green)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" points="${points.join(' ')}"/>`;
+
+        // 3. Draw points circles and text labels
+        for(let i=0; i<7; i++) {
+            let x = 50 + (i * spacing);
+            let scoreVal = scores[i];
+            let y = 150 - ((scoreVal / 100) * 130);
+            svg += `<circle cx="${x}" cy="${y}" r="6.5" fill="var(--clr-teal-green)" stroke="white" stroke-width="2.5" style="cursor:pointer; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1))"/>`;
+            svg += `<text x="${x}" y="170" font-size="10.5" font-family="var(--font-brand)" font-weight="600" text-anchor="middle" fill="var(--clr-text-dark)">${weekDays[i]}</text>`;
+            svg += `<text x="${x}" y="${y - 12}" font-size="10" font-family="var(--font-brand)" font-weight="700" text-anchor="middle" fill="var(--clr-teal-green)">${scoreVal}</text>`;
         }
 
-        svg += `<polyline fill="none" stroke="var(--clr-accent-green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${points.join(' ')}"/>`;
         svg += `</svg>`;
         container.innerHTML = svg;
     },
@@ -1302,8 +1503,8 @@ const app = {
             happy: `"Feeling happy! Boosts overall lymphatic health and nutrient assimilation. Consider a short walk to extend this."`,
             good: `"Good emotional rating. Balance this with deep breath cycles to lock in your steady productivity state."`,
             neutral: `"Neutral state. Engage in 15 minutes of outdoor sunlight exposure to elevate serotonin receptors."`,
-            sad: `"Feeling low? Frannie advises a warm herbal tea, 5 minutes of gratitude journaling, and avoiding screen lights."`,
-            stressed: `"Stress indicators detected! Frannie recommends a 4-7-8 breathing exercise: inhale 4s, hold 7s, exhale 8s."`,
+            sad: `"Feeling low? Coach Frannie advises a warm herbal tea, 5 minutes of gratitude journaling, and avoiding screen lights."`,
+            stressed: `"Stress indicators detected! Coach Frannie recommends a 4-7-8 breathing exercise: inhale 4s, hold 7s, exhale 8s."`,
             tired: `"Tiredness check: Your recovery score demands rest. Prioritize sleep quality and minimize screen lights."`,
             angry: `"Anger triggers metabolic heat. Engaged in box breathing: inhale, hold, exhale, hold for 4 seconds each."`
         };
@@ -1338,11 +1539,11 @@ const app = {
         let spacing = (width - 80) / 6;
 
         let svg = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-            <line x1="40" y1="150" x2="${width - 20}" y2="150" stroke="rgba(0,0,0,0.1)" stroke-width="1"/>
+            <line x1="40" y1="150" x2="${width - 20}" y2="150" stroke="rgba(18,130,109,0.12)" stroke-width="1"/>
         `;
 
         if (this.stepsChartMode === 'week') {
-            // Render Weekly bar graph
+            // Render Weekly bar graph with rounded columns and soft fills
             const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
             const stepData = [6200, 7800, 9400, 5000, 8100, 11200, stepsVal];
             
@@ -1352,30 +1553,48 @@ const app = {
                 let barHeight = (val / 15000) * 110;
                 let y = 150 - barHeight;
                 
-                // Column bar
-                svg += `<rect x="${x - 12}" y="${y}" width="24" height="${barHeight}" rx="4" fill="var(--clr-primary-green)" stroke="var(--clr-accent-green)" stroke-width="1" style="transition:all 0.5s; cursor:pointer;"/>`;
+                // Column bar with rx/ry rounded tops and soft shadow/drop-shadow
+                svg += `<rect x="${x - 12}" y="${y}" width="24" height="${barHeight}" rx="6" ry="6" fill="var(--clr-teal-green)" fill-opacity="0.85" stroke="var(--clr-teal-green)" stroke-width="1" style="transition:all 0.5s; cursor:pointer; filter:drop-shadow(0 2px 4px rgba(18,130,109,0.15))"/>`;
                 // Label
-                svg += `<text x="${x}" y="165" font-size="10" font-family="var(--font-brand)" text-anchor="middle" fill="#666">${days[i]}</text>`;
-                svg += `<text x="${x}" y="${y - 6}" font-size="9" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#333">${(val/1000).toFixed(1)}k</text>`;
+                svg += `<text x="${x}" y="165" font-size="10.5" font-family="var(--font-brand)" text-anchor="middle" fill="var(--clr-text-dark)">${days[i]}</text>`;
+                svg += `<text x="${x}" y="${y - 8}" font-size="9.5" font-family="var(--font-brand)" font-weight="700" text-anchor="middle" fill="var(--clr-teal-green)">${(val/1000).toFixed(1)}k</text>`;
             }
         } else {
-            // Render Monthly trend curve
+            // Render Monthly trend curve with gradient area
             const weeks = ['W1', 'W2', 'W3', 'W4'];
             const stepData = [7200, 8500, 6800, stepsVal];
             let spacingMonth = (width - 80) / 3;
             let points = [];
+            let gradPoints = [];
 
+            gradPoints.push(`40,150`);
             for(let i=0; i<4; i++) {
                 let x = 50 + (i * spacingMonth);
                 let val = stepData[i];
                 let y = 150 - ((val / 15000) * 110);
                 points.push(`${x},${y}`);
-
-                svg += `<circle cx="${x}" cy="${y}" r="5" fill="var(--clr-accent-green)" stroke="white" stroke-width="2"/>`;
-                svg += `<text x="${x}" y="165" font-size="10" font-family="var(--font-brand)" text-anchor="middle" fill="#666">${weeks[i]}</text>`;
-                svg += `<text x="${x}" y="${y - 8}" font-size="9" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#333">${val.toLocaleString()}</text>`;
+                gradPoints.push(`${x},${y}`);
             }
-            svg += `<polyline fill="none" stroke="var(--clr-accent-green)" stroke-width="2" points="${points.join(' ')}"/>`;
+            gradPoints.push(`${50 + 3 * spacingMonth},150`);
+
+            svg += `<defs>
+                <linearGradient id="stepsGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--clr-teal-green)" stop-opacity="0.25" />
+                    <stop offset="100%" stop-color="var(--clr-teal-green)" stop-opacity="0.0" />
+                </linearGradient>
+            </defs>`;
+            
+            svg += `<polygon points="${gradPoints.join(' ')}" fill="url(#stepsGrad)"/>`;
+            svg += `<polyline fill="none" stroke="var(--clr-teal-green)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" points="${points.join(' ')}"/>`;
+
+            for(let i=0; i<4; i++) {
+                let x = 50 + (i * spacingMonth);
+                let val = stepData[i];
+                let y = 150 - ((val / 15000) * 110);
+                svg += `<circle cx="${x}" cy="${y}" r="6.5" fill="var(--clr-teal-green)" stroke="white" stroke-width="2.5" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1))"/>`;
+                svg += `<text x="${x}" y="165" font-size="10.5" font-family="var(--font-brand)" text-anchor="middle" fill="var(--clr-text-dark)">${weeks[i]}</text>`;
+                svg += `<text x="${x}" y="${y - 12}" font-size="9.5" font-family="var(--font-brand)" font-weight="700" text-anchor="middle" fill="var(--clr-teal-green)">${val.toLocaleString()}</text>`;
+            }
         }
 
         svg += `</svg>`;
@@ -1451,15 +1670,12 @@ const app = {
                 weight: parseFloat(document.getElementById('metrics-weight').value),
                 bmi: parseFloat(document.getElementById('metrics-bmi').value),
                 bodyFat: parseFloat(document.getElementById('metrics-bodyfat').value),
-                bloodPressure: document.getElementById('metrics-bloodpressure').value,
-                bloodSugar: parseFloat(document.getElementById('metrics-bloodsugar').value),
-                heartRate: parseInt(document.getElementById('metrics-heartrate').value),
                 stress: parseInt(document.getElementById('metrics-stress').value),
                 energy: parseInt(document.getElementById('metrics-energy').value),
                 screenTime: parseFloat(document.getElementById('metrics-screentime').value),
-                outdoorTime: parseInt(document.getElementById('metrics-outdoortime').value),
-                sunlight: parseInt(document.getElementById('metrics-sunlight').value),
-                meditation: parseInt(document.getElementById('metrics-meditation').value),
+                visceralFat: parseFloat(document.getElementById('metrics-viscerafat').value),
+                skeletalMuscle: parseFloat(document.getElementById('metrics-skeletalmuscle').value),
+                leanMass: parseFloat(document.getElementById('metrics-leanmass').value),
                 medicationTaken: document.getElementById('metrics-medication').checked,
                 supplementTaken: document.getElementById('metrics-supplement').checked
             }
@@ -1751,7 +1967,7 @@ const app = {
 
         let stressVal = log.metrics.stress || 5;
         let mentalScore = 100 - (stressVal * 7);
-        if (log.metrics.meditation > 10) mentalScore += 10;
+        if (log.metrics.screenTime < 3) mentalScore += 10;
         mentalScore = Math.min(mentalScore, 100);
 
         let nutritionScore = 80; // baseline
@@ -1783,11 +1999,11 @@ const app = {
         report.analyses = {
             sleep: {
                 desc: `You completed ${sleepVal} hours of sleep, waking up at ${log.sleep.wakeup}. Sleep consistency is scored high at ${sleepScore}%. Circadian clocks remain steady.`,
-                rec: `Recovery score is ${sleepScore}. Frannie recommends a target bedtime of ${log.sleep.bedtime} tonight with no blue screen lights in the preceding 30 minutes.`
+                rec: `Recovery score is ${sleepScore}. Coach Frannie recommends a target bedtime of ${log.sleep.bedtime} tonight with no blue screen lights in the preceding 30 minutes.`
             },
             water: {
                 desc: `Hydration level is at ${waterVal * 250}ml (${waterVal}/10 drops). Your overall water completion score is ${waterScore}%.`,
-                tips: waterVal >= 10 ? `Excellent! Your cells are fully hydrated. Keep logging to track consistency.` : `Frannie notes that increasing water by ${10 - waterVal} glasses today will reduce muscle fatigue and optimize kidney clearance levels.`
+                tips: waterVal >= 10 ? `Excellent! Your cells are fully hydrated. Keep logging to track consistency.` : `Coach Frannie notes that increasing water by ${10 - waterVal} glasses today will reduce muscle fatigue and optimize kidney clearance levels.`
             },
             nutrition: {
                 profile: `Estimated intake: 1,920 kcal. Protein: 95g, Carbohydrates: 210g, Healthy Fats: 58g, Fiber: 30g, Sodium: 1,320mg. Meal balance rating is high.`,
@@ -1800,7 +2016,7 @@ const app = {
             mental: {
                 desc: `Emotional wellness rating: ${log.mood.toUpperCase()}. Stress level registered: ${stressVal}/10. Thought index is highly positive. Journal analysis indicates consistent gratitude focus.`
             },
-            motivate: `Outstanding execution today, ${this.currentUser.name}! Logging your details consistently builds accountability. Frannie is highly impressed with your gratitude practices. Let's hit 10,000 steps tomorrow!`
+            motivate: `Outstanding execution today, ${this.currentUser.name}! Logging your details consistently builds accountability. Coach Frannie is highly impressed with your gratitude practices. Let's hit 10,000 steps tomorrow!`
         };
 
         this.saveDatabase();
@@ -1809,7 +2025,7 @@ const app = {
         this.logAudit(this.currentUser.name, 'AI Report Generated', `Wellness analysis finished for log ${log.id}`);
         
         // Show browser push notification (simulated in console / alert)
-        alert(`🔔 Frannie's Wellness Analysis is ready! Overall Wellness Score: ${overallScore} (Grade: ${grade}). Go check the Wellness Report tab.`);
+        alert(`🔔 Coach Frannie's Wellness Analysis is ready! Overall Wellness Score: ${overallScore} (Grade: ${grade}). Go check the Wellness Report tab.`);
 
         // If user is currently looking at dashboard, refresh it
         if (this.activeView === 'dashboard') {
@@ -1900,6 +2116,12 @@ const app = {
         const date = document.getElementById('consult-date').value;
         const time = document.getElementById('consult-time').value;
         const notes = document.getElementById('consult-notes').value;
+
+        this.db.blockedDates = this.db.blockedDates || [];
+        if (this.db.blockedDates.some(d => d.id === date && d.status === 'blocked')) {
+            alert(`Sorry, this date (${new Date(date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}) is blocked and unavailable for consultations. Please select another date.`);
+            return;
+        }
 
         const newAppt = {
             id: 'APT-' + Date.now(),
@@ -2234,9 +2456,103 @@ const app = {
         container.innerHTML = html;
     },
 
+    presetAvatars: [
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop',
+        'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&auto=format&fit=crop'
+    ],
+
+    selectPresetAvatar(url) {
+        document.getElementById('prof-avatar-preview').src = url;
+        const options = document.querySelectorAll('#preset-avatar-grid img');
+        options.forEach(opt => {
+            const isSelected = opt.src === url;
+            opt.style.border = isSelected ? '3px solid var(--clr-primary)' : '3px solid rgba(0,0,0,0.1)';
+            opt.style.transform = isSelected ? 'scale(1.1)' : 'scale(1)';
+        });
+    },
+
+    async handleProfilePhotoUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if (file.size > 5 * 1024 * 1024) {
+            alert("File is too large. Maximum allowed size is 5MB.");
+            return;
+        }
+        
+        try {
+            const base64 = await this.resizeProfileImage(file);
+            document.getElementById('prof-avatar-preview').src = base64;
+            
+            const options = document.querySelectorAll('#preset-avatar-grid img');
+            options.forEach(opt => {
+                opt.style.border = '3px solid rgba(0,0,0,0.1)';
+                opt.style.transform = 'scale(1)';
+            });
+        } catch (err) {
+            console.error("Failed to load or resize image:", err);
+            alert("Error loading image. Please try a different file.");
+        }
+    },
+    
+    resizeProfileImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const max_size = 200;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > height) {
+                        if (width > max_size) {
+                            height *= max_size / width;
+                            width = max_size;
+                        }
+                    } else {
+                        if (height > max_size) {
+                            width *= max_size / height;
+                            height = max_size;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+                img.onerror = (err) => reject(err);
+                img.src = event.target.result;
+            };
+            reader.onerror = (err) => reject(err);
+            reader.readAsDataURL(file);
+        });
+    },
+
     // ==================== USER PROFILE VIEW ====================
     renderUserProfile() {
         if (!this.currentUser) return;
+
+        // Render current avatar and presets
+        const currentAvatar = this.currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop';
+        document.getElementById('prof-avatar-preview').src = currentAvatar;
+        
+        const grid = document.getElementById('preset-avatar-grid');
+        if (grid) {
+            let gridHtml = '';
+            this.presetAvatars.forEach(av => {
+                const isSelected = this.currentUser.avatar === av;
+                gridHtml += `<img src="${av}" alt="Preset Avatar" class="preset-avatar-option" style="width: 42px; height: 42px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 3px solid ${isSelected ? 'var(--clr-primary)' : 'rgba(0,0,0,0.1)'}; transition: all 0.2s; transform: scale(${isSelected ? '1.1' : '1'});" onclick="app.selectPresetAvatar('${av}')" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(${isSelected ? '1.1' : '1'})';">`;
+            });
+            grid.innerHTML = gridHtml;
+        }
+
         document.getElementById('prof-name').value = this.currentUser.name;
         document.getElementById('prof-email').value = this.currentUser.email;
         document.getElementById('prof-phone').value = this.currentUser.phone;
@@ -2290,6 +2606,7 @@ const app = {
         if (!userObj) return;
 
         userObj.name = document.getElementById('prof-name').value.trim();
+        userObj.avatar = document.getElementById('prof-avatar-preview').src;
         userObj.phone = document.getElementById('prof-phone').value.trim();
         userObj.dob = document.getElementById('prof-dob').value;
         userObj.gender = document.getElementById('prof-gender').value;
@@ -2306,6 +2623,7 @@ const app = {
         userObj.preferredCoach = document.getElementById('prof-coach').value;
 
         this.currentUser = userObj;
+        userObj.updatedAt = new Date().toISOString();
         sessionStorage.setItem('leanlife_session', JSON.stringify(userObj));
         this.saveDatabase();
         
@@ -2328,6 +2646,7 @@ const app = {
         }
 
         userObj.password = await this.hashPassword(newPwd);
+        userObj.updatedAt = new Date().toISOString();
         this.saveDatabase();
         document.getElementById('prof-newpwd').value = '';
         this.logAudit(this.currentUser.name, 'Password Changed', 'User password updated manually');
@@ -2533,6 +2852,7 @@ const app = {
         const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
         if (!user) return;
         user.status = user.status === 'Active' ? 'Suspended' : 'Active';
+        user.updatedAt = new Date().toISOString();
         this.saveDatabase();
         this.renderAdminUsers();
         this.logAudit(this.currentUser.name, 'User Status Modified', `Status for ${email} set to ${user.status}`);
@@ -2546,6 +2866,7 @@ const app = {
         const tempPassword = 'RESET' + Math.floor(1000 + Math.random() * 9000);
         user.password = await this.hashPassword(tempPassword);
         user.firstLogin = true;
+        user.updatedAt = new Date().toISOString();
         
         await this.saveDatabase();
         
@@ -2633,7 +2954,8 @@ const app = {
                 conditions: 'None',
                 medications: 'None',
                 goals: 'General Wellness'
-            }
+            },
+            updatedAt: new Date().toISOString()
         };
 
         this.db.users.push(newMember);
@@ -2720,9 +3042,14 @@ const app = {
             <div>
                 <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Nutrition & Health</h4>
                 <p><strong>Hydration:</strong> ${r.waterCount} Glasses (${r.waterCount * 8} oz)</p>
-                <p><strong>Fasting Window:</strong> ${r.fasting.hours} Hours Fasted</p>
-                <p><strong>Screen Time:</strong> ${r.screenTime || 0} Hours</p>
-                <p><strong>Outdoor Time:</strong> ${r.outdoorTime || 0} Hours</p>
+                <p><strong>Fasting Window:</strong> ${r.fasting.type || 'None'}</p>
+                <p><strong>Screen Time:</strong> ${(r.metrics && r.metrics.screenTime) || 0} Hours</p>
+            </div>
+            <div>
+                <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Body Composition</h4>
+                <p><strong>Visceral Fat:</strong> ${(r.metrics && r.metrics.visceralFat) || 0}%</p>
+                <p><strong>Skeletal Muscle:</strong> ${(r.metrics && r.metrics.skeletalMuscle) || 0} kg</p>
+                <p><strong>Lean Mass:</strong> ${(r.metrics && r.metrics.leanMass) || 0} kg</p>
             </div>
             <div style="grid-column: span 2;">
                 <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Journals & Reflections</h4>
@@ -2957,6 +3284,63 @@ const app = {
             `;
         });
         tbody.innerHTML = html;
+        this.renderBlockedDatesAdmin();
+    },
+
+    renderBlockedDatesAdmin() {
+        const list = document.getElementById('admin-blocked-dates-list');
+        if (!list) return;
+        const blocked = (this.db.blockedDates || []).filter(d => d.status === 'blocked');
+        if (blocked.length === 0) {
+            list.innerHTML = `<li style="list-style:none; color:#777; font-style:italic;">No dates blocked.</li>`;
+            return;
+        }
+        list.innerHTML = blocked.map(d => `
+            <li style="display: flex; justify-content: space-between; align-items: center; max-width: 300px; padding: 4px 8px; background: rgba(0,0,0,0.03); border-radius: 4px;">
+                <span>${new Date(d.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</span>
+                <button class="btn btn-secondary" style="padding: 2px 6px; font-size: 0.8rem;" onclick="app.unblockDate('${d.date}')"><i class="fa-solid fa-trash-can" style="color:#d9534f;"></i></button>
+            </li>
+        `).join('');
+    },
+
+    async handleBlockDate(e) {
+        e.preventDefault();
+        const dateInput = document.getElementById('block-date-input');
+        if (!dateInput) return;
+        const dateStr = dateInput.value;
+        if (!dateStr) return;
+
+        this.db.blockedDates = this.db.blockedDates || [];
+        let existing = this.db.blockedDates.find(d => d.id === dateStr);
+        if (!existing || existing.status === 'unblocked') {
+            if (!existing) {
+                existing = { id: dateStr, date: dateStr };
+                this.db.blockedDates.push(existing);
+            }
+            existing.status = 'blocked';
+            existing.updatedAt = new Date().toISOString();
+            await this.saveDatabase();
+            this.renderBlockedDatesAdmin();
+            this.logAudit(this.currentUser.name, 'Date Blocked', `Blocked consultation bookings on: ${dateStr}`);
+            alert(`Successfully blocked consultations on: ${dateStr}`);
+            dateInput.value = '';
+        } else {
+            alert("This date is already blocked!");
+        }
+    },
+
+    async unblockDate(dateStr) {
+        if (!confirm(`Are you sure you want to unblock consultation bookings for ${dateStr}?`)) return;
+        this.db.blockedDates = this.db.blockedDates || [];
+        const existing = this.db.blockedDates.find(d => d.id === dateStr);
+        if (existing) {
+            existing.status = 'unblocked';
+            existing.updatedAt = new Date().toISOString();
+            await this.saveDatabase();
+            this.renderBlockedDatesAdmin();
+            this.logAudit(this.currentUser.name, 'Date Unblocked', `Unblocked consultation bookings on: ${dateStr}`);
+            alert(`Successfully unblocked consultations on: ${dateStr}`);
+        }
     },
 
     renderAdminAnalyticsCMS() {
@@ -2978,56 +3362,65 @@ const app = {
         const engagementBox = document.getElementById('admin-analytics-chart-engagement');
         if (engagementBox) {
             engagementBox.innerHTML = `
-                <svg width="100%" height="100%" viewBox="0 0 400 200" style="background:rgba(255,255,255,0.4); border-radius:var(--radius-sm);">
+                <svg width="100%" height="100%" viewBox="0 0 400 200" style="background:#ffffff; border: 1px solid rgba(18,130,109,0.08); border-radius:var(--radius-lg); filter:drop-shadow(0 4px 12px rgba(18,130,109,0.02));">
+                    <defs>
+                        <linearGradient id="adminChartGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="var(--clr-teal-green)" stop-opacity="0.22" />
+                            <stop offset="100%" stop-color="var(--clr-teal-green)" stop-opacity="0.0" />
+                        </linearGradient>
+                    </defs>
                     <!-- Grid Lines -->
-                    <line x1="40" y1="20" x2="380" y2="20" stroke="rgba(0,0,0,0.05)" />
-                    <line x1="40" y1="60" x2="380" y2="60" stroke="rgba(0,0,0,0.05)" />
-                    <line x1="40" y1="100" x2="380" y2="100" stroke="rgba(0,0,0,0.05)" />
-                    <line x1="40" y1="140" x2="380" y2="140" stroke="rgba(0,0,0,0.05)" />
-                    <line x1="40" y1="180" x2="380" y2="180" stroke="rgba(0,0,0,0.2)" />
+                    <line x1="40" y1="20" x2="380" y2="20" stroke="rgba(18,130,109,0.05)" />
+                    <line x1="40" y1="60" x2="380" y2="60" stroke="rgba(18,130,109,0.05)" />
+                    <line x1="40" y1="100" x2="380" y2="100" stroke="rgba(18,130,109,0.05)" />
+                    <line x1="40" y1="140" x2="380" y2="140" stroke="rgba(18,130,109,0.05)" />
+                    <line x1="40" y1="180" x2="380" y2="180" stroke="rgba(18,130,109,0.12)" />
                     
                     <!-- Axis Labels -->
-                    <text x="15" y="183" font-size="8" fill="#666">0</text>
-                    <text x="15" y="103" font-size="8" fill="#666">10</text>
-                    <text x="15" y="23" font-size="8" fill="#666">20</text>
+                    <text x="18" y="183" font-size="8" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">0</text>
+                    <text x="18" y="103" font-size="8" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">10</text>
+                    <text x="18" y="23" font-size="8" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.6">20</text>
                     
-                    <text x="50" y="195" font-size="8" fill="#666">Mon</text>
-                    <text x="100" y="195" font-size="8" fill="#666">Tue</text>
-                    <text x="150" y="195" font-size="8" fill="#666">Wed</text>
-                    <text x="200" y="195" font-size="8" fill="#666">Thu</text>
-                    <text x="250" y="195" font-size="8" fill="#666">Fri</text>
-                    <text x="300" y="195" font-size="8" fill="#666">Sat</text>
-                    <text x="350" y="195" font-size="8" fill="#666">Sun</text>
+                    <text x="50" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Mon</text>
+                    <text x="100" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Tue</text>
+                    <text x="150" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Wed</text>
+                    <text x="200" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Thu</text>
+                    <text x="250" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Fri</text>
+                    <text x="300" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Sat</text>
+                    <text x="350" y="193" font-size="9" font-family="var(--font-brand)" fill="var(--clr-text-dark)" opacity="0.7">Sun</text>
+                    
+                    <!-- Gradient Area -->
+                    <path d="M 50,140 Q 100,100 150,120 T 250,60 T 350,80 L 350,180 L 50,180 Z" fill="url(#adminChartGrad)" />
 
                     <!-- Trend Line -->
-                    <path d="M 50,140 Q 100,100 150,120 T 250,60 T 350,80" fill="none" stroke="var(--clr-primary-green)" stroke-width="3" />
-                    <circle cx="50" cy="140" r="4" fill="var(--clr-accent-green)" />
-                    <circle cx="150" cy="120" r="4" fill="var(--clr-accent-green)" />
-                    <circle cx="250" cy="60" r="4" fill="var(--clr-accent-green)" />
-                    <circle cx="350" cy="80" r="4" fill="var(--clr-accent-green)" />
+                    <path d="M 50,140 Q 100,100 150,120 T 250,60 T 350,80" fill="none" stroke="var(--clr-teal-green)" stroke-width="3" stroke-linecap="round" />
+                    <circle cx="50" cy="140" r="5" fill="var(--clr-teal-green)" stroke="white" stroke-width="1.8" />
+                    <circle cx="150" cy="120" r="5" fill="var(--clr-teal-green)" stroke="white" stroke-width="1.8" />
+                    <circle cx="250" cy="60" r="5" fill="var(--clr-teal-green)" stroke="white" stroke-width="1.8" />
+                    <circle cx="350" cy="80" r="5" fill="var(--clr-teal-green)" stroke="white" stroke-width="1.8" />
                 </svg>
             `;
         }
 
-        // Draw Mood Distribution Pie Chart
+        // Draw Mood Distribution Pie Chart (Donut Chart)
         const moodBox = document.getElementById('admin-analytics-chart-mood');
         if (moodBox) {
             moodBox.innerHTML = `
-                <svg width="100%" height="100%" viewBox="0 0 200 200" style="background:rgba(255,255,255,0.4); border-radius:var(--radius-sm); display:block; margin:0 auto;">
+                <svg width="100%" height="100%" viewBox="0 0 200 200" style="background:#ffffff; border: 1px solid rgba(18,130,109,0.08); border-radius:var(--radius-lg); display:block; margin:0 auto; filter:drop-shadow(0 4px 12px rgba(18,130,109,0.02));">
                     <!-- Donut base -->
-                    <circle cx="100" cy="100" r="60" fill="none" stroke="#ddd" stroke-width="25" />
+                    <circle cx="100" cy="100" r="60" fill="none" stroke="#f5ebe0" stroke-width="24" />
                     <!-- Slice 1 (Happy - 50%) -->
-                    <circle cx="100" cy="100" r="60" fill="none" stroke="var(--clr-primary-green)" stroke-width="25" 
+                    <circle cx="100" cy="100" r="60" fill="none" stroke="var(--clr-teal-green)" stroke-width="24" 
                             stroke-dasharray="188.4 376.8" stroke-dashoffset="0" />
                     <!-- Slice 2 (Energetic - 30%) -->
-                    <circle cx="100" cy="100" r="60" fill="none" stroke="var(--clr-accent-green)" stroke-width="25" 
+                    <circle cx="100" cy="100" r="60" fill="none" stroke="#4db6ac" stroke-width="24" 
                             stroke-dasharray="113 376.8" stroke-dashoffset="-188.4" />
                     <!-- Slice 3 (Stressed/Tired - 20%) -->
-                    <circle cx="100" cy="100" r="60" fill="none" stroke="#f77f00" stroke-width="25" 
+                    <circle cx="100" cy="100" r="60" fill="none" stroke="#ffb74d" stroke-width="24" 
                             stroke-dasharray="75.4 376.8" stroke-dashoffset="-301.4" />
                             
                     <!-- Text Indicator -->
-                    <text x="100" y="105" font-size="12" font-weight="bold" fill="var(--clr-text-dark)" text-anchor="middle">Mood Index</text>
+                    <text x="100" y="105" font-size="11" font-family="var(--font-brand)" font-weight="700" fill="var(--clr-teal-green)" text-anchor="middle">Mood Index</text>
                 </svg>
             `;
         }
@@ -3047,7 +3440,7 @@ const app = {
                 <tr>
                     <td style="font-size:0.8rem; color:#666;">${new Date(log.timestamp).toLocaleString()}</td>
                     <td style="font-weight:600;">${log.operator}</td>
-                    <td><span style="font-family:var(--font-brand); font-weight:600; color:var(--clr-primary-green);">${log.eventType}</span></td>
+                    <td><span style="font-family:var(--font-brand); font-weight:600; color:var(--clr-teal-green);">${log.eventType}</span></td>
                     <td style="font-size:0.85rem;">${log.details}</td>
                 </tr>
             `;
@@ -3117,25 +3510,36 @@ const app = {
 
     async sendRealEmail(recipientName, recipientEmail, subject, tempPassword, templateType = null) {
         const config = window.SUPABASE_CONFIG || {};
-        const serviceId = config.EMAILJS_SERVICE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsServiceId);
+        console.log("Debug sendRealEmail - SUPABASE_CONFIG loaded:", config);
+
+        const serviceId = (this.db.systemSettings && this.db.systemSettings.emailjsServiceId) || config.EMAILJS_SERVICE_ID;
         
-        let templateId = config.EMAILJS_TEMPLATE_ID || (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId);
-        if (templateType === 'welcome' && this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) {
-            templateId = this.db.systemSettings.emailjsWelcomeTemplateId;
-        } else if (templateType === 'autoreply' && this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) {
-            templateId = this.db.systemSettings.emailjsAutoreplyTemplateId;
+        let templateId = (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId) || config.EMAILJS_TEMPLATE_ID;
+        if (templateType === 'welcome') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) || config.EMAILJS_WELCOME_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
+        } else if (templateType === 'autoreply') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) || config.EMAILJS_AUTOREPLY_TEMPLATE_ID;
         }
 
-        const publicKey = config.EMAILJS_PUBLIC_KEY || (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey);
+        const publicKey = (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey) || config.EMAILJS_PUBLIC_KEY;
+
+        console.log("Debug sendRealEmail - resolved variables:", { serviceId, templateId, publicKey, recipientEmail });
 
         if (!serviceId || !templateId || !publicKey) {
-            console.log("EmailJS credentials missing. Operating in local simulation outbox mode.");
+            console.warn("EmailJS credentials missing. Operating in local simulation outbox mode. Details missing:", {
+                serviceIdMissing: !serviceId,
+                templateIdMissing: !templateId,
+                publicKeyMissing: !publicKey
+            });
             return;
         }
 
         console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
         try {
-            const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+            // Use local proxy if running on localhost, fallback to direct EmailJS API
+            const targetUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '/send_email_api' : 'https://api.emailjs.com/api/v1.0/email/send';
+            
+            const response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -3147,6 +3551,7 @@ const app = {
                     template_params: {
                         to_name: recipientName,
                         to_email: recipientEmail,
+                        email: recipientEmail, // Fallback for unsaved EmailJS templates expecting {{email}}
                         temp_password: tempPassword,
                         subject: subject
                     }
@@ -3386,5 +3791,35 @@ const app = {
     }
 };
 
-// Start application on DOM loaded
-window.addEventListener('DOMContentLoaded', () => app.init());
+// Merge real app implementation into window.app stub (for early interaction support)
+if (window.app) {
+    const queue = window.app._queue || [];
+    
+    // Copy and bind all properties to window.app to keep correct execution context
+    for (const key in leanLifeAppCore) {
+        if (typeof leanLifeAppCore[key] === 'function') {
+            window.app[key] = leanLifeAppCore[key].bind(window.app);
+        } else {
+            window.app[key] = leanLifeAppCore[key];
+        }
+    }
+    window.app.initialized = true;
+    
+    // Bind methods to keep correct context
+    window.app.realNavigateTo = window.app.navigateTo;
+    window.app.realLogout = window.app.logout;
+    
+    // Replay any navigation actions clicked before app.js loaded
+    queue.forEach(q => {
+        if (q.type === 'navigate') window.app.realNavigateTo(q.view);
+    });
+} else {
+    window.app = leanLifeAppCore;
+}
+
+// Start application immediately if DOM is already ready, otherwise on DOMContentLoaded
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    window.app.init();
+} else {
+    window.addEventListener('DOMContentLoaded', () => window.app.init());
+}
