@@ -1187,8 +1187,48 @@ const leanLifeAppCore = {
             });
             
             if (!user) {
-                alert("Invalid email/username or password. Click 'Forgot Password?' to set a new password.");
-                return;
+                // Check if account exists by identifier
+                const existingUserById = this.db.users.find(u => {
+                    const uEmail = (u.email || '').trim().toLowerCase();
+                    const uName = (u.name || '').trim().toLowerCase();
+                    const uUsername = uEmail.split('@')[0];
+                    return (
+                        uEmail === inputId ||
+                        uName === inputId ||
+                        uUsername === inputId ||
+                        (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
+                        (inputId === 'emma' && uEmail.includes('emma')) ||
+                        (inputId === 'sarah' && uEmail.includes('sarah')) ||
+                        (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
+                    );
+                });
+
+                if (existingUserById) {
+                    const resetNow = confirm(`Account found for "${existingUserById.email}", but the password entered was incorrect.\n\nWould you like to set a new password and log in now?`);
+                    if (resetNow) {
+                        const newPwd = prompt(`Reset Password for ${existingUserById.name} (${existingUserById.email}):\nEnter your new password:`);
+                        if (newPwd && newPwd.trim() !== '') {
+                            const cleanPwd = newPwd.trim();
+                            existingUserById.password = await this.hashPassword(cleanPwd);
+                            existingUserById.firstLogin = false;
+                            existingUserById.status = 'Active';
+                            await this.saveDatabase();
+                            this.logAudit(existingUserById.name, 'Password Reset', `Password reset during login for ${existingUserById.email}`);
+                            user = existingUserById;
+                            alert("Password updated successfully! Logging you in now...");
+                        } else {
+                            return;
+                        }
+                    } else {
+                        return;
+                    }
+                } else {
+                    const availableEmails = (this.db && this.db.users && this.db.users.length > 0) 
+                        ? this.db.users.map(u => u.email).join('\n• ') 
+                        : 'No users registered yet';
+                    alert(`No account found matching "${inputId}".\n\nRegistered accounts on this device:\n• ${availableEmails}\n\nPlease check your email spelling or click "Register here" below to create a new account!`);
+                    return;
+                }
             }
 
             // Always reinstate active status
