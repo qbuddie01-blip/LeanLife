@@ -293,22 +293,6 @@ const leanLifeAppCore = {
 
     // Save current db to IndexedDB and localStorage (redundancy) and sync to Supabase Cloud
     async saveDatabase() {
-        // Fetch and merge latest cloud database before saving to prevent overwriting updates from other sessions
-        if (this.supabase && this.isCloudSyncOk) {
-            try {
-                const { data } = await this.supabase
-                    .from('system_settings')
-                    .select('data')
-                    .eq('id', 'leanlife_cloud_db')
-                    .single();
-                if (data && data.data) {
-                    this.mergeCloudDatabase(data.data);
-                }
-            } catch (e) {
-                console.warn("Failed to fetch cloud db for merge before saving:", e);
-            }
-        }
-
         localStorage.setItem('leanlife_db', JSON.stringify(this.db));
         try {
             const db = await this.openDB();
@@ -323,12 +307,8 @@ const leanLifeAppCore = {
             console.error("IndexedDB failed to save", e);
         }
 
-        // Supabase Cloud Sync
+        // Unconditional Supabase Cloud Sync so registered accounts & updates reach Cloud immediately
         if (this.supabase) {
-            if (!this.isCloudSyncOk) {
-                console.warn("Supabase Cloud Sync skipped: database has not been successfully loaded/synced from cloud in this session to prevent overwriting cloud database.");
-                return;
-            }
             try {
                 const { error } = await this.supabase
                     .from('system_settings')
@@ -342,6 +322,7 @@ const leanLifeAppCore = {
                     console.warn("Supabase Cloud Sync warning:", error.message);
                 } else {
                     console.log("Supabase Cloud Sync completed successfully.");
+                    this.isCloudSyncOk = true;
                 }
             } catch (err) {
                 console.error("Failed to sync to Supabase Cloud:", err);
