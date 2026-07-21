@@ -11,14 +11,24 @@ android {
         applicationId = "com.leanlifecommunity.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.1"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("C:/Users/Administrator/Documents/leanlife-key")
+            storePassword = "Leanlife123"
+            keyAlias = "leanlife key"
+            keyPassword = "Leanlife123"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {

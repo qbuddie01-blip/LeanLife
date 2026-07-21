@@ -293,15 +293,15 @@
                 <form id="auth-form" onsubmit="app.handleAuthSubmit(event)">
                     <div class="form-group" id="group-name" style="display: none;">
                         <label for="auth-fullname">Full Name</label>
-                        <input type="text" id="auth-fullname" class="form-input" placeholder="Emma Watson">
+                        <input type="text" id="auth-fullname" class="form-input" placeholder="Emma Watson" autocapitalize="words" autocorrect="off">
                     </div>
                     <div class="form-group">
                         <label for="auth-email">Email Address</label>
-                        <input type="email" id="auth-email" class="form-input" placeholder="emma@example.com" required>
+                        <input type="email" id="auth-email" class="form-input" placeholder="emma@example.com" required autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email">
                     </div>
                     <div class="form-group">
                         <label for="auth-password">Password</label>
-                        <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required>
+                        <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required autocapitalize="none" autocorrect="off" spellcheck="false">
                     </div>
                     
                     <div class="form-row" id="auth-row-remember">
@@ -779,18 +779,6 @@
                                 <input type="number" id="metrics-bodyfat" class="form-input" step="0.1" value="18.5">
                             </div>
                             <div class="form-group">
-                                <label for="metrics-bloodpressure">Blood Pressure (mmHg)</label>
-                                <input type="text" id="metrics-bloodpressure" class="form-input" value="120/80">
-                            </div>
-                            <div class="form-group">
-                                <label for="metrics-bloodsugar">Blood Sugar (mg/dL)</label>
-                                <input type="number" id="metrics-bloodsugar" class="form-input" value="95">
-                            </div>
-                            <div class="form-group">
-                                <label for="metrics-heartrate">Resting Heart Rate (bpm)</label>
-                                <input type="number" id="metrics-heartrate" class="form-input" value="65">
-                            </div>
-                            <div class="form-group">
                                 <label for="metrics-stress">Stress Level (1 - 10)</label>
                                 <input type="range" id="metrics-stress" class="form-input" min="1" max="10" value="4">
                             </div>
@@ -803,16 +791,16 @@
                                 <input type="number" id="metrics-screentime" class="form-input" step="0.1" value="4.5">
                             </div>
                             <div class="form-group">
-                                <label for="metrics-outdoortime">Outdoor Time (Minutes)</label>
-                                <input type="number" id="metrics-outdoortime" class="form-input" value="45">
+                                <label for="metrics-viscerafat">Visceral Fat %</label>
+                                <input type="number" id="metrics-viscerafat" class="form-input" step="0.1" value="10.0">
                             </div>
                             <div class="form-group">
-                                <label for="metrics-sunlight">Sunlight Exposure (Mins)</label>
-                                <input type="number" id="metrics-sunlight" class="form-input" value="20">
+                                <label for="metrics-skeletalmuscle">Skeletal Muscle Mass (kg)</label>
+                                <input type="number" id="metrics-skeletalmuscle" class="form-input" step="0.1" value="30.0">
                             </div>
                             <div class="form-group">
-                                <label for="metrics-meditation">Meditation (Minutes)</label>
-                                <input type="number" id="metrics-meditation" class="form-input" value="15">
+                                <label for="metrics-leanmass">Lean Mass (kg)</label>
+                                <input type="number" id="metrics-leanmass" class="form-input" step="0.1" value="50.0">
                             </div>
                         </div>
 
@@ -1856,7 +1844,7 @@
 
     <!-- Application Script -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js"></script>
-    <script src="app.js"></script>
+    <script src="config.js?v=1.0.2"></script>
+    <script src="app.js?v=1.0.2"></script>
 </body>
 </html>
