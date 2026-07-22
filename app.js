@@ -2162,18 +2162,27 @@ const leanLifeAppCore = {
         this.saveDatabase();
         this.logAudit(this.currentUser.name, 'Coach Consultation Scheduled', `Request made for ${date} at ${time}`);
 
-        // Add to email outbox
+        // Add to email outbox as Pending, then patch in the real result once EmailJS responds.
+        // (Not awaited here so the booking flow itself isn't blocked on email delivery.)
+        const autoReplyOutboxId = 'EML-' + Date.now();
         this.db.emails.unshift({
-            id: 'EML-' + Date.now(),
+            id: autoReplyOutboxId,
             timestamp: new Date().toISOString(),
             recipient: this.currentUser.email,
             subject: `Coach Consultation Confirmation - ${date} at ${time}`,
             templateName: 'Auto Reply Email',
-            status: 'Delivered'
+            status: 'Pending'
         });
 
         // Dispatch real email
-        this.sendRealEmail(this.currentUser.name, this.currentUser.email, `Coach Consultation Confirmation - ${date} at ${time}`, '', 'autoreply');
+        this.sendRealEmail(this.currentUser.name, this.currentUser.email, `Coach Consultation Confirmation - ${date} at ${time}`, '', 'autoreply')
+            .then(result => {
+                const record = this.db.emails.find(e => e.id === autoReplyOutboxId);
+                if (record) {
+                    record.status = (result && result.ok) ? 'Delivered' : 'Failed';
+                    this.saveDatabase();
+                }
+            });
 
         const coachKey = this.currentUser.preferredCoach || 'sarah';
         const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
@@ -2892,27 +2901,36 @@ const leanLifeAppCore = {
         
         await this.saveDatabase();
         
-        // Add to email outbox
+        // Dispatch real email FIRST so we know the real outcome before logging it
+        const emailResult = await this.sendRealEmail(user.name, user.email, 'Temporary Credentials Reset Request', tempPassword);
+        const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
+
+        // Add to email outbox with the real delivery status
         this.db.emails.unshift({
             id: 'EML-' + Date.now(),
             timestamp: new Date().toISOString(),
             recipient: email,
             subject: 'Temporary Credentials Reset Request',
             templateName: 'Password Reset',
-            status: 'Delivered'
+            status: deliveryStatus
         });
         await this.saveDatabase();
         
-        // Dispatch real email
-        this.sendRealEmail(user.name, user.email, 'Temporary Credentials Reset Request', tempPassword);
+        this.logAudit(this.currentUser.name, 'Admin Password Reset', `Generated temporary password for ${email}. Email delivery: ${deliveryStatus}`);
         
-        this.logAudit(this.currentUser.name, 'Admin Password Reset', `Generated temporary password for ${email}`);
-        
-        alert(`Password Reset Successful!
+        if (deliveryStatus === 'Delivered') {
+            alert(`Password Reset Successful!
         ------------------------------------
         Temporary Password: ${tempPassword}
         ------------------------------------
         A credentials reset email has been dispatched to ${email}.`);
+        } else {
+            alert(`Password Reset Successful, but the email FAILED to send (EmailJS delivery error).
+        ------------------------------------
+        Temporary Password: ${tempPassword}
+        ------------------------------------
+        Please share this temporary password with ${email} manually, and check the EmailJS dashboard / Admin Settings > Email Integration for the delivery issue.`);
+        }
     },
 
     deleteUser(email) {
@@ -2981,30 +2999,40 @@ const leanLifeAppCore = {
         };
 
         this.db.users.push(newMember);
-        
-        // Add to outbox
+        await this.saveDatabase();
+
+        // Dispatch real email FIRST so we know the real outcome before logging it
+        const emailResult = await this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome');
+        const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
+
+        // Add to outbox with the real delivery status
         this.db.emails.unshift({
             id: 'EML-' + Date.now(),
             timestamp: new Date().toISOString(),
             recipient: email,
             subject: 'Welcome to LeanLife Onboarding',
             templateName: 'Welcome Email',
-            status: 'Delivered'
+            status: deliveryStatus
         });
-        
         await this.saveDatabase();
 
-        // Dispatch real email
-        this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome');
+        this.logAudit(this.currentUser.name, 'Admin Registered User', `Registered user ${email} with temporary credentials. Email delivery: ${deliveryStatus}`);
 
-        this.logAudit(this.currentUser.name, 'Admin Registered User', `Registered user ${email} with temporary credentials`);
-        
-        alert(`Member Account Created Successfully!
+        if (deliveryStatus === 'Delivered') {
+            alert(`Member Account Created Successfully!
         ------------------------------------
         Generated Username: ${username}
         Temporary Password: ${tempPassword}
         ------------------------------------
         Onboarding email has been dispatched to ${email}.`);
+        } else {
+            alert(`Member Account Created, but the onboarding email FAILED to send (EmailJS delivery error).
+        ------------------------------------
+        Generated Username: ${username}
+        Temporary Password: ${tempPassword}
+        ------------------------------------
+        Please share these credentials with ${email} manually, and check the EmailJS dashboard / Admin Settings > Email Integration for the delivery issue.`);
+        }
         
         document.getElementById('admin-register-form').reset();
         this.renderAdminUsers();
@@ -3553,7 +3581,7 @@ const leanLifeAppCore = {
                 templateIdMissing: !templateId,
                 publicKeyMissing: !publicKey
             });
-            return;
+            return { ok: false, reason: 'missing_credentials' };
         }
 
         console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
@@ -3583,12 +3611,17 @@ const leanLifeAppCore = {
             if (response.ok) {
                 console.log(`Real email successfully dispatched to ${recipientEmail}!`);
                 this.logAudit('System', 'Real Email Dispatched', `Real onboarding email delivered to ${recipientEmail}`);
+                return { ok: true };
             } else {
                 const errText = await response.text();
                 console.error("EmailJS API returned error status:", response.status, errText);
+                this.logAudit('System', 'Real Email FAILED', `EmailJS rejected email to ${recipientEmail} (HTTP ${response.status}): ${errText}`);
+                return { ok: false, reason: `http_${response.status}`, detail: errText };
             }
         } catch (err) {
             console.error("Failed to execute EmailJS HTTP request:", err);
+            this.logAudit('System', 'Real Email FAILED', `Network error sending email to ${recipientEmail}: ${err.message}`);
+            return { ok: false, reason: 'network_error', detail: err.message };
         }
     },
 
