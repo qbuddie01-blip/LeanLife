@@ -389,6 +389,7 @@ const leanLifeAppCore = {
                     console.log("Supabase Cloud DB found. Syncing collections...");
                     this.mergeCloudDatabase(data.data);
                     this.isCloudSyncOk = true;
+                    await this.saveDatabase();
                 } else if (error && error.code === 'PGRST116') {
                     console.log("Supabase Cloud DB row not found. Assuming new deployment.");
                     this.isCloudSyncOk = true;
