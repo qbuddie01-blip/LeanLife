@@ -2061,3 +2061,74 @@ footer {
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
+
+/* ==================== CENTERED TEMPORARY PASSWORD MODAL ==================== */
+.temp-password-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    padding: 1.5rem;
+    animation: fadeInModal 0.3s ease-out forwards;
+}
+
+.temp-password-card {
+    background: #ffffff;
+    border: 3.5px solid #2ecc71;
+    box-shadow: 0 0 35px rgba(46, 204, 113, 0.55), 0 20px 40px rgba(0, 0, 0, 0.35);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 480px;
+    padding: 2.2rem 2rem;
+    text-align: center;
+    position: relative;
+    transform: scale(0.95);
+    animation: popInModal 0.3s ease-out forwards;
+}
+
+.temp-password-icon {
+    width: 65px;
+    height: 65px;
+    background: rgba(46, 204, 113, 0.12);
+    border: 2px solid #2ecc71;
+    color: #2ecc71;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    margin: 0 auto 1.2rem auto;
+}
+
+.temp-password-header h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1a252c;
+    margin-bottom: 0.5rem;
+}
+
+.temp-password-header p {
+    font-size: 0.9rem;
+    color: #555;
+    line-height: 1.5;
+    margin-bottom: 1.5rem;
+}
+
+@keyframes fadeInModal {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes popInModal {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+}
+

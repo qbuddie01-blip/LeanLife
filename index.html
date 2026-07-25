@@ -318,15 +318,15 @@
                 <form id="auth-form" onsubmit="app.handleAuthSubmit(event)">
                     <div class="form-group" id="group-name" style="display: none;">
                         <label for="auth-fullname">Full Name</label>
-                        <input type="text" id="auth-fullname" class="form-input" placeholder="Emma Watson">
+                        <input type="text" id="auth-fullname" class="form-input" placeholder="Emma Watson" autocapitalize="words" spellcheck="false" autocomplete="name">
                     </div>
                     <div class="form-group">
                         <label for="auth-email">Email Address</label>
-                        <input type="email" id="auth-email" class="form-input" placeholder="emma@example.com" required>
+                        <input type="email" id="auth-email" class="form-input" placeholder="emma@example.com" required autocapitalize="none" spellcheck="false" autocorrect="off" autocomplete="username">
                     </div>
                     <div class="form-group">
                         <label for="auth-password">Password</label>
-                        <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required>
+                        <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required autocapitalize="none" spellcheck="false" autocorrect="off" autocomplete="current-password">
                     </div>
                     
                     <div class="form-row" id="auth-row-remember">
@@ -1654,9 +1654,20 @@
 
                     <!-- Email Service Integration settings -->
                     <div class="glass-card">
-                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-paper-plane"></i> Email Service Settings</h3>
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-paper-plane"></i> Resend & Email Service Settings</h3>
                         <form onsubmit="app.handleAdminSaveEmailSettings(event)">
-                            <p style="font-size: 0.8rem; color: #555; margin-bottom: 1rem;">Configure EmailJS keys to toggle from offline simulation mode to real-world email delivery.</p>
+                            <p style="font-size: 0.85rem; color: #444; margin-bottom: 1rem;">Configure your <strong>Resend API Key</strong> to deliver instant real-world onboarding, notification, and password emails.</p>
+                            <div class="form-group" style="margin-bottom: 0.8rem;">
+                                <label style="font-weight: 600; color: var(--clr-primary-green);"><i class="fa-solid fa-key"></i> Resend API Key</label>
+                                <input type="text" id="settings-resend-api-key" class="form-input" placeholder="e.g. re_123456789_abcdef..." autocapitalize="none" spellcheck="false">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label style="font-weight: 600;"><i class="fa-solid fa-envelope"></i> Resend Sender Email (From)</label>
+                                <input type="email" id="settings-resend-from-email" class="form-input" placeholder="LeanLife <onboarding@resend.dev>" autocapitalize="none" spellcheck="false">
+                            </div>
+                            
+                            <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.08); margin: 1rem 0;">
+                            <p style="font-size: 0.8rem; color: #666; margin-bottom: 0.8rem;">EmailJS Legacy Fallback Configuration (Optional):</p>
                             <div class="form-group" style="margin-bottom: 0.8rem;">
                                 <label>EmailJS Service ID</label>
                                 <input type="text" id="settings-emailjs-service-id" class="form-input" placeholder="e.g. service_xxxx">
@@ -1918,6 +1929,37 @@
                 </div>
             </div>
         </footer>
+    </div>
+
+    <!-- Centered Temporary Password Change Modal -->
+    <div id="temp-password-overlay" class="temp-password-backdrop" style="display: none;">
+        <div class="temp-password-card">
+            <div class="temp-password-icon"><i class="fa-solid fa-key"></i></div>
+            <div class="temp-password-header">
+                <h2>Update Password</h2>
+                <p>Welcome, <strong id="temp-user-name">Member</strong>! You are logged in with a temporary password. Please create a new permanent password to continue.</p>
+            </div>
+            <form id="temp-password-form" onsubmit="app.handleTempPasswordSubmit(event)">
+                <div class="form-group" style="text-align: left; margin-bottom: 1rem;">
+                    <label for="temp-new-password" style="font-weight: 600;">New Password</label>
+                    <div style="position: relative;">
+                        <input type="password" id="temp-new-password" class="form-input" placeholder="Enter new password" required autocapitalize="none" spellcheck="false" autocorrect="off">
+                        <i class="fa-solid fa-eye" onclick="app.togglePasswordVisibility('temp-new-password', this)" style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #777;"></i>
+                    </div>
+                </div>
+                <div class="form-group" style="text-align: left; margin-bottom: 1.2rem;">
+                    <label for="temp-confirm-password" style="font-weight: 600;">Confirm New Password</label>
+                    <div style="position: relative;">
+                        <input type="password" id="temp-confirm-password" class="form-input" placeholder="Re-enter new password" required autocapitalize="none" spellcheck="false" autocorrect="off">
+                        <i class="fa-solid fa-eye" onclick="app.togglePasswordVisibility('temp-confirm-password', this)" style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #777;"></i>
+                    </div>
+                </div>
+                <div id="temp-password-error" style="display: none; color: #e74c3c; font-size: 0.85rem; margin-bottom: 1rem; font-weight: 600; background: #fdf2f2; padding: 0.5rem; border-radius: 6px; border: 1px solid #f8b4b4;"></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; background-color: #2ecc71; border-color: #2ecc71; color: #fff; font-size: 1.05rem; padding: 0.8rem; box-shadow: 0 4px 14px rgba(46,204,113,0.35); font-weight: 600;">
+                    <i class="fa-solid fa-shield-check"></i> Save New Password & Continue
+                </button>
+            </form>
+        </div>
     </div>
 
     <!-- Application Script -->
