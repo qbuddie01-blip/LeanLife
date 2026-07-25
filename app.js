@@ -1103,150 +1103,97 @@ const leanLifeAppCore = {
         if (e && typeof e.preventDefault === 'function') {
             e.preventDefault();
         }
-        if (this.dbLoadedPromise) {
-            await this.dbLoadedPromise;
-        }
-        const email = document.getElementById('auth-email').value.trim().toLowerCase();
-        const password = document.getElementById('auth-password').value;
-        const fullname = document.getElementById('auth-fullname').value.trim();
-        const isRegistering = document.getElementById('group-name').style.display === 'block';
+        
+        const submitBtn = document.getElementById('btn-auth-submit');
+        const originalBtnText = submitBtn ? submitBtn.innerHTML : 'Login';
+        const isRegistering = document.getElementById('group-name')?.style.display === 'block';
 
-        if (isRegistering) {
-            // Check if user exists
-            const exists = this.db.users.find(u => u.email.toLowerCase() === email);
-            if (exists) {
-                alert("Email already registered. Please log in.");
-                return;
+        try {
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Processing...';
             }
 
-            const hashedPassword = await this.hashPassword(password);
-
-            // Create new member account
-            const newUser = {
-                name: fullname,
-                email: email,
-                password: hashedPassword,
-                role: 'member',
-                phone: '+1 (555) 0000',
-                dob: '1995-01-01',
-                gender: 'Female',
-                height: 170,
-                weight: 65,
-                goal: 'Improve health consistency',
-                status: 'Active',
-                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
-                firstLogin: false,
-                streakCount: 1,
-                preferredCoach: 'sarah',
-                updatedAt: new Date().toISOString()
-            };
-
-            this.db.users.push(newUser);
-            await this.saveDatabase();
-            this.logAudit(fullname, 'Member Registered', `Self-registration completed for ${email}`);
-            
-            // Set session
-            this.currentUser = newUser;
-            sessionStorage.setItem('leanlife_session', JSON.stringify(newUser));
-            localStorage.setItem('leanlife_session', JSON.stringify(newUser));
-            this.updateUIAfterLogin();
-            this.navigateTo('profile'); // Send to profile to complete setup
-            alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
-        } else {
-            // Bulletproof Universal Login Validation (Email/Username + Multi-Password Match & Auto-Upgrade)
-            const inputId = email;
-            const rawPassword = password;
-            const trimmedPassword = password ? password.trim() : '';
-            
-            const rawHash = await this.hashPassword(rawPassword);
-            const trimmedHash = await this.hashPassword(trimmedPassword);
-            
-            let user = this.db.users.find(u => {
-                const uEmail = (u.email || '').trim().toLowerCase();
-                const uName = (u.name || '').trim().toLowerCase();
-                const uUsername = uEmail.split('@')[0];
-                
-                const matchesIdentifier = (
-                    uEmail === inputId ||
-                    uName === inputId ||
-                    uUsername === inputId ||
-                    (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
-                    (inputId === 'emma' && uEmail.includes('emma')) ||
-                    (inputId === 'sarah' && uEmail.includes('sarah')) ||
-                    (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
-                );
-                
-                if (!matchesIdentifier) return false;
-
-                return (
-                    u.password === rawHash ||
-                    u.password === trimmedHash ||
-                    u.password === rawPassword ||
-                    u.password === trimmedPassword ||
-                    (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                    (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                    (inputId.includes('emma') && rawPassword === 'password123') ||
-                    (inputId.includes('sarah') && rawPassword === 'password123') ||
-                    (inputId.includes('francess') && rawPassword === 'password123')
-                );
-            });
-            
-            if (!user && this.supabase) {
-                console.log("Account not found in local cache. Performing real-time cloud sync with Supabase...");
+            if (this.dbLoadedPromise) {
                 try {
-                    const { data, error } = await this.supabase
-                        .from('system_settings')
-                        .select('data')
-                        .eq('id', 'leanlife_cloud_db')
-                        .single();
-
-                    if (data && data.data) {
-                        this.mergeCloudDatabase(data.data);
-                        await this.saveDatabase();
-                        
-                        // Re-evaluate user lookup after real-time cloud merge
-                        user = this.db.users.find(u => {
-                            const uEmail = (u.email || '').trim().toLowerCase();
-                            const uName = (u.name || '').trim().toLowerCase();
-                            const uUsername = uEmail.split('@')[0];
-                            
-                            const matchesIdentifier = (
-                                uEmail === inputId ||
-                                uName === inputId ||
-                                uUsername === inputId ||
-                                (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
-                                (inputId === 'emma' && uEmail.includes('emma')) ||
-                                (inputId === 'sarah' && uEmail.includes('sarah')) ||
-                                (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
-                            );
-                            
-                            if (!matchesIdentifier) return false;
-
-                            return (
-                                u.password === rawHash ||
-                                u.password === trimmedHash ||
-                                u.password === rawPassword ||
-                                u.password === trimmedPassword ||
-                                (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                                (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                                (inputId.includes('emma') && rawPassword === 'password123') ||
-                                (inputId.includes('sarah') && rawPassword === 'password123') ||
-                                (inputId.includes('francess') && rawPassword === 'password123')
-                            );
-                        });
-                    }
-                } catch(cloudErr) {
-                    console.warn("Live cloud sync lookup failed:", cloudErr);
+                    await Promise.race([
+                        this.dbLoadedPromise,
+                        new Promise(r => setTimeout(r, 2000))
+                    ]);
+                } catch (waitErr) {
+                    console.warn("dbLoadedPromise wait timeout/error:", waitErr);
                 }
             }
 
-            if (!user) {
-                // Check if account exists by identifier
-                const existingUserById = this.db.users.find(u => {
+            const emailInput = document.getElementById('auth-email');
+            const passwordInput = document.getElementById('auth-password');
+            const fullnameInput = document.getElementById('auth-fullname');
+
+            const email = (emailInput?.value || '').trim().toLowerCase();
+            const password = passwordInput?.value || '';
+            const fullname = (fullnameInput?.value || '').trim();
+
+            if (!email || !password) {
+                alert("Please enter both email address and password.");
+                return;
+            }
+
+            if (isRegistering) {
+                // Check if user exists
+                const exists = this.db.users.find(u => (u.email || '').toLowerCase() === email);
+                if (exists) {
+                    alert("Email already registered. Please log in.");
+                    return;
+                }
+
+                const hashedPassword = await this.hashPassword(password);
+
+                // Create new member account
+                const newUser = {
+                    name: fullname || 'LeanLife Member',
+                    email: email,
+                    password: hashedPassword,
+                    role: 'member',
+                    phone: '+1 (555) 0000',
+                    dob: '1995-01-01',
+                    gender: 'Female',
+                    height: 170,
+                    weight: 65,
+                    goal: 'Improve health consistency',
+                    status: 'Active',
+                    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+                    firstLogin: false,
+                    streakCount: 1,
+                    preferredCoach: 'sarah',
+                    updatedAt: new Date().toISOString()
+                };
+
+                this.db.users.push(newUser);
+                await this.saveDatabase();
+                this.logAudit(newUser.name, 'Member Registered', `Self-registration completed for ${email}`);
+                
+                // Set session
+                this.currentUser = newUser;
+                sessionStorage.setItem('leanlife_session', JSON.stringify(newUser));
+                localStorage.setItem('leanlife_session', JSON.stringify(newUser));
+                this.updateUIAfterLogin();
+                this.navigateTo('profile'); // Send to profile to complete setup
+                alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
+            } else {
+                // Bulletproof Universal Login Validation (Email/Username + Multi-Password Match & Auto-Upgrade)
+                const inputId = email;
+                const rawPassword = password;
+                const trimmedPassword = password ? password.trim() : '';
+                
+                const rawHash = await this.hashPassword(rawPassword);
+                const trimmedHash = await this.hashPassword(trimmedPassword);
+                
+                let user = this.db.users.find(u => {
                     const uEmail = (u.email || '').trim().toLowerCase();
                     const uName = (u.name || '').trim().toLowerCase();
                     const uUsername = uEmail.split('@')[0];
-                    return (
+                    
+                    const matchesIdentifier = (
                         uEmail === inputId ||
                         uName === inputId ||
                         uUsername === inputId ||
@@ -1255,78 +1202,167 @@ const leanLifeAppCore = {
                         (inputId === 'sarah' && uEmail.includes('sarah')) ||
                         (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
                     );
-                });
+                    
+                    if (!matchesIdentifier) return false;
 
-                if (existingUserById) {
-                    const resetNow = confirm(`Account found for "${existingUserById.email}", but the password entered was incorrect.\n\nWould you like to set a new password and log in now?`);
-                    if (resetNow) {
-                        const newPwd = await this.showTempPasswordModal(existingUserById);
-                        if (newPwd && newPwd.trim() !== '') {
-                            const cleanPwd = newPwd.trim();
-                            existingUserById.password = await this.hashPassword(cleanPwd);
-                            existingUserById.firstLogin = false;
-                            existingUserById.status = 'Active';
+                    return (
+                        u.password === rawHash ||
+                        u.password === trimmedHash ||
+                        u.password === rawPassword ||
+                        u.password === trimmedPassword ||
+                        (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
+                        (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
+                        (inputId.includes('emma') && rawPassword === 'password123') ||
+                        (inputId.includes('sarah') && rawPassword === 'password123') ||
+                        (inputId.includes('francess') && rawPassword === 'password123')
+                    );
+                });
+                
+                if (!user && this.supabase) {
+                    console.log("Account not found in local cache. Performing real-time cloud sync with Supabase...");
+                    try {
+                        const { data, error } = await this.supabase
+                            .from('system_settings')
+                            .select('data')
+                            .eq('id', 'leanlife_cloud_db')
+                            .single();
+
+                        if (data && data.data) {
+                            this.mergeCloudDatabase(data.data);
                             await this.saveDatabase();
-                            this.logAudit(existingUserById.name, 'Password Reset', `Password reset during login for ${existingUserById.email}`);
-                            user = existingUserById;
-                            alert("Password updated successfully! Logging you in now...");
+                            
+                            // Re-evaluate user lookup after real-time cloud merge
+                            user = this.db.users.find(u => {
+                                const uEmail = (u.email || '').trim().toLowerCase();
+                                const uName = (u.name || '').trim().toLowerCase();
+                                const uUsername = uEmail.split('@')[0];
+                                
+                                const matchesIdentifier = (
+                                    uEmail === inputId ||
+                                    uName === inputId ||
+                                    uUsername === inputId ||
+                                    (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
+                                    (inputId === 'emma' && uEmail.includes('emma')) ||
+                                    (inputId === 'sarah' && uEmail.includes('sarah')) ||
+                                    (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
+                                );
+                                
+                                if (!matchesIdentifier) return false;
+
+                                return (
+                                    u.password === rawHash ||
+                                    u.password === trimmedHash ||
+                                    u.password === rawPassword ||
+                                    u.password === trimmedPassword ||
+                                    (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
+                                    (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
+                                    (inputId.includes('emma') && rawPassword === 'password123') ||
+                                    (inputId.includes('sarah') && rawPassword === 'password123') ||
+                                    (inputId.includes('francess') && rawPassword === 'password123')
+                                );
+                            });
+                        }
+                    } catch(cloudErr) {
+                        console.warn("Live cloud sync lookup failed:", cloudErr);
+                    }
+                }
+
+                if (!user) {
+                    // Check if account exists by identifier
+                    const existingUserById = this.db.users.find(u => {
+                        const uEmail = (u.email || '').trim().toLowerCase();
+                        const uName = (u.name || '').trim().toLowerCase();
+                        const uUsername = uEmail.split('@')[0];
+                        return (
+                            uEmail === inputId ||
+                            uName === inputId ||
+                            uUsername === inputId ||
+                            (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
+                            (inputId === 'emma' && uEmail.includes('emma')) ||
+                            (inputId === 'sarah' && uEmail.includes('sarah')) ||
+                            (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
+                        );
+                    });
+
+                    if (existingUserById) {
+                        const resetNow = confirm(`Account found for "${existingUserById.email}", but the password entered was incorrect.\n\nWould you like to set a new password and log in now?`);
+                        if (resetNow) {
+                            const newPwd = await this.showTempPasswordModal(existingUserById);
+                            if (newPwd && newPwd.trim() !== '') {
+                                const cleanPwd = newPwd.trim();
+                                existingUserById.password = await this.hashPassword(cleanPwd);
+                                existingUserById.firstLogin = false;
+                                existingUserById.status = 'Active';
+                                await this.saveDatabase();
+                                this.logAudit(existingUserById.name, 'Password Reset', `Password reset during login for ${existingUserById.email}`);
+                                user = existingUserById;
+                                alert("Password updated successfully! Logging you in now...");
+                            } else {
+                                return;
+                            }
                         } else {
                             return;
                         }
                     } else {
+                        alert(`No account found matching "${inputId}". Please check your email spelling or click "Register here" below to create a new account.`);
                         return;
                     }
-                } else {
-                    alert(`No account found matching "${inputId}". Please check your email spelling or click "Register here" below to create a new account.`);
-                    return;
                 }
-            }
 
-            // Always reinstate active status
-            user.status = 'Active';
+                // Always reinstate active status
+                user.status = 'Active';
 
-            // Transparently upgrade legacy plaintext password to secure hashed format if needed
-            if (user.password === rawPassword || user.password === trimmedPassword) {
-                user.password = rawHash;
-                await this.saveDatabase();
-            }
-
-            if (user.status !== 'Active') {
-                alert("This account is currently deactivated. Please contact support.");
-                return;
-            }
-
-            // Audit
-            this.logAudit(user.name, 'User Login', `${user.role} logged in successfully`);
-
-            // First Login check (prompt for change password via centered green-bordered modal)
-            if (user.firstLogin) {
-                const newPwd = await this.showTempPasswordModal(user);
-                if (newPwd && newPwd.trim() !== '') {
-                    const cleanPwd = newPwd.trim();
-                    user.password = await this.hashPassword(cleanPwd);
-                    user.firstLogin = false;
-                    user.updatedAt = new Date().toISOString();
+                // Transparently upgrade legacy plaintext password to secure hashed format if needed
+                if (user.password === rawPassword || user.password === trimmedPassword) {
+                    user.password = rawHash;
                     await this.saveDatabase();
-                    this.logAudit(user.name, 'Password Updated', 'First login temporary password replaced');
-                    alert("Password updated successfully! Welcome to LeanLife.");
-                } else {
-                    alert("Password change is required to proceed.");
+                }
+
+                if (user.status !== 'Active') {
+                    alert("This account is currently deactivated. Please contact support.");
                     return;
                 }
-            }
 
-            this.currentUser = user;
-            const remember = document.getElementById('auth-remember')?.checked;
-            sessionStorage.setItem('leanlife_session', JSON.stringify(user));
-            if (remember || window.innerWidth <= 768) {
-                localStorage.setItem('leanlife_session', JSON.stringify(user));
+                // Audit
+                this.logAudit(user.name, 'User Login', `${user.role} logged in successfully`);
+
+                // First Login check (prompt for change password via centered green-bordered modal)
+                if (user.firstLogin) {
+                    const newPwd = await this.showTempPasswordModal(user);
+                    if (newPwd && newPwd.trim() !== '') {
+                        const cleanPwd = newPwd.trim();
+                        user.password = await this.hashPassword(cleanPwd);
+                        user.firstLogin = false;
+                        user.updatedAt = new Date().toISOString();
+                        await this.saveDatabase();
+                        this.logAudit(user.name, 'Password Updated', 'First login temporary password replaced');
+                        alert("Password updated successfully! Welcome to LeanLife.");
+                    } else {
+                        alert("Password change is required to proceed.");
+                        return;
+                    }
+                }
+
+                this.currentUser = user;
+                const remember = document.getElementById('auth-remember')?.checked;
+                sessionStorage.setItem('leanlife_session', JSON.stringify(user));
+                if (remember || window.innerWidth <= 768) {
+                    localStorage.setItem('leanlife_session', JSON.stringify(user));
+                }
+                this.updateUIAfterLogin();
+                if (user.role === 'admin') {
+                    this.navigateTo('admin');
+                } else {
+                    this.navigateTo('dashboard');
+                }
             }
-            this.updateUIAfterLogin();
-            if (user.role === 'admin') {
-                this.navigateTo('admin');
-            } else {
-                this.navigateTo('dashboard');
+        } catch (err) {
+            console.error("Critical error during handleAuthSubmit:", err);
+            alert("An unexpected error occurred during login. Please try again: " + (err.message || err));
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
             }
         }
     },
