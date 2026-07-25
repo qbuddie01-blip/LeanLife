@@ -1220,49 +1220,54 @@ const leanLifeAppCore = {
                 });
                 
                 if (!user && this.supabase) {
-                    console.log("Account not found in local cache. Performing real-time cloud sync with Supabase...");
+                    console.log("Account not found in local cache. Performing fast real-time cloud sync with Supabase...");
                     try {
-                        const { data, error } = await this.supabase
-                            .from('system_settings')
-                            .select('data')
-                            .eq('id', 'leanlife_cloud_db')
-                            .single();
+                        await Promise.race([
+                            (async () => {
+                                const { data, error } = await this.supabase
+                                    .from('system_settings')
+                                    .select('data')
+                                    .eq('id', 'leanlife_cloud_db')
+                                    .single();
 
-                        if (data && data.data) {
-                            this.mergeCloudDatabase(data.data);
-                            await this.saveDatabase();
+                                if (data && data.data) {
+                                    this.mergeCloudDatabase(data.data);
+                                    await this.saveDatabase();
+                                }
+                            })(),
+                            new Promise(r => setTimeout(r, 1000))
+                        ]);
+
+                        // Re-evaluate user lookup after real-time cloud merge
+                        user = this.db.users.find(u => {
+                            const uEmail = (u.email || '').trim().toLowerCase();
+                            const uName = (u.name || '').trim().toLowerCase();
+                            const uUsername = uEmail.split('@')[0];
                             
-                            // Re-evaluate user lookup after real-time cloud merge
-                            user = this.db.users.find(u => {
-                                const uEmail = (u.email || '').trim().toLowerCase();
-                                const uName = (u.name || '').trim().toLowerCase();
-                                const uUsername = uEmail.split('@')[0];
-                                
-                                const matchesIdentifier = (
-                                    uEmail === inputId ||
-                                    uName === inputId ||
-                                    uUsername === inputId ||
-                                    (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
-                                    (inputId === 'emma' && uEmail.includes('emma')) ||
-                                    (inputId === 'sarah' && uEmail.includes('sarah')) ||
-                                    (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
-                                );
-                                
-                                if (!matchesIdentifier) return false;
+                            const matchesIdentifier = (
+                                uEmail === inputId ||
+                                uName === inputId ||
+                                uUsername === inputId ||
+                                (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
+                                (inputId === 'emma' && uEmail.includes('emma')) ||
+                                (inputId === 'sarah' && uEmail.includes('sarah')) ||
+                                (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
+                            );
+                            
+                            if (!matchesIdentifier) return false;
 
-                                return (
-                                    u.password === rawHash ||
-                                    u.password === trimmedHash ||
-                                    u.password === rawPassword ||
-                                    u.password === trimmedPassword ||
-                                    (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                                    (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                                    (inputId.includes('emma') && rawPassword === 'password123') ||
-                                    (inputId.includes('sarah') && rawPassword === 'password123') ||
-                                    (inputId.includes('francess') && rawPassword === 'password123')
-                                );
-                            });
-                        }
+                            return (
+                                u.password === rawHash ||
+                                u.password === trimmedHash ||
+                                u.password === rawPassword ||
+                                u.password === trimmedPassword ||
+                                (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
+                                (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
+                                (inputId.includes('emma') && rawPassword === 'password123') ||
+                                (inputId.includes('sarah') && rawPassword === 'password123') ||
+                                (inputId.includes('francess') && rawPassword === 'password123')
+                            );
+                        });
                     } catch(cloudErr) {
                         console.warn("Live cloud sync lookup failed:", cloudErr);
                     }
@@ -1305,7 +1310,7 @@ const leanLifeAppCore = {
                             return;
                         }
                     } else {
-                        alert(`No account found matching "${inputId}". Please check your email spelling or click "Register here" below to create a new account.`);
+                        alert(`No account found matching "${inputId}". Please verify your email address spelling or contact your LeanLife Administrator to request account creation.`);
                         return;
                     }
                 }
