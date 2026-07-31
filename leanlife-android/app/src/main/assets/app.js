@@ -343,13 +343,89 @@ const leanLifeAppCore = {
         });
     },
 
-    // Secure SHA-256 password hashing
-    async hashPassword(password) {
+    USE_PASSWORD_HASH_MIGRATION: true,
+
+    // Legacy SHA-256 password hashing (for validating legacy accounts)
+    async hashPasswordLegacy(password) {
         const encoder = new TextEncoder();
         const data = encoder.encode(password + "leanlife_secure_salt_2026");
         const hashBuffer = await crypto.subtle.digest('SHA-256', data);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    },
+
+    // Production-Grade PBKDF2 Password Hashing (OWASP 100,000 iterations with unique 16-byte random salt)
+    async hashPasswordPBKDF2(password, saltUint8 = null) {
+        try {
+            const iterations = 100000;
+            const salt = saltUint8 || crypto.getRandomValues(new Uint8Array(16));
+            const encoder = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            const derivedBits = await crypto.subtle.deriveBits(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: iterations,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                256
+            );
+            const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+            const hashHex = Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+            return `pbkdf2$${iterations}$${saltHex}$${hashHex}`;
+        } catch (e) {
+            console.warn("PBKDF2 hashing error, falling back to legacy hash:", e);
+            return await this.hashPasswordLegacy(password);
+        }
+    },
+
+    // Verify PBKDF2 hash against stored hash string
+    async verifyPasswordPBKDF2(password, storedHash) {
+        try {
+            if (!storedHash || !storedHash.startsWith('pbkdf2$')) return false;
+            const parts = storedHash.split('$');
+            if (parts.length !== 4) return false;
+            const iterations = parseInt(parts[1], 10);
+            const saltHex = parts[2];
+            const expectedHashHex = parts[3];
+
+            const salt = new Uint8Array(saltHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            const encoder = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            const derivedBits = await crypto.subtle.deriveBits(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: iterations,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                256
+            );
+            const computedHashHex = Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+            return computedHashHex === expectedHashHex;
+        } catch (e) {
+            console.warn("PBKDF2 verification notice:", e);
+            return false;
+        }
+    },
+
+    // Default password hashing for new registrations & password resets (creates PBKDF2 hashes)
+    async hashPassword(password) {
+        return await this.hashPasswordPBKDF2(password);
     },
 
     // Initialize application
@@ -1498,15 +1574,36 @@ const leanLifeAppCore = {
                 this.navigateTo('profile'); // Send to profile to complete setup
                 alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
             } else {
-                // Bulletproof Universal Login Validation (Email/Username + Multi-Password Match & Auto-Upgrade)
+                // Bulletproof Universal Login Validation (Email/Username + Multi-Password Match & PBKDF2 Auto-Upgrade)
                 const inputId = email;
                 const rawPassword = password;
                 const trimmedPassword = password ? password.trim() : '';
                 
-                const rawHash = await this.hashPassword(rawPassword);
-                const trimmedHash = await this.hashPassword(trimmedPassword);
+                const legacyRawHash = await this.hashPasswordLegacy(rawPassword);
+                const legacyTrimmedHash = await this.hashPasswordLegacy(trimmedPassword);
                 
-                let user = this.db.users.find(u => {
+                const checkUserPasswordMatch = async (u) => {
+                    if (!u || !u.password) return false;
+                    if (u.password.startsWith('pbkdf2$')) {
+                        return (await this.verifyPasswordPBKDF2(rawPassword, u.password)) ||
+                               (await this.verifyPasswordPBKDF2(trimmedPassword, u.password));
+                    } else {
+                        return (
+                            u.password === legacyRawHash ||
+                            u.password === legacyTrimmedHash ||
+                            u.password === rawPassword ||
+                            u.password === trimmedPassword ||
+                            (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
+                            (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
+                            (inputId.includes('emma') && rawPassword === 'password123') ||
+                            (inputId.includes('sarah') && rawPassword === 'password123') ||
+                            (inputId.includes('francess') && rawPassword === 'password123')
+                        );
+                    }
+                };
+
+                let user = null;
+                for (const u of this.db.users) {
                     const uEmail = (u.email || '').trim().toLowerCase();
                     const uName = (u.name || '').trim().toLowerCase();
                     const uUsername = uEmail.split('@')[0];
@@ -1521,20 +1618,11 @@ const leanLifeAppCore = {
                         (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
                     );
                     
-                    if (!matchesIdentifier) return false;
-
-                    return (
-                        u.password === rawHash ||
-                        u.password === trimmedHash ||
-                        u.password === rawPassword ||
-                        u.password === trimmedPassword ||
-                        (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                        (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                        (inputId.includes('emma') && rawPassword === 'password123') ||
-                        (inputId.includes('sarah') && rawPassword === 'password123') ||
-                        (inputId.includes('francess') && rawPassword === 'password123')
-                    );
-                });
+                    if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
+                        user = u;
+                        break;
+                    }
+                }
                 
                 if (!user && this.supabase) {
                     console.log("Account not found in local cache. Performing fast real-time cloud sync with Supabase...");
@@ -1556,7 +1644,7 @@ const leanLifeAppCore = {
                         ]);
 
                         // Re-evaluate user lookup after real-time cloud merge
-                        user = this.db.users.find(u => {
+                        for (const u of this.db.users) {
                             const uEmail = (u.email || '').trim().toLowerCase();
                             const uName = (u.name || '').trim().toLowerCase();
                             const uUsername = uEmail.split('@')[0];
@@ -1571,20 +1659,11 @@ const leanLifeAppCore = {
                                 (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
                             );
                             
-                            if (!matchesIdentifier) return false;
-
-                            return (
-                                u.password === rawHash ||
-                                u.password === trimmedHash ||
-                                u.password === rawPassword ||
-                                u.password === trimmedPassword ||
-                                (inputId === 'admin' && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                                (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                                (inputId.includes('emma') && rawPassword === 'password123') ||
-                                (inputId.includes('sarah') && rawPassword === 'password123') ||
-                                (inputId.includes('francess') && rawPassword === 'password123')
-                            );
-                        });
+                            if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
+                                user = u;
+                                break;
+                            }
+                        }
                     } catch(cloudErr) {
                         console.warn("Live cloud sync lookup failed:", cloudErr);
                     }
@@ -1635,10 +1714,17 @@ const leanLifeAppCore = {
                 // Always reinstate active status
                 user.status = 'Active';
 
-                // Transparently upgrade legacy plaintext password to secure hashed format if needed
-                if (user.password === rawPassword || user.password === trimmedPassword) {
-                    user.password = rawHash;
-                    await this.saveDatabase();
+                // Lazy Migration: Transparently upgrade legacy password hashes (SHA-256 or plaintext) to PBKDF2 format
+                if (this.USE_PASSWORD_HASH_MIGRATION && user && (!user.password || !user.password.startsWith('pbkdf2$'))) {
+                    try {
+                        console.log(`[AuthMigration] Upgrading hash for user ${user.email} to PBKDF2...`);
+                        user.password = await this.hashPasswordPBKDF2(rawPassword);
+                        await this.saveDatabase();
+                        console.log(`[AuthMigration] Successfully upgraded password hash for ${user.email} to PBKDF2.`);
+                    } catch (migErr) {
+                        console.warn(`[AuthMigration] Notice: Hash upgrade failed for ${user.email}, continuing login:`, migErr);
+                        // NEVER lock user out if migration fails
+                    }
                 }
 
                 if (user.status !== 'Active') {
