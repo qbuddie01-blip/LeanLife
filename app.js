@@ -55,18 +55,29 @@ const leanLifeAppCore = {
         }
     },
 
-    // Helper to open IndexedDB
+    CACHE_VERSION: 'v2_selective',
+    MAX_CACHE_AGE_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
+
+    // Helper to open selective IndexedDB Cache safely
     openDB() {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open('LeanLifeDB', 1);
-            request.onupgradeneeded = (e) => {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains('store')) {
-                    db.createObjectStore('store');
-                }
-            };
-            request.onsuccess = (e) => resolve(e.target.result);
-            request.onerror = (e) => reject(e.target.error);
+            try {
+                const request = indexedDB.open('LeanLifeCache_v2', 1);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('selective_store')) {
+                        db.createObjectStore('selective_store');
+                    }
+                };
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onerror = (e) => {
+                    console.warn("IndexedDB open error:", e.target.error);
+                    reject(e.target.error);
+                };
+            } catch (err) {
+                console.warn("IndexedDB API unavailable or restricted:", err);
+                reject(err);
+            }
         });
     },
 
@@ -291,23 +302,50 @@ const leanLifeAppCore = {
         }, { passive: true });
     },
 
-    // Save current db to IndexedDB and localStorage (redundancy) and sync to Supabase Cloud
+    // Save selective cache to IndexedDB and sync full state to Supabase Cloud
     async saveDatabase() {
-        localStorage.setItem('leanlife_db', JSON.stringify(this.db));
+        // 1. Ensure monolithic DB is NEVER written to localStorage and purge legacy keys
+        try {
+            if (localStorage.getItem('leanlife_db')) {
+                console.log("Purging legacy oversized leanlife_db key from localStorage...");
+                localStorage.removeItem('leanlife_db');
+            }
+        } catch (e) {
+            console.warn("Notice: LocalStorage access restricted or unavailable:", e);
+        }
+
+        // 2. Selective IndexedDB Caching (Cache only active user's profile, recent logs, and posts)
         try {
             const db = await this.openDB();
-            const tx = db.transaction('store', 'readwrite');
-            const store = tx.objectStore('store');
-            store.put(this.db, 'leanlife_db');
+            const tx = db.transaction('selective_store', 'readwrite');
+            const store = tx.objectStore('selective_store');
+            
+            const currentUserEmail = this.currentUser ? (this.currentUser.email || '').toLowerCase() : null;
+            const selectiveCache = {
+                version: this.CACHE_VERSION,
+                timestamp: Date.now(),
+                currentUserProfile: this.currentUser || null,
+                userWellnessLogs: currentUserEmail 
+                    ? (this.db.wellnessLogs || []).filter(l => (l.user_email || l.email || '').toLowerCase() === currentUserEmail)
+                    : [],
+                userAiReports: currentUserEmail 
+                    ? (this.db.aiReports || []).filter(r => (r.user_email || r.email || '').toLowerCase() === currentUserEmail)
+                    : [],
+                recentPosts: (this.db.posts || []).slice(-25),
+                recentEvents: (this.db.events || []).slice(-10),
+                systemSettings: this.db.systemSettings || {}
+            };
+
+            store.put(selectiveCache, 'user_selective_cache');
             await new Promise((resolve, reject) => {
                 tx.oncomplete = () => resolve();
                 tx.onerror = () => reject(tx.error);
             });
         } catch(e) {
-            console.error("IndexedDB failed to save", e);
+            console.warn("IndexedDB selective cache save failed (continuing in-memory execution):", e);
         }
 
-        // Unconditional Supabase Cloud Sync so registered accounts & updates reach Cloud immediately
+        // 3. Primary Source of Truth: Supabase Cloud Sync
         if (this.supabase) {
             try {
                 const { error } = await this.supabase
@@ -330,28 +368,57 @@ const leanLifeAppCore = {
         }
     },
 
-    // Load db from IndexedDB with localStorage fallback and sync with Supabase Cloud
+    // Load selective cache from IndexedDB and sync with Supabase Cloud
     async loadDatabase() {
+        // Purge legacy oversized leanlife_db key from localStorage if present
+        try {
+            if (localStorage.getItem('leanlife_db')) {
+                console.log("Purging legacy oversized leanlife_db from localStorage...");
+                localStorage.removeItem('leanlife_db');
+            }
+        } catch (e) {
+            console.warn("Notice: LocalStorage access restricted or unavailable:", e);
+        }
+
+        // Load selective cache from IndexedDB
         try {
             const db = await this.openDB();
-            const tx = db.transaction('store', 'readonly');
-            const store = tx.objectStore('store');
-            const getRequest = store.get('leanlife_db');
-            const storedData = await new Promise((resolve, reject) => {
+            const tx = db.transaction('selective_store', 'readonly');
+            const store = tx.objectStore('selective_store');
+            const getRequest = store.get('user_selective_cache');
+            const cachedData = await new Promise((resolve, reject) => {
                 getRequest.onsuccess = () => resolve(getRequest.result);
                 getRequest.onerror = () => reject(getRequest.error);
             });
 
-            if (storedData) {
-                this.db = storedData;
-            } else {
-                const local = localStorage.getItem('leanlife_db');
-                if (local) this.db = JSON.parse(local);
+            if (cachedData) {
+                const isVersionValid = cachedData.version === this.CACHE_VERSION;
+                const isAgeValid = (Date.now() - (cachedData.timestamp || 0)) < this.MAX_CACHE_AGE_MS;
+
+                if (isVersionValid && isAgeValid) {
+                    console.log("Loaded valid selective cache from IndexedDB.");
+                    if (cachedData.currentUserProfile && !this.currentUser) {
+                        this.currentUser = cachedData.currentUserProfile;
+                    }
+                    if (cachedData.userWellnessLogs) {
+                        this.db.wellnessLogs = cachedData.userWellnessLogs;
+                    }
+                    if (cachedData.userAiReports) {
+                        this.db.aiReports = cachedData.userAiReports;
+                    }
+                    if (cachedData.recentPosts) {
+                        this.db.posts = cachedData.recentPosts;
+                    }
+                    if (cachedData.recentEvents) {
+                        this.db.events = cachedData.recentEvents;
+                    }
+                } else {
+                    console.log("Selective cache expired or schema version changed. Invalidating stale cache...");
+                    await this.cleanupStaleCache();
+                }
             }
         } catch(e) {
-            console.error("IndexedDB load failed, falling back to localStorage", e);
-            const local = localStorage.getItem('leanlife_db');
-            if (local) this.db = JSON.parse(local);
+            console.warn("IndexedDB selective cache load failed:", e);
         }
 
         this.db = this.db || {};
@@ -375,7 +442,7 @@ const leanLifeAppCore = {
         };
 
         this.isCloudSyncOk = false;
-        // Supabase Cloud Load Sync
+        // Primary Source of Truth: Supabase Cloud Load Sync
         if (this.supabase) {
             console.log("Syncing database with Supabase cloud...");
             try {
@@ -411,13 +478,58 @@ const leanLifeAppCore = {
         this.updateDebugInfo();
     },
 
+    async cleanupStaleCache() {
+        try {
+            const db = await this.openDB();
+            const tx = db.transaction('selective_store', 'readwrite');
+            const store = tx.objectStore('selective_store');
+            store.delete('user_selective_cache');
+        } catch (e) {
+            console.warn("Cache cleanup warning:", e);
+        }
+    },
+
+    getStorageDiagnostics() {
+        let lsBytes = 0;
+        let hasLegacyDb = false;
+        try {
+            for (let key in localStorage) {
+                if (localStorage.hasOwnProperty(key)) {
+                    lsBytes += (localStorage[key].length + key.length) * 2;
+                }
+            }
+            hasLegacyDb = !!localStorage.getItem('leanlife_db');
+        } catch(e) {
+            console.warn("LocalStorage check failed:", e);
+        }
+        const lsKB = (lsBytes / 1024).toFixed(2);
+        return {
+            lsKB,
+            hasLegacyDb,
+            cacheVersion: this.CACHE_VERSION,
+            usersCount: this.db && this.db.users ? this.db.users.length : 0,
+            wellnessCount: this.db && this.db.wellnessLogs ? this.db.wellnessLogs.length : 0,
+            postsCount: this.db && this.db.posts ? this.db.posts.length : 0,
+            cloudSync: this.isCloudSyncOk ? 'Connected' : 'Offline'
+        };
+    },
+
     updateDebugInfo() {
         const countEl = document.getElementById('debug-users-count');
         const listEl = document.getElementById('debug-users-list');
+        const lsSizeEl = document.getElementById('debug-ls-size');
+        const cacheVerEl = document.getElementById('debug-cache-ver');
+        const cachedCountEl = document.getElementById('debug-cached-count');
+
         if (countEl && this.db && this.db.users) {
             countEl.textContent = this.db.users.length;
             listEl.textContent = this.db.users.map(u => u.email).join(', ');
         }
+
+        const diag = this.getStorageDiagnostics();
+        if (lsSizeEl) lsSizeEl.textContent = `${diag.lsKB} KB (Legacy DB Key: ${diag.hasLegacyDb ? 'Yes' : 'No'})`;
+        if (cacheVerEl) cacheVerEl.textContent = diag.cacheVersion;
+        if (cachedCountEl) cachedCountEl.textContent = `Logs: ${diag.wellnessCount}, Posts: ${diag.postsCount}`;
     },
 
     updateAuthSyncStatus(status) {
@@ -440,23 +552,15 @@ const leanLifeAppCore = {
     async clearLocalDatabaseCache() {
         console.log("Clearing local database caches...");
         try {
-            // Clear localStorage
             localStorage.removeItem('leanlife_db');
-            
-            // Clear IndexedDB
-            const db = await this.openDB();
-            const tx = db.transaction('store', 'readwrite');
-            const store = tx.objectStore('store');
-            store.delete('leanlife_db');
-            await new Promise((resolve, reject) => {
-                tx.oncomplete = () => resolve();
-                tx.onerror = () => reject(tx.error);
-            });
-            
+        } catch(e) {}
+
+        try {
+            await this.cleanupStaleCache();
             alert("App cache cleared successfully! Reloading page for a fresh database sync...");
             window.location.reload();
         } catch (e) {
-            console.error("Failed to clear IndexedDB cache:", e);
+            console.error("Failed to clear cache:", e);
             localStorage.removeItem('leanlife_db');
             alert("Local storage cache cleared! Reloading page...");
             window.location.reload();
@@ -774,7 +878,13 @@ const leanLifeAppCore = {
 
     // Session validation
     checkSession() {
-        const loggedUser = sessionStorage.getItem('leanlife_session') || localStorage.getItem('leanlife_session');
+        let loggedUser = null;
+        try {
+            loggedUser = sessionStorage.getItem('leanlife_session') || localStorage.getItem('leanlife_session');
+        } catch (e) {
+            console.warn("Storage access notice in checkSession:", e);
+        }
+
         if (loggedUser) {
             try {
                 this.currentUser = JSON.parse(loggedUser);
@@ -1351,9 +1461,13 @@ const leanLifeAppCore = {
 
                 this.currentUser = user;
                 const remember = document.getElementById('auth-remember')?.checked;
-                sessionStorage.setItem('leanlife_session', JSON.stringify(user));
-                if (remember || window.innerWidth <= 768) {
-                    localStorage.setItem('leanlife_session', JSON.stringify(user));
+                try {
+                    sessionStorage.setItem('leanlife_session', JSON.stringify(user));
+                    if (remember || window.innerWidth <= 768) {
+                        localStorage.setItem('leanlife_session', JSON.stringify(user));
+                    }
+                } catch (e) {
+                    console.warn("Storage notice during session save:", e);
                 }
                 this.updateUIAfterLogin();
                 if (user.role === 'admin') {
@@ -1378,7 +1492,12 @@ const leanLifeAppCore = {
             this.logAudit(this.currentUser.name, 'User Logout', 'Logged out successfully');
         }
         this.currentUser = null;
-        sessionStorage.removeItem('leanlife_session');
+        try {
+            sessionStorage.removeItem('leanlife_session');
+            localStorage.removeItem('leanlife_session');
+        } catch (e) {
+            console.warn("Storage notice during logout:", e);
+        }
         this.updateUIAfterLogout();
     },
 
@@ -2004,10 +2123,14 @@ const leanLifeAppCore = {
         }
 
         // 3. Automated Periodic Newsletter runs (every 5 mins)
-        const lastDispatch = localStorage.getItem('leanlife_last_newsletter');
-        if (!lastDispatch || (now - parseInt(lastDispatch)) > 300000) { // every 5 minutes
-            localStorage.setItem('leanlife_last_newsletter', now.toString());
-            this.runNewsletterJob();
+        try {
+            const lastDispatch = localStorage.getItem('leanlife_last_newsletter');
+            if (!lastDispatch || (now - parseInt(lastDispatch)) > 300000) { // every 5 minutes
+                localStorage.setItem('leanlife_last_newsletter', now.toString());
+                this.runNewsletterJob();
+            }
+        } catch (e) {
+            console.warn("Storage notice during newsletter check:", e);
         }
 
         // 4. Maintenance log outputs (every 30s)
