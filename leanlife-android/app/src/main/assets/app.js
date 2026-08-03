@@ -2634,11 +2634,20 @@ const leanLifeAppCore = {
         `;
     },
 
-    downloadReportPDF() {
-        const report = this.getLatestReport();
-        if (!report) return;
+    downloadReportPDF(reportId = null) {
+        let report = null;
+        if (reportId) {
+            report = (this.db.aiReports || []).find(r => r.id === reportId);
+        }
+        if (!report) {
+            report = this.getLatestReport();
+        }
+        if (!report) {
+            alert("No wellness report available to download.");
+            return;
+        }
         
-        alert(`📥 Generating download bundle... PDF Report downloaded successfully for Date: ${new Date(report.timestamp).toLocaleDateString()}`);
+        alert(`📥 Generating download bundle... PDF Report downloaded successfully for ${report.userEmail ? `Member: ${report.userEmail}` : 'Latest Report'} (Date: ${new Date(report.timestamp).toLocaleDateString()})`);
     },
 
     // ==================== COACHING & NOTICE BOARD EVENTS ====================
@@ -3738,6 +3747,29 @@ const leanLifeAppCore = {
         tbody.innerHTML = html;
     },
 
+    approvePost(postId) {
+        const post = this.db.posts.find(p => p.id === postId);
+        if (!post) return;
+        post.status = 'approved';
+        post.updatedAt = new Date().toISOString();
+        this.saveDatabase();
+        this.renderAdminModerationCMS();
+        this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'Post Approved', `Approved post: "${post.title}"`);
+        alert(`Post "${post.title}" has been approved and published to the community feed.`);
+    },
+
+    deletePost(postId) {
+        const idx = this.db.posts.findIndex(p => p.id === postId);
+        if (idx === -1) return;
+        const title = this.db.posts[idx].title;
+        if (!confirm(`Are you sure you want to delete the post "${title}"?`)) return;
+        this.db.posts.splice(idx, 1);
+        this.saveDatabase();
+        this.renderAdminModerationCMS();
+        this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'Post Deleted', `Deleted post: "${title}"`);
+        alert(`Post "${title}" has been deleted.`);
+    },
+
     renderAdminEventsCMS() {
         const tbody = document.getElementById('admin-events-tbody');
         if (!tbody) return;
@@ -4303,7 +4335,7 @@ const leanLifeAppCore = {
             csvContent += values.join(",") + "\r\n";
         });
 
-        const encodedUri = encodeURI(csvContent);
+        const encodedUri = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent.replace("data:text/csv;charset=utf-8,", ""));
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
         link.setAttribute("download", `leanlife_${table}_export.csv`);
