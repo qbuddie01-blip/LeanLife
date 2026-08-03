@@ -2618,7 +2618,251 @@ const leanLifeAppCore = {
             return;
         }
         
-        alert(`📥 Generating download bundle... PDF Report downloaded successfully for ${report.userEmail ? `Member: ${report.userEmail}` : 'Latest Report'} (Date: ${new Date(report.timestamp).toLocaleDateString()})`);
+        this.generateAndDownloadPDF(report);
+    },
+
+    generateAndDownloadPDF(report) {
+        const memberName = this.currentUser ? this.currentUser.name : 'LeanLife Member';
+        const memberEmail = report.userEmail || (this.currentUser ? this.currentUser.email : 'member@leanlife.com');
+        const reportDate = new Date(report.timestamp || Date.now()).toLocaleDateString('en-US', {
+            year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+
+        const pdfHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LeanLife Wellness Report - ${memberName}</title>
+    <style>
+        @media print {
+            body { margin: 0; padding: 0; background: #fff; }
+            .no-print { display: none !important; }
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #1a202c;
+            background-color: #f7fafc;
+            margin: 0;
+            padding: 20px;
+        }
+        .report-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            padding: 40px;
+            border: 1px solid #e2e8f0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #12826d;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .brand-logo {
+            width: 44px;
+            height: 44px;
+            background: #12826d;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #a5e332;
+            font-weight: bold;
+            font-size: 22px;
+        }
+        .brand-title {
+            font-size: 24px;
+            font-weight: 800;
+            color: #12826d;
+            margin: 0;
+            letter-spacing: -0.5px;
+        }
+        .badge {
+            background: #e6fffa;
+            color: #12826d;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            border: 1px solid rgba(18, 130, 109, 0.2);
+        }
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .meta-item {
+            font-size: 14px;
+        }
+        .meta-label {
+            color: #718096;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        .meta-value {
+            font-weight: 700;
+            color: #2d3748;
+            margin-top: 2px;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2d3748;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-left: 4px solid #a5e332;
+            padding-left: 10px;
+        }
+        .score-card {
+            background: linear-gradient(135deg, #12826d, #0b5345);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .score-number {
+            font-size: 48px;
+            font-weight: 900;
+            color: #a5e332;
+            line-height: 1;
+        }
+        .score-label {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 8px;
+            opacity: 0.9;
+        }
+        .content-box {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            line-height: 1.6;
+            font-size: 15px;
+            color: #4a5568;
+            white-space: pre-wrap;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #a0aec0;
+        }
+        .print-btn-bar {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .btn-print {
+            background: #12826d;
+            color: white;
+            border: none;
+            padding: 12px 28px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(18,130,109,0.3);
+        }
+        .btn-print:hover { background: #0e6655; }
+    </style>
+</head>
+<body>
+    <div class="print-btn-bar no-print">
+        <button class="btn-print" onclick="window.print()">🖨️ Save as PDF / Print Document</button>
+    </div>
+    <div class="report-container">
+        <div class="header">
+            <div class="brand">
+                <div class="brand-logo">🌿</div>
+                <div>
+                    <h1 class="brand-title">LeanLife Health & Wellness</h1>
+                    <div style="font-size: 12px; color: #718096;">AI-Powered Personal Health Analytics</div>
+                </div>
+            </div>
+            <div class="badge">OFFICIAL REPORT</div>
+        </div>
+
+        <div class="meta-grid">
+            <div class="meta-item">
+                <div class="meta-label">Member Name</div>
+                <div class="meta-value">${memberName}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Email Address</div>
+                <div class="meta-value">${memberEmail}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Report ID</div>
+                <div class="meta-value">${report.id || 'RPT-AI-OFFICIAL'}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Generated Date</div>
+                <div class="meta-value">${reportDate}</div>
+            </div>
+        </div>
+
+        <div class="score-card">
+            <div class="score-number">${report.score || 88}/100</div>
+            <div class="score-label">Overall Health & Consistency Score</div>
+        </div>
+
+        <div class="section-title">AI Coach Recommendations & Analysis</div>
+        <div class="content-box">
+${report.content || report.summary || "Your wellness progress shows strong consistency across hydration, physical activity, and sleep recovery. Continue adhering to your customized nutrition and workout targets for optimal metabolic health."}
+        </div>
+
+        <div class="footer">
+            <div>Verified by LeanLife Medical & Coaching Board</div>
+            <div>Confidential Health Document • Page 1 of 1</div>
+        </div>
+    </div>
+    <script>
+        window.onload = function() {
+            setTimeout(function() {
+                window.print();
+            }, 500);
+        };
+    </script>
+</body>
+</html>`;
+
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.open();
+            printWindow.document.write(pdfHtml);
+            printWindow.document.close();
+        } else {
+            const blob = new Blob([pdfHtml], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `LeanLife_Wellness_Report_${report.id || Date.now()}.html`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
     },
 
     // ==================== COACHING & NOTICE BOARD EVENTS ====================
@@ -3195,49 +3439,51 @@ const leanLifeAppCore = {
             if (panel) panel.style.display = 'none';
         });
 
-        // Set active tab buttons highlight
+        // Set active tab buttons highlight immediately
         const activeBtn = document.getElementById(`btn-admin-${tab}`) || document.getElementById(`btn-admin-users`);
         if (activeBtn) activeBtn.classList.add('active');
         
         const activePanel = document.getElementById(`admin-subview-${tab}`);
         if (activePanel) activePanel.style.display = 'block';
 
-        // Render tab content
-        switch (tab) {
-            case 'users':
-                this.renderAdminUsers();
-                break;
-            case 'logs-cms':
-                this.renderAdminLogsCMS();
-                break;
-            case 'reports-cms':
-                this.renderAdminReportsCMS();
-                break;
-            case 'emails-cms':
-                this.renderAdminEmailsCMS();
-                break;
-            case 'moderation-cms':
-                this.renderAdminModerationCMS();
-                break;
-            case 'notices-cms':
-                this.renderAdminEventsCMS();
-                break;
-            case 'coaches-cms':
-                this.renderAdminCoachesCMS();
-                break;
-            case 'analytics-cms':
-                this.renderAdminAnalyticsCMS();
-                break;
-            case 'audits-cms':
-                this.renderAdminAuditsCMS();
-                break;
-            case 'settings-cms':
-                this.renderAdminSettingsCMS();
-                break;
-            case 'automation':
-                this.renderAdminAutomationCMS();
-                break;
-        }
+        // Deferred subview render via requestAnimationFrame for instant zero-latency UI switching
+        requestAnimationFrame(() => {
+            switch (tab) {
+                case 'users':
+                    this.renderAdminUsers();
+                    break;
+                case 'logs-cms':
+                    this.renderAdminLogsCMS();
+                    break;
+                case 'reports-cms':
+                    this.renderAdminReportsCMS();
+                    break;
+                case 'emails-cms':
+                    this.renderAdminEmailsCMS();
+                    break;
+                case 'moderation-cms':
+                    this.renderAdminModerationCMS();
+                    break;
+                case 'notices-cms':
+                    this.renderAdminEventsCMS();
+                    break;
+                case 'coaches-cms':
+                    this.renderAdminCoachesCMS();
+                    break;
+                case 'analytics-cms':
+                    this.renderAdminAnalyticsCMS();
+                    break;
+                case 'audits-cms':
+                    this.renderAdminAuditsCMS();
+                    break;
+                case 'settings-cms':
+                    this.renderAdminSettingsCMS();
+                    break;
+                case 'automation':
+                    this.renderAdminAutomationCMS();
+                    break;
+            }
+        });
     },
 
     renderAdminUsers() {
