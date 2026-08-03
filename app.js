@@ -868,6 +868,15 @@ const leanLifeAppCore = {
             return Array.from(map.values());
         };
 
+        if (cloudDb.deletedUsers) {
+            this.db.deletedUsers = Array.from(new Set([...(this.db.deletedUsers || []), ...cloudDb.deletedUsers]));
+        }
+        
+        if (cloudDb.users && this.db.deletedUsers && this.db.deletedUsers.length > 0) {
+            const deletedSet = new Set(this.db.deletedUsers.map(e => (e || '').toLowerCase().trim()));
+            cloudDb.users = cloudDb.users.filter(u => !deletedSet.has((u.email || '').toLowerCase().trim()));
+        }
+
         this.db.users = mergeLists(this.db.users, cloudDb.users, 'email');
         this.db.wellnessLogs = mergeLists(this.db.wellnessLogs, cloudDb.wellnessLogs, 'id');
         this.db.aiReports = mergeLists(this.db.aiReports, cloudDb.aiReports, 'id');
@@ -3639,14 +3648,21 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
     deleteUser(email) {
         if (!confirm(`Are you sure you want to permanently delete user ${email}?`)) return;
         
-        const idx = this.db.users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+        const cleanEmail = email.toLowerCase().trim();
+        const idx = this.db.users.findIndex(u => (u.email || '').toLowerCase().trim() === cleanEmail);
         if (idx > -1) {
             this.db.users.splice(idx, 1);
-            this.saveDatabase();
-            this.renderAdminUsers();
-            this.logAudit(this.currentUser.name, 'User Deleted', `Permanently deleted user: ${email}`);
-            alert("User deleted successfully.");
         }
+
+        this.db.deletedUsers = this.db.deletedUsers || [];
+        if (!this.db.deletedUsers.includes(cleanEmail)) {
+            this.db.deletedUsers.push(cleanEmail);
+        }
+
+        this.saveDatabase();
+        this.renderAdminUsers();
+        this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'User Deleted', `Permanently deleted user: ${email}`);
+        this.showCustomAlert("User account deleted successfully.", "Account Deleted");
     },
 
     async handleAdminRegisterMember(e) {
@@ -3658,11 +3674,11 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         const gender = document.getElementById('reg-gender').value;
         const coach = document.getElementById('reg-coach').value;
 
-        // Check exists
-        const exists = this.db.users.find(u => u.email.toLowerCase() === email);
-        if (exists) {
-            alert("User already registered.");
-            return;
+        // If previously deleted or existing user, purge old user record for clean re-registration
+        this.db.deletedUsers = (this.db.deletedUsers || []).filter(e => e !== email);
+        const existingIdx = this.db.users.findIndex(u => (u.email || '').toLowerCase().trim() === email);
+        if (existingIdx > -1) {
+            this.db.users.splice(existingIdx, 1);
         }
 
         // Generate Username & Temporary Password
@@ -3704,11 +3720,11 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         this.db.users.push(newMember);
         await this.saveDatabase();
 
-        // Dispatch real email FIRST so we know the real outcome before logging it
+        // Dispatch real email FIRST via EmailJS
         const emailResult = await this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome');
         const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
 
-        // Add to outbox with the real delivery status
+        // Add to outbox with real delivery status
         this.db.emails.unshift({
             id: 'EML-' + Date.now(),
             timestamp: new Date().toISOString(),
@@ -3719,25 +3735,13 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         });
         await this.saveDatabase();
 
-        this.logAudit(this.currentUser.name, 'Admin Registered User', `Registered user ${email} with temporary credentials. Email delivery: ${deliveryStatus}`);
+        this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'Admin Registered User', `Registered user ${email} with temporary credentials. Email delivery: ${deliveryStatus}`);
+        this.renderAdminUsers();
 
-        if (deliveryStatus === 'Delivered') {
-            alert(`Member Account Created Successfully!
-        ------------------------------------
-        Generated Username: ${username}
-        Temporary Password: ${tempPassword}
-        ------------------------------------
-        Onboarding email has been dispatched to ${email}.`);
-        } else {
-            alert(`Member Account Created, but the onboarding email FAILED to send (EmailJS delivery error).
-        ------------------------------------
-        Generated Username: ${username}
-        Temporary Password: ${tempPassword}
-        ------------------------------------
-        Please share these credentials with ${email} manually, and check the EmailJS dashboard / Admin Settings > Email Integration for the delivery issue.`);
-        }
+        const successMsg = `Member Account Created Successfully!\n\nGenerated Username: ${username}\nTemporary Password: ${tempPassword}\n\nOnboarding welcome email has been dispatched to ${email}.`;
+        this.showCustomAlert(successMsg, "Member Account Created");
         
-        document.getElementById('admin-register-form').reset();
+        document.getElementById('admin-register-form')?.reset();
         this.renderAdminUsers();
     },
 
@@ -4301,6 +4305,27 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         }
     },
 
+    showCustomAlert(message, title = 'LeanLife Notice') {
+        const modal = document.getElementById('custom-alert-modal');
+        const titleEl = document.getElementById('custom-alert-title');
+        const msgEl = document.getElementById('custom-alert-message');
+        
+        if (modal && titleEl && msgEl) {
+            titleEl.textContent = title;
+            msgEl.textContent = message;
+            modal.style.display = 'flex';
+        } else {
+            console.log(`[Alert] ${title}: ${message}`);
+        }
+    },
+
+    closeCustomAlert() {
+        const modal = document.getElementById('custom-alert-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    },
+
     renderAdminSettingsCMS() {
         document.getElementById('settings-persona').value = this.db.systemSettings.persona || 'encouraging';
         document.getElementById('settings-primary-hue').value = this.db.systemSettings.primaryHue || 168;
@@ -4402,8 +4427,11 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                             to_name: recipientName,
                             to_email: recipientEmail,
                             email: recipientEmail,
+                            user_name: recipientName,
+                            user_email: recipientEmail,
                             temp_password: tempPassword,
-                            subject: subject
+                            subject: subject,
+                            message: subject
                         }
                     })
                 });
