@@ -4374,12 +4374,61 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
     async sendRealEmail(recipientName, recipientEmail, subject, tempPassword, templateType = null) {
         const config = window.SUPABASE_CONFIG || {};
 
-        // 1. Try Resend API first
+        // 1. Primary Email Provider: EmailJS
+        const serviceId = (this.db.systemSettings && this.db.systemSettings.emailjsServiceId) || config.EMAILJS_SERVICE_ID;
+        let templateId = (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId) || config.EMAILJS_TEMPLATE_ID;
+        if (templateType === 'welcome') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) || config.EMAILJS_WELCOME_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
+        } else if (templateType === 'autoreply') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) || config.EMAILJS_AUTOREPLY_TEMPLATE_ID;
+        }
+        const publicKey = (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey) || config.EMAILJS_PUBLIC_KEY;
+
+        if (serviceId && templateId && publicKey) {
+            console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
+            try {
+                const targetUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '/send_email_api' : 'https://api.emailjs.com/api/v1.0/email/send';
+                
+                const response = await fetch(targetUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        service_id: serviceId,
+                        template_id: templateId,
+                        user_id: publicKey,
+                        template_params: {
+                            to_name: recipientName,
+                            to_email: recipientEmail,
+                            email: recipientEmail,
+                            temp_password: tempPassword,
+                            subject: subject
+                        }
+                    })
+                });
+
+                if (response.ok) {
+                    console.log(`Real email successfully dispatched to ${recipientEmail} via EmailJS!`);
+                    this.logAudit('System', 'Real Email Dispatched', `Real onboarding email delivered to ${recipientEmail} via EmailJS`);
+                    return { ok: true, provider: 'emailjs' };
+                } else {
+                    const errText = await response.text();
+                    console.error("EmailJS API returned error status:", response.status, errText);
+                    this.logAudit('System', 'Real Email FAILED', `EmailJS rejected email to ${recipientEmail} (HTTP ${response.status}): ${errText}`);
+                }
+            } catch (err) {
+                console.error("Failed to execute EmailJS HTTP request:", err);
+                this.logAudit('System', 'Real Email FAILED', `Network error sending email via EmailJS: ${err.message}`);
+            }
+        }
+
+        // 2. Secondary Fallback Email Provider: Resend API
         const resendApiKey = (this.db.systemSettings && this.db.systemSettings.resendApiKey) || config.RESEND_API_KEY;
         const resendFrom = (this.db.systemSettings && this.db.systemSettings.resendFromEmail) || config.RESEND_FROM_EMAIL || 'LeanLife <onboarding@resend.dev>';
 
         if (resendApiKey) {
-            console.log(`Sending real email to: ${recipientEmail} via Resend API...`);
+            console.log(`Fallback: Sending real email to: ${recipientEmail} via Resend API...`);
             try {
                 const htmlBody = `
                     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #e1e8ed;">
@@ -4433,59 +4482,8 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
             }
         }
 
-        // 2. Legacy EmailJS Fallback
-        const serviceId = (this.db.systemSettings && this.db.systemSettings.emailjsServiceId) || config.EMAILJS_SERVICE_ID;
-        let templateId = (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId) || config.EMAILJS_TEMPLATE_ID;
-        if (templateType === 'welcome') {
-            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) || config.EMAILJS_WELCOME_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
-        } else if (templateType === 'autoreply') {
-            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) || config.EMAILJS_AUTOREPLY_TEMPLATE_ID;
-        }
-        const publicKey = (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey) || config.EMAILJS_PUBLIC_KEY;
-
-        if (!serviceId || !templateId || !publicKey) {
-            console.warn("Email credentials missing. Operating in local simulation outbox mode.");
-            return { ok: false, reason: 'missing_credentials' };
-        }
-
-        console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
-        try {
-            const targetUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '/send_email_api' : 'https://api.emailjs.com/api/v1.0/email/send';
-            
-            const response = await fetch(targetUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    service_id: serviceId,
-                    template_id: templateId,
-                    user_id: publicKey,
-                    template_params: {
-                        to_name: recipientName,
-                        to_email: recipientEmail,
-                        email: recipientEmail,
-                        temp_password: tempPassword,
-                        subject: subject
-                    }
-                })
-            });
-
-            if (response.ok) {
-                console.log(`Real email successfully dispatched to ${recipientEmail}!`);
-                this.logAudit('System', 'Real Email Dispatched', `Real onboarding email delivered to ${recipientEmail}`);
-                return { ok: true, provider: 'emailjs' };
-            } else {
-                const errText = await response.text();
-                console.error("EmailJS API returned error status:", response.status, errText);
-                this.logAudit('System', 'Real Email FAILED', `EmailJS rejected email to ${recipientEmail} (HTTP ${response.status}): ${errText}`);
-                return { ok: false, reason: `http_${response.status}`, detail: errText };
-            }
-        } catch (err) {
-            console.error("Failed to execute EmailJS HTTP request:", err);
-            this.logAudit('System', 'Real Email FAILED', `Network error sending email to ${recipientEmail}: ${err.message}`);
-            return { ok: false, reason: 'network_error', detail: err.message };
-        }
+        console.warn("Email credentials missing for EmailJS and Resend. Operating in local simulation outbox mode.");
+        return { ok: false, reason: 'missing_credentials' };
     },
 
     exportReport(table, format) {

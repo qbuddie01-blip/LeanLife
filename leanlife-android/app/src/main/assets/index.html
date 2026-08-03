@@ -1657,39 +1657,40 @@
 
                     <!-- Email Service Integration settings -->
                     <div class="glass-card">
-                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-paper-plane"></i> Resend & Email Service Settings</h3>
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem;"><i class="fa-solid fa-paper-plane"></i> EmailJS Integration Settings</h3>
                         <form onsubmit="app.handleAdminSaveEmailSettings(event)">
-                            <p style="font-size: 0.85rem; color: #444; margin-bottom: 1rem;">Configure your <strong>Resend API Key</strong> to deliver instant real-world onboarding, notification, and password emails.</p>
-                            <div class="form-group" style="margin-bottom: 0.8rem;">
-                                <label style="font-weight: 600; color: var(--clr-primary-green);"><i class="fa-solid fa-key"></i> Resend API Key</label>
-                                <input type="text" id="settings-resend-api-key" class="form-input" placeholder="e.g. re_123456789_abcdef..." autocapitalize="none" spellcheck="false">
-                            </div>
-                            <div class="form-group" style="margin-bottom: 1rem;">
-                                <label style="font-weight: 600;"><i class="fa-solid fa-envelope"></i> Resend Sender Email (From)</label>
-                                <input type="email" id="settings-resend-from-email" class="form-input" placeholder="LeanLife <onboarding@resend.dev>" autocapitalize="none" spellcheck="false">
-                            </div>
+                            <p style="font-size: 0.85rem; color: #444; margin-bottom: 1rem;">Configure your <strong>EmailJS Service & Template IDs</strong> to deliver real-world onboarding, welcome, and notification emails directly to user inboxes.</p>
                             
-                            <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.08); margin: 1rem 0;">
-                            <p style="font-size: 0.8rem; color: #666; margin-bottom: 0.8rem;">EmailJS Legacy Fallback Configuration (Optional):</p>
                             <div class="form-group" style="margin-bottom: 0.8rem;">
-                                <label>EmailJS Service ID</label>
+                                <label style="font-weight: 600; color: var(--clr-primary-green);"><i class="fa-solid fa-server"></i> EmailJS Service ID</label>
                                 <input type="text" id="settings-emailjs-service-id" class="form-input" placeholder="e.g. service_xxxx">
                             </div>
                             <div class="form-group" style="margin-bottom: 0.8rem;">
-                                <label>EmailJS Template ID</label>
+                                <label style="font-weight: 600;"><i class="fa-solid fa-file-code"></i> EmailJS Template ID</label>
                                 <input type="text" id="settings-emailjs-template-id" class="form-input" placeholder="e.g. template_xxxx">
                             </div>
                             <div class="form-group" style="margin-bottom: 0.8rem;">
-                                <label>Auto Reply Template ID</label>
-                                <input type="text" id="settings-emailjs-autoreply-template-id" class="form-input" placeholder="e.g. template_xxxx">
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0.8rem;">
-                                <label>Welcome Template ID</label>
+                                <label style="font-weight: 600;"><i class="fa-solid fa-envelope-circle-check"></i> Welcome Template ID</label>
                                 <input type="text" id="settings-emailjs-welcome-template-id" class="form-input" placeholder="e.g. template_xxxx">
                             </div>
                             <div class="form-group" style="margin-bottom: 0.8rem;">
-                                <label>EmailJS Public Key</label>
+                                <label style="font-weight: 600;"><i class="fa-solid fa-reply-all"></i> Auto Reply Template ID</label>
+                                <input type="text" id="settings-emailjs-autoreply-template-id" class="form-input" placeholder="e.g. template_xxxx">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label style="font-weight: 600; color: var(--clr-primary-green);"><i class="fa-solid fa-key"></i> EmailJS Public Key</label>
                                 <input type="text" id="settings-emailjs-public-key" class="form-input" placeholder="e.g. user_xxxx">
+                            </div>
+
+                            <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.08); margin: 1rem 0;">
+                            <p style="font-size: 0.8rem; color: #666; margin-bottom: 0.8rem;">Resend API Fallback Configuration (Optional):</p>
+                            <div class="form-group" style="margin-bottom: 0.8rem;">
+                                <label>Resend API Key</label>
+                                <input type="text" id="settings-resend-api-key" class="form-input" placeholder="e.g. re_123456789_abcdef..." autocapitalize="none" spellcheck="false">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0.8rem;">
+                                <label>Resend Sender Email (From)</label>
+                                <input type="email" id="settings-resend-from-email" class="form-input" placeholder="LeanLife <onboarding@resend.dev>" autocapitalize="none" spellcheck="false">
                             </div>
                             <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;"><i class="fa-solid fa-save"></i> Save Email Setup</button>
                         </form>
