@@ -1695,6 +1695,7 @@ const leanLifeAppCore = {
                                 existingUserById.password = await this.hashPassword(cleanPwd);
                                 existingUserById.firstLogin = false;
                                 existingUserById.status = 'Active';
+                                existingUserById.updatedAt = new Date().toISOString();
                                 await this.saveDatabase();
                                 this.logAudit(existingUserById.name, 'Password Reset', `Password reset during login for ${existingUserById.email}`);
                                 user = existingUserById;
@@ -1719,6 +1720,7 @@ const leanLifeAppCore = {
                     try {
                         console.log(`[AuthMigration] Upgrading hash for user ${user.email} to PBKDF2...`);
                         user.password = await this.hashPasswordPBKDF2(rawPassword);
+                        user.updatedAt = new Date().toISOString();
                         await this.saveDatabase();
                         console.log(`[AuthMigration] Successfully upgraded password hash for ${user.email} to PBKDF2.`);
                     } catch (migErr) {
