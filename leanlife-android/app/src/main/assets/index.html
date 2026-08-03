@@ -311,7 +311,7 @@
         <section id="view-login" class="view-section">
             <div class="auth-container glass-card">
                 <div class="auth-header">
-                    <h2 id="auth-title">Welcome Back</h2>
+                    <h2 id="auth-title" style="user-select: none; -webkit-user-select: none; cursor: pointer; touch-action: manipulation;">Welcome Back</h2>
                     <p id="auth-subtitle">Log in to your personalized wellness portal</p>
                 </div>
                 
@@ -339,12 +339,11 @@
                     <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; font-size: 1.1rem; margin-top: 1rem;" id="btn-auth-submit">Login</button>
                 </form>
                 
-                <!-- Simulation Quick-Login Box -->
+                <!-- Admin Quick-Login Box -->
                 <div id="simulation-login-box" style="display: none; margin-top: 1.5rem; border-top: 1px solid rgba(0, 0, 0, 0.08); padding-top: 1.2rem; text-align: center;">
-                    <p style="font-size: 0.8rem; color: #555; margin-bottom: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">Simulation Quick Login</p>
+                    <p style="font-size: 0.8rem; color: #555; margin-bottom: 0.8rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">Admin Quick Login Access</p>
                     <div style="display: flex; gap: 0.8rem; justify-content: center; flex-wrap: wrap;">
-                        <button type="button" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="app.fillSimulationCreds('emma@example.com', 'password123')">Member Login</button>
-                        <button type="button" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; border-color: rgba(0,0,0,0.15); color: var(--clr-text-dark);" onclick="app.fillSimulationCreds('admin@leanlife.com', 'admin123')">Admin Login</button>
+                        <button type="button" class="btn btn-primary" style="padding: 0.5rem 1.2rem; font-size: 0.85rem;" onclick="app.fillSimulationCreds('admin@leanlife.com', 'admin123')"><i class="fa-solid fa-user-shield"></i> Admin Login</button>
                     </div>
                 </div>
                 

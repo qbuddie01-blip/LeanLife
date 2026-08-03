@@ -525,24 +525,34 @@ const leanLifeAppCore = {
         }
         
 
-        // Secret developer quick login toggle (5 clicks on "Welcome Back" title)
+        // Secret developer quick login toggle (5 clicks/taps on "Welcome Back" title)
         const authTitle = document.getElementById('auth-title');
         if (authTitle) {
-            let clickCount = 0;
-            let clickTimeout;
-            authTitle.addEventListener('click', () => {
-                clickCount++;
-                clearTimeout(clickTimeout);
-                if (clickCount >= 5) {
+            let tapCount = 0;
+            let tapTimeout;
+            let lastTapTime = 0;
+            const handleSecretTap = (e) => {
+                const now = Date.now();
+                if (now - lastTapTime < 50) return; // Prevent duplicate touchend + click fire
+                lastTapTime = now;
+                
+                tapCount++;
+                clearTimeout(tapTimeout);
+                if (tapCount >= 5) {
                     const simBox = document.getElementById('simulation-login-box');
                     if (simBox) {
-                        simBox.style.display = simBox.style.display === 'none' ? 'block' : 'none';
+                        simBox.style.display = (simBox.style.display === 'none' || !simBox.style.display) ? 'block' : 'none';
+                        if (simBox.style.display === 'block') {
+                            simBox.scrollIntoView({ behavior: 'smooth' });
+                        }
                     }
-                    clickCount = 0;
+                    tapCount = 0;
                 } else {
-                    clickTimeout = setTimeout(() => { clickCount = 0; }, 2000);
+                    tapTimeout = setTimeout(() => { tapCount = 0; }, 2500);
                 }
-            });
+            };
+            authTitle.addEventListener('click', handleSecretTap);
+            authTitle.addEventListener('touchend', handleSecretTap);
         }
         
         // Check for pending countdowns from previous session
