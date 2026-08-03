@@ -271,12 +271,22 @@ button,
 .btn,
 .admin-tab-btn,
 .nav-links a,
+.clickable-title,
 input[type="button"],
 input[type="submit"] {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     -webkit-user-select: none;
+}
+
+button:active,
+.btn:active,
+.admin-tab-btn:active,
+.clickable-title:active {
+    transform: scale(0.97) !important;
+    opacity: 0.9 !important;
+    transition: transform 0.05s ease !important;
 }
 
 .btn {

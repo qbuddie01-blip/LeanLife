@@ -526,36 +526,7 @@ const leanLifeAppCore = {
         }
         
 
-        // Secret developer quick login toggle (5 clicks/taps on "Welcome Back" title)
-        const authTitle = document.getElementById('auth-title');
-        if (authTitle) {
-            let tapCount = 0;
-            let tapTimeout;
-            let lastTapTime = 0;
-            const handleSecretTap = (e) => {
-                const now = Date.now();
-                if (now - lastTapTime < 400) return; // Deduplicate synthetic double-events within 400ms window
-                lastTapTime = now;
-                
-                tapCount++;
-                clearTimeout(tapTimeout);
-                if (tapCount >= 5) {
-                    const simBox = document.getElementById('simulation-login-box');
-                    if (simBox) {
-                        const isHidden = (simBox.style.display === 'none' || !simBox.style.display);
-                        simBox.style.display = isHidden ? 'block' : 'none';
-                        if (isHidden) {
-                            simBox.scrollIntoView({ behavior: 'smooth' });
-                        }
-                    }
-                    tapCount = 0;
-                } else {
-                    tapTimeout = setTimeout(() => { tapCount = 0; }, 3000);
-                }
-            };
-            authTitle.addEventListener('pointerdown', handleSecretTap);
-            authTitle.addEventListener('click', handleSecretTap);
-        }
+
         
         // Check for pending countdowns from previous session
         this.restorePendingCountdowns();
@@ -1427,6 +1398,27 @@ const leanLifeAppCore = {
                 }, 150);
             }
         }, { passive: true });
+    },
+
+    handleAuthTitleTap() {
+        this.adminTapCount = (this.adminTapCount || 0) + 1;
+        clearTimeout(this.adminTapTimeout);
+        
+        if (this.adminTapCount >= 5) {
+            const simBox = document.getElementById('simulation-login-box');
+            if (simBox) {
+                const isHidden = (simBox.style.display === 'none' || !simBox.style.display);
+                simBox.style.display = isHidden ? 'block' : 'none';
+                if (isHidden) {
+                    simBox.scrollIntoView({ behavior: 'smooth' });
+                }
+            }
+            this.adminTapCount = 0;
+        } else {
+            this.adminTapTimeout = setTimeout(() => {
+                this.adminTapCount = 0;
+            }, 3000);
+        }
     },
 
     async fillSimulationCreds(email, password) {
