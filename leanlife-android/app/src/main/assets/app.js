@@ -3424,66 +3424,35 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
     },
 
     switchAdminTab(tab) {
-        this.activeAdminTab = tab;
-        
-        const subpanels = [
-            'users', 'logs-cms', 'reports-cms', 'emails-cms', 
-            'moderation-cms', 'notices-cms', 'coaches-cms', 
-            'analytics-cms', 'audits-cms', 'settings-cms', 'automation'
-        ];
-        
-        subpanels.forEach(t => {
-            const btn = document.getElementById(`btn-admin-${t}`);
-            const panel = document.getElementById(`admin-subview-${t}`);
-            if (btn) btn.classList.remove('active');
-            if (panel) panel.style.display = 'none';
-        });
-
-        // Set active tab buttons highlight immediately
-        const activeBtn = document.getElementById(`btn-admin-${tab}`) || document.getElementById(`btn-admin-users`);
-        if (activeBtn) activeBtn.classList.add('active');
-        
+        const activeBtn = document.getElementById(`btn-admin-${tab}`);
         const activePanel = document.getElementById(`admin-subview-${tab}`);
-        if (activePanel) activePanel.style.display = 'block';
+        if (!activePanel) return;
 
-        // Deferred subview render via requestAnimationFrame for instant zero-latency UI switching
-        requestAnimationFrame(() => {
+        // Instant synchronous UI toggle (0ms latency)
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.admin-subpanel').forEach(panel => panel.style.display = 'none');
+
+        if (activeBtn) activeBtn.classList.add('active');
+        activePanel.style.display = 'block';
+
+        this.activeAdminTab = tab;
+
+        // Deferred subview render via setTimeout 0 for zero-lag UI thread execution
+        setTimeout(() => {
             switch (tab) {
-                case 'users':
-                    this.renderAdminUsers();
-                    break;
-                case 'logs-cms':
-                    this.renderAdminLogsCMS();
-                    break;
-                case 'reports-cms':
-                    this.renderAdminReportsCMS();
-                    break;
-                case 'emails-cms':
-                    this.renderAdminEmailsCMS();
-                    break;
-                case 'moderation-cms':
-                    this.renderAdminModerationCMS();
-                    break;
-                case 'notices-cms':
-                    this.renderAdminEventsCMS();
-                    break;
-                case 'coaches-cms':
-                    this.renderAdminCoachesCMS();
-                    break;
-                case 'analytics-cms':
-                    this.renderAdminAnalyticsCMS();
-                    break;
-                case 'audits-cms':
-                    this.renderAdminAuditsCMS();
-                    break;
-                case 'settings-cms':
-                    this.renderAdminSettingsCMS();
-                    break;
-                case 'automation':
-                    this.renderAdminAutomationCMS();
-                    break;
+                case 'users': this.renderAdminUsers(); break;
+                case 'logs-cms': this.renderAdminLogsCMS(); break;
+                case 'reports-cms': this.renderAdminReportsCMS(); break;
+                case 'emails-cms': this.renderAdminEmailsCMS(); break;
+                case 'moderation-cms': this.renderAdminModerationCMS(); break;
+                case 'notices-cms': this.renderAdminEventsCMS(); break;
+                case 'coaches-cms': this.renderAdminCoachesCMS(); break;
+                case 'analytics-cms': this.renderAdminAnalyticsCMS(); break;
+                case 'audits-cms': this.renderAdminAuditsCMS(); break;
+                case 'settings-cms': this.renderAdminSettingsCMS(); break;
+                case 'automation': this.renderAdminAutomationCMS(); break;
             }
-        });
+        }, 0);
     },
 
     renderAdminUsers() {

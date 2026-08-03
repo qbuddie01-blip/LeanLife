@@ -1614,20 +1614,22 @@ button:active,
     display: flex;
     align-items: center;
     gap: 8px;
-    transition: var(--transition-fast);
+    transition: background-color 0.05s ease, color 0.05s ease, transform 0.05s ease;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
 }
 
 .admin-tab-btn:hover {
-    background: rgba(18, 130, 109, 0.05);
+    background: rgba(18, 130, 109, 0.08);
     color: var(--clr-teal-green);
 }
 
 .admin-tab-btn.active {
     background: var(--clr-teal-green) !important;
     color: white !important;
-    font-weight: 600;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(18, 130, 109, 0.25) !important;
+}
     box-shadow: 0 4px 12px rgba(18, 130, 109, 0.15);
     border-bottom: none !important;
 }
