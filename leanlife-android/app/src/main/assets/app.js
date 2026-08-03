@@ -475,6 +475,7 @@ const leanLifeAppCore = {
         this.renderNoticeBoard();
         this.renderCommunityFeed();
         this.animateStats();
+        this.initGlobalTouchOptimization();
 
         // Setup password hashing debug preview
         const passInput = document.getElementById('auth-password');
@@ -533,7 +534,7 @@ const leanLifeAppCore = {
             let lastTapTime = 0;
             const handleSecretTap = (e) => {
                 const now = Date.now();
-                if (now - lastTapTime < 50) return; // Prevent duplicate touchend + click fire
+                if (now - lastTapTime < 400) return; // Deduplicate synthetic double-events within 400ms window
                 lastTapTime = now;
                 
                 tapCount++;
@@ -541,18 +542,19 @@ const leanLifeAppCore = {
                 if (tapCount >= 5) {
                     const simBox = document.getElementById('simulation-login-box');
                     if (simBox) {
-                        simBox.style.display = (simBox.style.display === 'none' || !simBox.style.display) ? 'block' : 'none';
-                        if (simBox.style.display === 'block') {
+                        const isHidden = (simBox.style.display === 'none' || !simBox.style.display);
+                        simBox.style.display = isHidden ? 'block' : 'none';
+                        if (isHidden) {
                             simBox.scrollIntoView({ behavior: 'smooth' });
                         }
                     }
                     tapCount = 0;
                 } else {
-                    tapTimeout = setTimeout(() => { tapCount = 0; }, 2500);
+                    tapTimeout = setTimeout(() => { tapCount = 0; }, 3000);
                 }
             };
+            authTitle.addEventListener('pointerdown', handleSecretTap);
             authTitle.addEventListener('click', handleSecretTap);
-            authTitle.addEventListener('touchend', handleSecretTap);
         }
         
         // Check for pending countdowns from previous session
@@ -1414,92 +1416,40 @@ const leanLifeAppCore = {
         this.logAudit(email, 'Password Reset Requested', `Reset requested for ${email}`);
     },
 
+    initGlobalTouchOptimization() {
+        // Fast-touch optimization to eliminate 300ms mobile tap delay across Login, Dashboard & Admin Console
+        document.addEventListener('pointerdown', (e) => {
+            const target = e.target.closest('button, .btn, .admin-tab-btn, .nav-links a, input[type="submit"], input[type="button"]');
+            if (target && !target.disabled) {
+                target.style.transform = 'scale(0.98)';
+                setTimeout(() => {
+                    target.style.transform = '';
+                }, 150);
+            }
+        }, { passive: true });
+    },
+
     async fillSimulationCreds(email, password) {
-        if (this.dbLoadedPromise) {
-            await this.dbLoadedPromise;
-        }
         this.switchAuthTab('login');
         
-        const hashedPassword = await this.hashPassword(password);
-        
-        // Ensure simulation users exist and are active in mock db
-        let user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (!user) {
-            if (email === 'admin@leanlife.com') {
-                user = {
-                    name: 'Super Administrator',
-                    email: 'admin@leanlife.com',
-                    password: hashedPassword,
-                    role: 'admin',
-                    phone: '+1 (555) 0100',
-                    dob: '1985-01-01',
-                    gender: 'Other',
-                    height: 180,
-                    weight: 75,
-                    goal: 'Manage platform operations',
-                    status: 'Active',
-                    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop',
-                    firstLogin: false,
-                    updatedAt: new Date().toISOString()
-                };
-                this.db.users.push(user);
-            } else if (email === 'emma@example.com') {
-                user = {
-                    name: 'Emma Watson',
-                    email: 'emma@example.com',
-                    password: hashedPassword,
-                    role: 'member',
-                    phone: '+1 (555) 0199',
-                    dob: '1990-04-15',
-                    gender: 'Female',
-                    height: 172,
-                    weight: 70.5,
-                    goal: 'Build lean muscle & improve deep sleep',
-                    status: 'Active',
-                    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
-                    firstLogin: false,
-                    bloodGroup: 'O-positive',
-                    allergies: 'Peanuts, Penicillin',
-                    medications: 'Vitamin D3 2000IU, L-Theanine 200mg',
-                    conditions: 'None',
-                    emergencyName: 'John Watson',
-                    emergencyPhone: '+1 (555) 0188',
-                    preferredCoach: 'sarah',
-                    dietPreference: 'Vegetarian',
-                    activityLevel: 'Active',
-                    streakCount: 3,
-                    updatedAt: new Date().toISOString()
-                };
-                this.db.users.push(user);
-            }
-            await this.saveDatabase();
-        } else {
-            // Force reset credentials to active defaults
-            user.status = 'Active';
-            user.password = hashedPassword;
-            user.firstLogin = false;
-            user.updatedAt = new Date().toISOString();
-            await this.saveDatabase();
-        }
-
         const emailInput = document.getElementById('auth-email');
         const passInput = document.getElementById('auth-password');
         
-        emailInput.value = email;
-        passInput.value = password;
-        
-        // Dispatch standard input & change events for form states
-        emailInput.dispatchEvent(new Event('input', { bubbles: true }));
-        passInput.dispatchEvent(new Event('input', { bubbles: true }));
-        emailInput.dispatchEvent(new Event('change', { bubbles: true }));
-        passInput.dispatchEvent(new Event('change', { bubbles: true }));
+        if (emailInput && passInput) {
+            emailInput.value = email;
+            passInput.value = password;
+            emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+            passInput.dispatchEvent(new Event('input', { bubbles: true }));
+            emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+            passInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
 
-        // Ensure submit button is enabled and focused
         const submitBtn = document.getElementById('btn-auth-submit');
-        submitBtn.disabled = false;
-        submitBtn.focus();
+        if (submitBtn) {
+            submitBtn.disabled = false;
+        }
 
-        // Submit form immediately to trigger instant login "when clicked"
+        // Trigger login submit immediately without async pre-hash delay
         await this.handleAuthSubmit({ preventDefault: () => {} });
     },
 

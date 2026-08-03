@@ -19,9 +19,9 @@ console.log(`2. Admin Login button present in secret panel: ${hasAdminLogin ? 'P
 const hasTouchStyles = indexHtml.includes('id="auth-title"') && indexHtml.includes('user-select: none') && indexHtml.includes('touch-action: manipulation');
 console.log(`3. auth-title touch & selection protection styles: ${hasTouchStyles ? 'PASSED' : 'FAILED'}`);
 
-// 4. Verify 5-tap listener in app.js supports touchend + click
-const hasTapListener = appJs.includes("authTitle.addEventListener('click'") && appJs.includes("authTitle.addEventListener('touchend'");
-console.log(`4. Dual click/touchend 5-tap listener in app.js: ${hasTapListener ? 'PASSED' : 'FAILED'}`);
+// 4. Verify 5-tap listener in app.js supports pointerdown + click with 400ms deduplication
+const hasTapListener = appJs.includes("authTitle.addEventListener('click'") && appJs.includes("authTitle.addEventListener('pointerdown'") && appJs.includes("now - lastTapTime < 400");
+console.log(`4. Deduplicated pointerdown/click 5-tap listener in app.js: ${hasTapListener ? 'PASSED' : 'FAILED'}`);
 
 console.log("\n=================================================");
 if (!hasMemberLogin && hasAdminLogin && hasTouchStyles && hasTapListener) {

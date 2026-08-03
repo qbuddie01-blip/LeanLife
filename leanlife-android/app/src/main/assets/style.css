@@ -266,7 +266,19 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: 0 0 20px rgba(165, 227, 50, 0.6);
 }
 
-/* Buttons */
+/* Global Touch Optimization for Buttons and Interactive Elements */
+button,
+.btn,
+.admin-tab-btn,
+.nav-links a,
+input[type="button"],
+input[type="submit"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
 .btn {
     font-family: var(--font-brand);
     font-weight: 600;
