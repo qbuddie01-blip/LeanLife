@@ -1641,46 +1641,8 @@ const leanLifeAppCore = {
                 }
 
                 if (!user) {
-                    // Check if account exists by identifier
-                    const existingUserById = this.db.users.find(u => {
-                        const uEmail = (u.email || '').trim().toLowerCase();
-                        const uName = (u.name || '').trim().toLowerCase();
-                        const uUsername = uEmail.split('@')[0];
-                        return (
-                            uEmail === inputId ||
-                            uName === inputId ||
-                            uUsername === inputId ||
-                            (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
-                            (inputId === 'emma' && uEmail.includes('emma')) ||
-                            (inputId === 'sarah' && uEmail.includes('sarah')) ||
-                            (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
-                        );
-                    });
-
-                    if (existingUserById) {
-                        const resetNow = confirm(`Account found for "${existingUserById.email}", but the password entered was incorrect.\n\nWould you like to set a new password and log in now?`);
-                        if (resetNow) {
-                            const newPwd = await this.showTempPasswordModal(existingUserById);
-                            if (newPwd && newPwd.trim() !== '') {
-                                const cleanPwd = newPwd.trim();
-                                existingUserById.password = await this.hashPassword(cleanPwd);
-                                existingUserById.firstLogin = false;
-                                existingUserById.status = 'Active';
-                                existingUserById.updatedAt = new Date().toISOString();
-                                await this.saveDatabase();
-                                this.logAudit(existingUserById.name, 'Password Reset', `Password reset during login for ${existingUserById.email}`);
-                                user = existingUserById;
-                                alert("Password updated successfully! Logging you in now...");
-                            } else {
-                                return;
-                            }
-                        } else {
-                            return;
-                        }
-                    } else {
-                        alert(`No account found matching "${inputId}". Please verify your email address spelling or contact your LeanLife Administrator to request account creation.`);
-                        return;
-                    }
+                    alert("Invalid email address or password. Please verify your credentials and try again.");
+                    return;
                 }
 
                 // Always reinstate active status
