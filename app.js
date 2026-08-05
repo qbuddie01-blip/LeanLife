@@ -4543,7 +4543,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         if (serviceId && templateId && publicKey) {
             console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
             try {
-                const targetUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '/send_email_api' : 'https://api.emailjs.com/api/v1.0/email/send';
+                const targetUrl = 'https://api.emailjs.com/api/v1.0/email/send';
                 
                 const response = await fetch(targetUrl, {
                     method: 'POST',
@@ -4574,7 +4574,11 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                 } else {
                     const errText = await response.text();
                     console.error("EmailJS API returned error status:", response.status, errText);
-                    this.logAudit('System', 'Real Email FAILED', `EmailJS rejected email to ${recipientEmail} (HTTP ${response.status}): ${errText}`);
+                    const isGrantErr = response.status === 412 || errText.includes('Invalid grant');
+                    const auditMsg = isGrantErr ? 
+                        `⚠️ EmailJS Gmail Service Re-authentication Required (HTTP 412: Invalid Grant). Please log into https://dashboard.emailjs.com/ and reconnect your Gmail account.` : 
+                        `EmailJS rejected email to ${recipientEmail} (HTTP ${response.status}): ${errText}`;
+                    this.logAudit('System', 'Real Email FAILED', auditMsg);
                 }
             } catch (err) {
                 console.error("Failed to execute EmailJS HTTP request:", err);
