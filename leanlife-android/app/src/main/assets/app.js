@@ -4579,6 +4579,14 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                         `⚠️ EmailJS Gmail Service Re-authentication Required (HTTP 412: Invalid Grant). Please log into https://dashboard.emailjs.com/ and reconnect your Gmail account.` : 
                         `EmailJS rejected email to ${recipientEmail} (HTTP ${response.status}): ${errText}`;
                     this.logAudit('System', 'Real Email FAILED', auditMsg);
+                    
+                    if (isGrantErr) {
+                        this.showCustomAlert(
+                            `⚠️ Welcome Email Not Delivered to ${recipientEmail}\n\nReason: EmailJS returned HTTP 412 (Invalid Grant). The Gmail account connected to EmailJS needs to be reconnected.\n\n30-Second Fix:\n1. Open https://dashboard.emailjs.com/\n2. Click Email Services -> service_a1av3q9\n3. Click "Reconnect Account" button`,
+                            "EmailJS Re-connection Required",
+                            "fa-triangle-exclamation"
+                        );
+                    }
                 }
             } catch (err) {
                 console.error("Failed to execute EmailJS HTTP request:", err);
