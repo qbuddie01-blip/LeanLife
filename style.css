@@ -2099,10 +2099,10 @@ footer {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     z-index: 99999;
-    padding: 1.5rem;
+    padding: 2.5rem 1.5rem;
     animation: fadeInModal 0.3s ease-out forwards;
 }
 
@@ -2117,7 +2117,8 @@ footer {
     text-align: center;
     position: relative;
     transform: scale(0.95);
-    animation: popInModal 0.3s ease-out forwards;
+    margin-top: 10px;
+    animation: slideDownModal 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .temp-password-icon {
@@ -2148,6 +2149,17 @@ footer {
     margin-bottom: 1.5rem;
 }
 
+/* Custom Alert Top Screen Animation & Alignment */
+#custom-alert-modal {
+    align-items: flex-start !important;
+    padding-top: 40px !important;
+}
+
+.custom-alert-card {
+    margin-top: 10px;
+    animation: slideDownModal 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @keyframes fadeInModal {
     from { opacity: 0; }
     to { opacity: 1; }
@@ -2156,5 +2168,10 @@ footer {
 @keyframes popInModal {
     from { opacity: 0; transform: scale(0.9); }
     to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideDownModal {
+    from { opacity: 0; transform: translateY(-40px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
