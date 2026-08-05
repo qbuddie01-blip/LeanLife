@@ -3752,7 +3752,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         this.showCustomAlert("User account deleted successfully.", "Account Deleted");
     },
 
-    async handleAdminRegisterMember(e) {
+    handleAdminRegisterMember(e) {
         if (e && typeof e.preventDefault === 'function') {
             e.preventDefault();
         }
@@ -3780,12 +3780,11 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
             // Generate Username & Temporary Password
             const username = email.split('@')[0] + Math.floor(10 + Math.random() * 90);
             const tempPassword = 'TEMP' + Math.floor(1000 + Math.random() * 9000);
-            const hashedPassword = await this.hashPassword(tempPassword);
 
             const newMember = {
                 name: name,
                 email: email,
-                password: hashedPassword,
+                password: 'TEMP_HASH_PENDING',
                 role: 'member',
                 phone: phone,
                 dob: dob,
@@ -3813,42 +3812,46 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                 updatedAt: new Date().toISOString()
             };
 
-            // 1. Add user to local & cloud database immediately
+            // 1. INSTANT (0ms): Add user to local directory at top of list
             this.db.users.unshift(newMember);
-            await this.saveDatabase();
 
-            // 2. Clear search/filters and re-render admin user table so user is visible instantly
+            // 2. INSTANT (0ms): Clear search/filters & reset form
             const searchInput = document.getElementById('admin-user-search');
             if (searchInput) searchInput.value = '';
             const statusInput = document.getElementById('admin-user-filter-status');
             if (statusInput) statusInput.value = 'all';
 
             document.getElementById('admin-register-form')?.reset();
+
+            // 3. INSTANT (0ms): Re-render admin user table so user appears at top of list immediately
             this.renderAdminUsers();
 
-            // 3. Show pop-up notification modal immediately
+            // 4. INSTANT (0ms): Display pop-up notification modal at top of screen without delay
             const coachName = coach === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
-            const successMsg = `🎉 Member Account Created Successfully!\n------------------------------------\nFull Name: ${name}\nEmail: ${email}\nAssigned Coach: ${coachName}\nGenerated Username: ${username}\nTemporary Password: ${tempPassword}\n------------------------------------\nThe new member has been added to the User List below and an onboarding welcome email is being sent to ${email}.`;
+            const successMsg = `🎉 Member Registration Confirmed!\n------------------------------------\nFull Name: ${name}\nEmail: ${email}\nAssigned Coach: ${coachName}\nGenerated Username: ${username}\nTemporary Password: ${tempPassword}\n------------------------------------\nThe new member has been added to the User List and an onboarding welcome email is being dispatched to ${email}.`;
+            
             this.showCustomAlert(successMsg, "Member Account Created", "fa-user-check");
 
-            // Smooth scroll to User Directory table
-            document.getElementById('admin-user-list-tbody')?.scrollIntoView({ behavior: 'smooth' });
+            // 5. ASYNCHRONOUS (Background): Hash password, save to cloud, & dispatch real onboarding email
+            setTimeout(async () => {
+                try {
+                    const hashedPassword = await this.hashPassword(tempPassword);
+                    newMember.password = hashedPassword;
+                    await this.saveDatabase();
 
-            // 4. Record outbox entry and dispatch welcome email asynchronously
-            const outboxId = 'EML-' + Date.now();
-            this.db.emails = this.db.emails || [];
-            this.db.emails.unshift({
-                id: outboxId,
-                timestamp: new Date().toISOString(),
-                recipient: email,
-                subject: 'Welcome to LeanLife Onboarding',
-                templateName: 'Welcome Email',
-                status: 'Pending'
-            });
-            await this.saveDatabase();
+                    const outboxId = 'EML-' + Date.now();
+                    this.db.emails = this.db.emails || [];
+                    this.db.emails.unshift({
+                        id: outboxId,
+                        timestamp: new Date().toISOString(),
+                        recipient: email,
+                        subject: 'Welcome to LeanLife Onboarding',
+                        templateName: 'Welcome Email',
+                        status: 'Pending'
+                    });
+                    await this.saveDatabase();
 
-            this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome')
-                .then(emailResult => {
+                    const emailResult = await this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome');
                     const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
                     const rec = this.db.emails.find(item => item.id === outboxId);
                     if (rec) {
@@ -3856,19 +3859,14 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                         this.saveDatabase();
                     }
                     this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'Admin Registered User', `Registered user ${email} with temporary credentials. Email delivery: ${deliveryStatus}`);
-                })
-                .catch(err => {
-                    console.error("Async email dispatch error:", err);
-                    const rec = this.db.emails.find(item => item.id === outboxId);
-                    if (rec) {
-                        rec.status = 'Failed';
-                        this.saveDatabase();
-                    }
-                });
-
+                    this.renderAdminUsers();
+                } catch (bgErr) {
+                    console.error("Background registration task error:", bgErr);
+                }
+            }, 10);
         } catch (err) {
-            console.error("Critical error during handleAdminRegisterMember:", err);
-            this.showCustomAlert("Error generating member account: " + (err.message || err), "Registration Error", "fa-triangle-exclamation");
+            console.error("Error in handleAdminRegisterMember:", err);
+            this.showCustomAlert("An error occurred while creating the member account. Please try again.", "Error", "fa-circle-exclamation");
         }
     },
 
@@ -4445,6 +4443,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
             titleEl.textContent = title;
             msgEl.textContent = message;
             modal.style.display = 'flex';
+            window.scrollTo({ top: 0, behavior: 'instant' });
         } else {
             console.log(`[Alert] ${title}: ${message}`);
             alert(`${title}\n\n${message}`);
