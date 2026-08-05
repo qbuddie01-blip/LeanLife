@@ -1641,6 +1641,24 @@ const leanLifeAppCore = {
                         );
                     }
 
+                    // Check direct match against tempPasswordRaw, rawPassword, trimmedPassword, case-insensitive temp password
+                    if (!isMatch && u.tempPasswordRaw) {
+                        const cleanTemp = u.tempPasswordRaw.trim();
+                        if (
+                            cleanTemp === rawPassword ||
+                            cleanTemp === trimmedPassword ||
+                            cleanTemp.toLowerCase() === trimmedPassword.toLowerCase()
+                        ) {
+                            isMatch = true;
+                        }
+                    }
+
+                    if (!isMatch && u.password === 'TEMP_HASH_PENDING') {
+                        if (u.tempPasswordRaw && u.tempPasswordRaw.toLowerCase().trim() === trimmedPassword.toLowerCase()) {
+                            isMatch = true;
+                        }
+                    }
+
                     // Universal fallback verification for system & simulation accounts
                     if (!isMatch) {
                         const uEmail = (u.email || '').trim().toLowerCase();
@@ -3785,6 +3803,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                 name: name,
                 email: email,
                 password: 'TEMP_HASH_PENDING',
+                tempPasswordRaw: tempPassword,
                 role: 'member',
                 phone: phone,
                 dob: dob,
