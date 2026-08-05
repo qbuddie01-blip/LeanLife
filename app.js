@@ -3707,47 +3707,47 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         alert(`User status for ${user.name} toggled to: ${user.status}`);
     },
 
-    async adminResetPassword(email) {
-        const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    adminResetPassword(email) {
+        const user = this.db.users.find(u => (u.email || '').toLowerCase().trim() === (email || '').toLowerCase().trim());
         if (!user) return;
         
         const tempPassword = 'RESET' + Math.floor(1000 + Math.random() * 9000);
-        user.password = await this.hashPassword(tempPassword);
+        user.tempPasswordRaw = tempPassword;
         user.firstLogin = true;
         user.updatedAt = new Date().toISOString();
         
-        await this.saveDatabase();
-        
-        // Dispatch real email FIRST so we know the real outcome before logging it
-        const emailResult = await this.sendRealEmail(user.name, user.email, 'Temporary Credentials Reset Request', tempPassword);
-        const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
+        // 1. INSTANT (0ms): Re-render admin users table & display top-screen popup modal
+        this.renderAdminUsers();
 
-        // Add to email outbox with the real delivery status
-        this.db.emails.unshift({
-            id: 'EML-' + Date.now(),
-            timestamp: new Date().toISOString(),
-            recipient: email,
-            subject: 'Temporary Credentials Reset Request',
-            templateName: 'Password Reset',
-            status: deliveryStatus
-        });
-        await this.saveDatabase();
+        const resetMsg = `🔑 Member Password Reset Confirmed!\n------------------------------------\nMember Name: ${user.name}\nEmail: ${user.email}\nNew Temporary Password: ${tempPassword}\n------------------------------------\nPassword reset email is being dispatched to ${user.email}. You may also share this temporary password directly with the member.`;
         
-        this.logAudit(this.currentUser.name, 'Admin Password Reset', `Generated temporary password for ${email}. Email delivery: ${deliveryStatus}`);
-        
-        if (deliveryStatus === 'Delivered') {
-            alert(`Password Reset Successful!
-        ------------------------------------
-        Temporary Password: ${tempPassword}
-        ------------------------------------
-        A credentials reset email has been dispatched to ${email}.`);
-        } else {
-            alert(`Password Reset Successful, but the email FAILED to send (EmailJS delivery error).
-        ------------------------------------
-        Temporary Password: ${tempPassword}
-        ------------------------------------
-        Please share this temporary password with ${email} manually, and check the EmailJS dashboard / Admin Settings > Email Integration for the delivery issue.`);
-        }
+        this.showCustomAlert(resetMsg, "Password Reset Dispatched", "fa-key");
+
+        // 2. ASYNCHRONOUS (Background): Hash password, save database, & dispatch real email
+        setTimeout(async () => {
+            try {
+                user.password = await this.hashPassword(tempPassword);
+                await this.saveDatabase();
+                
+                const emailResult = await this.sendRealEmail(user.name, user.email, 'LeanLife Temporary Credentials Reset', tempPassword, 'reset');
+                const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
+
+                this.db.emails = this.db.emails || [];
+                this.db.emails.unshift({
+                    id: 'EML-' + Date.now(),
+                    timestamp: new Date().toISOString(),
+                    recipient: user.email,
+                    subject: 'LeanLife Temporary Credentials Reset',
+                    templateName: 'Password Reset',
+                    status: deliveryStatus
+                });
+                await this.saveDatabase();
+                
+                this.logAudit(this.currentUser.name, 'Admin Password Reset', `Generated temporary password for ${user.email}. Email delivery: ${deliveryStatus}`);
+            } catch (err) {
+                console.error("Background adminResetPassword error:", err);
+            }
+        }, 10);
     },
 
     deleteUser(email) {
@@ -4564,12 +4564,21 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
             const templateParams = {
                 to_name: recipientName,
                 to_email: recipientEmail,
-                email: recipientEmail,
+                name: recipientName,
                 user_name: recipientName,
+                email: recipientEmail,
                 user_email: recipientEmail,
+                recipient_name: recipientName,
+                recipient_email: recipientEmail,
                 temp_password: tempPassword,
+                tempPassword: tempPassword,
+                temp_pass: tempPassword,
+                user_pass: tempPassword,
+                password: tempPassword,
                 subject: subject,
-                message: subject
+                message: subject,
+                notes: subject,
+                details: subject
             };
 
             // 1A. Try Browser SDK first if loaded
