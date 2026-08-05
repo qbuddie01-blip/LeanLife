@@ -1432,7 +1432,7 @@ const leanLifeAppCore = {
             email,
             'LeanLife Password Reset Request',
             tempPassword,
-            'autoreply'
+            'reset'
         ).then(emailResult => {
             const deliveryStatus = (emailResult && emailResult.ok) ? 'Delivered' : 'Failed';
             const outboxRec = this.db.emails.find(e => e.id === outboxId);
@@ -3018,7 +3018,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
 
         // Dispatch real email
         const emailSubject = `Coach Consultation Confirmation: ${mode} on ${date} at ${time} with ${coachName}`;
-        this.sendRealEmail(this.currentUser.name, this.currentUser.email, emailSubject, '', 'autoreply')
+        this.sendRealEmail(this.currentUser.name, this.currentUser.email, emailSubject, '', 'booking', { date, time, coach: coachName, mode })
             .then(result => {
                 const record = this.db.emails.find(e => e.id === autoReplyOutboxId);
                 if (record) {
@@ -4546,7 +4546,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         alert("Email delivery settings updated successfully!");
     },
 
-    async sendRealEmail(recipientName, recipientEmail, subject, tempPassword, templateType = null) {
+    async sendRealEmail(recipientName, recipientEmail, subject, tempPassword, templateType = null, extraData = {}) {
         const config = window.SUPABASE_CONFIG || {};
 
         // 1. Primary Email Provider: EmailJS
@@ -4554,31 +4554,52 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         let templateId = (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId) || config.EMAILJS_TEMPLATE_ID;
         if (templateType === 'welcome') {
             templateId = (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) || config.EMAILJS_WELCOME_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
-        } else if (templateType === 'autoreply') {
-            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) || config.EMAILJS_AUTOREPLY_TEMPLATE_ID;
+        } else if (templateType === 'autoreply' || templateType === 'booking') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) || config.EMAILJS_AUTOREPLY_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
+        } else if (templateType === 'reset') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsResetTemplateId) || config.EMAILJS_RESET_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
         }
         const publicKey = (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey) || config.EMAILJS_PUBLIC_KEY;
 
         if (serviceId && templateId && publicKey) {
-            console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
+            console.log(`Sending real email (${templateType || 'general'}) to: ${recipientEmail} via EmailJS...`);
             const templateParams = {
+                // Recipient Names
                 to_name: recipientName,
-                to_email: recipientEmail,
                 name: recipientName,
                 user_name: recipientName,
+                recipient_name: recipientName,
+                
+                // Recipient Emails
+                to_email: recipientEmail,
                 email: recipientEmail,
                 user_email: recipientEmail,
-                recipient_name: recipientName,
                 recipient_email: recipientEmail,
-                temp_password: tempPassword,
-                tempPassword: tempPassword,
-                temp_pass: tempPassword,
-                user_pass: tempPassword,
-                password: tempPassword,
-                subject: subject,
-                message: subject,
-                notes: subject,
-                details: subject
+                
+                // Passwords & Credentials
+                temp_password: tempPassword || '',
+                tempPassword: tempPassword || '',
+                temp_pass: tempPassword || '',
+                user_pass: tempPassword || '',
+                password: tempPassword || '',
+                code: tempPassword || '',
+                pin: tempPassword || '',
+                
+                // Subject & Body Text
+                subject: subject || 'LeanLife Notification',
+                message: subject || 'LeanLife Notification',
+                notes: subject || '',
+                details: subject || '',
+                
+                // Booking & Consultation Parameters
+                booking_date: extraData.date || new Date().toLocaleDateString(),
+                booking_time: extraData.time || '10:00 AM',
+                coach_name: extraData.coach || 'Coach Francess Orenuga',
+                date: extraData.date || new Date().toLocaleDateString(),
+                time: extraData.time || '10:00 AM',
+                coach: extraData.coach || 'Coach Francess Orenuga',
+                mode: extraData.mode || 'In-Person',
+                service: extraData.service || 'Wellness Consultation'
             };
 
             // 1A. Try Browser SDK first if loaded
