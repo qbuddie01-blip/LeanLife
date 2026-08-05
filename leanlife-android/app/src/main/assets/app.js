@@ -1385,15 +1385,62 @@ const leanLifeAppCore = {
         }
     },
 
-    toggleAuthForgotPassword(e) {
-        e.preventDefault();
-        const email = document.getElementById('auth-email').value;
+    async toggleAuthForgotPassword(e) {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+        const emailInput = document.getElementById('auth-email');
+        const email = (emailInput?.value || '').trim().toLowerCase();
+
         if (!email) {
-            alert("Please input your email address first.");
+            this.showCustomAlert("Please enter your email address in the Email field first before requesting a password reset.", "Email Required", "fa-circle-info");
             return;
         }
-        alert(`A password reset link and secure two-factor verification pin has been sent to ${email}. Check your inbox!`);
-        this.logAudit(email, 'Password Reset Requested', `Reset requested for ${email}`);
+
+        const user = this.db.users.find(u => (u.email || '').toLowerCase() === email);
+        if (!user) {
+            this.showCustomAlert(`No LeanLife account was found matching "${email}". Please verify the email address or register a new account.`, "Account Not Found", "fa-triangle-exclamation");
+            return;
+        }
+
+        const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
+        user.password = await this.hashPassword(tempPassword);
+        user.firstLogin = true;
+        user.updatedAt = new Date().toISOString();
+        await this.saveDatabase();
+
+        const outboxId = 'EML-' + Date.now();
+        this.db.emails = this.db.emails || [];
+        this.db.emails.unshift({
+            id: outboxId,
+            timestamp: new Date().toISOString(),
+            recipient: email,
+            subject: 'LeanLife Password Reset Request',
+            templateName: 'Password Reset',
+            status: 'Pending'
+        });
+        await this.saveDatabase();
+
+        this.logAudit(user.name || email, 'Password Reset Requested', `Generated temporary reset password for ${email}`);
+
+        const emailResult = await this.sendRealEmail(
+            user.name || 'LeanLife Member',
+            email,
+            'LeanLife Password Reset Request',
+            tempPassword,
+            'autoreply'
+        );
+
+        const deliveryStatus = (emailResult && emailResult.ok) ? 'Delivered' : 'Failed';
+        const outboxRec = this.db.emails.find(e => e.id === outboxId);
+        if (outboxRec) {
+            outboxRec.status = deliveryStatus;
+            await this.saveDatabase();
+        }
+
+        this.showCustomAlert(
+            `🔑 Password Reset Link & Pin Sent!\n\nA temporary access password (${tempPassword}) has been generated and dispatched to ${email}.\n\nPlease check your email inbox to log in and set a new password.`,
+            "Password Reset Dispatched",
+            "fa-envelope-circle-check"
+        );
     },
 
     initGlobalTouchOptimization() {
@@ -1527,13 +1574,41 @@ const leanLifeAppCore = {
                 await this.saveDatabase();
                 this.logAudit(newUser.name, 'Member Registered', `Self-registration completed for ${email}`);
                 
+                // Dispatch Welcome Email
+                const welcomeOutboxId = 'EML-' + Date.now();
+                this.db.emails = this.db.emails || [];
+                this.db.emails.unshift({
+                    id: welcomeOutboxId,
+                    timestamp: new Date().toISOString(),
+                    recipient: newUser.email,
+                    subject: 'Welcome to LeanLife Wellness Community!',
+                    templateName: 'Welcome Email',
+                    status: 'Pending'
+                });
+                await this.saveDatabase();
+
+                this.sendRealEmail(newUser.name, newUser.email, 'Welcome to LeanLife Wellness Community!', null, 'welcome')
+                    .then(result => {
+                        const rec = this.db.emails.find(e => e.id === welcomeOutboxId);
+                        if (rec) {
+                            rec.status = (result && result.ok) ? 'Delivered' : 'Failed';
+                            this.saveDatabase();
+                        }
+                    });
+
                 // Set session
                 this.currentUser = newUser;
                 sessionStorage.setItem('leanlife_session', JSON.stringify(newUser));
                 localStorage.setItem('leanlife_session', JSON.stringify(newUser));
                 this.updateUIAfterLogin();
                 this.navigateTo('profile'); // Send to profile to complete setup
-                alert("Registration successful! Welcome to LeanLife Community. Please complete your profile parameters.");
+
+                // Show Pop Up Notification Modal for New User Registration
+                this.showCustomAlert(
+                    `🎉 Welcome to LeanLife Community, ${newUser.name}!\n\nYour account (${newUser.email}) has been registered successfully.\n\nA welcome email notification has been dispatched to your inbox. Please complete your health profile parameters to get started!`,
+                    "Registration Successful!",
+                    "fa-user-check"
+                );
             } else {
                 // Bulletproof Universal Login Validation (Email/Username + Multi-Password Match & PBKDF2 Auto-Upgrade)
                 const inputId = email;
@@ -2903,20 +2978,22 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         this.saveDatabase();
         this.logAudit(this.currentUser.name, 'Coach Consultation Scheduled', `Request made for ${date} at ${time}`);
 
-        // Add to email outbox as Pending, then patch in the real result once EmailJS responds.
-        // (Not awaited here so the booking flow itself isn't blocked on email delivery.)
+        const coachKey = this.currentUser.preferredCoach || 'sarah';
+        const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
+
         const autoReplyOutboxId = 'EML-' + Date.now();
         this.db.emails.unshift({
             id: autoReplyOutboxId,
             timestamp: new Date().toISOString(),
             recipient: this.currentUser.email,
-            subject: `Coach Consultation Confirmation - ${date} at ${time}`,
-            templateName: 'Auto Reply Email',
+            subject: `Coach Consultation Confirmation: ${mode} on ${date} at ${time}`,
+            templateName: 'Appointment Confirmation',
             status: 'Pending'
         });
 
         // Dispatch real email
-        this.sendRealEmail(this.currentUser.name, this.currentUser.email, `Coach Consultation Confirmation - ${date} at ${time}`, '', 'autoreply')
+        const emailSubject = `Coach Consultation Confirmation: ${mode} on ${date} at ${time} with ${coachName}`;
+        this.sendRealEmail(this.currentUser.name, this.currentUser.email, emailSubject, '', 'autoreply')
             .then(result => {
                 const record = this.db.emails.find(e => e.id === autoReplyOutboxId);
                 if (record) {
@@ -2925,9 +3002,12 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                 }
             });
 
-        const coachKey = this.currentUser.preferredCoach || 'sarah';
-        const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
-        alert(`Success! Your request for a ${mode} on ${date} at ${time} has been submitted to ${coachName}. You will receive an email confirmation shortly.`);
+        // Show custom pop up notification modal
+        this.showCustomAlert(
+            `📅 Appointment Scheduled Successfully!\n\nYour consultation request (${mode}) with ${coachName} for ${date} at ${time} has been submitted.\n\nA confirmation email has been dispatched to ${this.currentUser.email}.`,
+            "Appointment Booked",
+            "fa-calendar-check"
+        );
         
         // Reset form
         document.getElementById('consult-notes').value = '';
@@ -3717,7 +3797,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
             updatedAt: new Date().toISOString()
         };
 
-        this.db.users.push(newMember);
+        this.db.users.unshift(newMember);
         await this.saveDatabase();
 
         // Dispatch real email FIRST via EmailJS
@@ -3736,13 +3816,22 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         await this.saveDatabase();
 
         this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'Admin Registered User', `Registered user ${email} with temporary credentials. Email delivery: ${deliveryStatus}`);
-        this.renderAdminUsers();
-
-        const successMsg = `Member Account Created Successfully!\n\nGenerated Username: ${username}\nTemporary Password: ${tempPassword}\n\nOnboarding welcome email has been dispatched to ${email}.`;
-        this.showCustomAlert(successMsg, "Member Account Created");
         
+        // Reset search/filters so new user is visible immediately at top of directory
+        const searchInput = document.getElementById('admin-user-search');
+        if (searchInput) searchInput.value = '';
+        const statusInput = document.getElementById('admin-user-filter-status');
+        if (statusInput) statusInput.value = 'all';
+
         document.getElementById('admin-register-form')?.reset();
         this.renderAdminUsers();
+
+        const coachName = coach === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
+        const successMsg = `Member Registration Confirmed!\n------------------------------------\nFull Name: ${name}\nEmail: ${email}\nAssigned Coach: ${coachName}\nGenerated Username: ${username}\nTemporary Password: ${tempPassword}\n------------------------------------\nThe new member has been added to the User List below and an onboarding welcome email has been sent to ${email}.`;
+        this.showCustomAlert(successMsg, "Member Account Created");
+
+        // Smooth scroll to User Directory table
+        document.getElementById('admin-user-list-tbody')?.scrollIntoView({ behavior: 'smooth' });
     },
 
     renderAdminLogsCMS() {
@@ -4305,17 +4394,22 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         }
     },
 
-    showCustomAlert(message, title = 'LeanLife Notice') {
+    showCustomAlert(message, title = 'LeanLife Notice', iconClass = 'fa-leaf') {
         const modal = document.getElementById('custom-alert-modal');
         const titleEl = document.getElementById('custom-alert-title');
         const msgEl = document.getElementById('custom-alert-message');
+        const iconEl = document.getElementById('custom-alert-icon');
         
+        if (iconEl && iconClass) {
+            iconEl.className = `fa-solid ${iconClass}`;
+        }
         if (modal && titleEl && msgEl) {
             titleEl.textContent = title;
             msgEl.textContent = message;
             modal.style.display = 'flex';
         } else {
             console.log(`[Alert] ${title}: ${message}`);
+            alert(`${title}\n\n${message}`);
         }
     },
 
