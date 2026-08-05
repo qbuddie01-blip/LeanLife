@@ -1980,7 +1980,8 @@
         </div>
     </div>
 
-    <!-- Application Script -->
+    <!-- Email & Supabase SDK Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         window.SUPABASE_CONFIG = {
@@ -1991,6 +1992,14 @@
             EMAILJS_WELCOME_TEMPLATE_ID: 'template_gyjh3gp',
             EMAILJS_PUBLIC_KEY: '1KO_vRCldTUVxoqtM'
         };
+
+        if (window.emailjs) {
+            try {
+                window.emailjs.init('1KO_vRCldTUVxoqtM');
+            } catch(e) {
+                console.warn("EmailJS init notice:", e);
+            }
+        }
     </script>
     <script src="app.js?v=5.0"></script>
 </body>

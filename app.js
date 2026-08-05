@@ -4561,6 +4561,33 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
 
         if (serviceId && templateId && publicKey) {
             console.log(`Sending real onboarding email to: ${recipientEmail} via EmailJS...`);
+            const templateParams = {
+                to_name: recipientName,
+                to_email: recipientEmail,
+                email: recipientEmail,
+                user_name: recipientName,
+                user_email: recipientEmail,
+                temp_password: tempPassword,
+                subject: subject,
+                message: subject
+            };
+
+            // 1A. Try Browser SDK first if loaded
+            if (window.emailjs && typeof window.emailjs.send === 'function') {
+                try {
+                    console.log("Dispatching via EmailJS Browser SDK...");
+                    const sdkResult = await window.emailjs.send(serviceId, templateId, templateParams, publicKey);
+                    if (sdkResult && (sdkResult.status === 200 || sdkResult.text === 'OK')) {
+                        console.log(`Real email successfully dispatched to ${recipientEmail} via EmailJS Browser SDK!`);
+                        this.logAudit('System', 'Real Email Dispatched', `Real onboarding email delivered to ${recipientEmail} via EmailJS SDK`);
+                        return { ok: true, provider: 'emailjs-sdk' };
+                    }
+                } catch (sdkErr) {
+                    console.warn("EmailJS Browser SDK notice:", sdkErr);
+                }
+            }
+
+            // 1B. Direct HTTP API Fetch
             try {
                 const targetUrl = 'https://api.emailjs.com/api/v1.0/email/send';
                 
@@ -4573,21 +4600,12 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                         service_id: serviceId,
                         template_id: templateId,
                         user_id: publicKey,
-                        template_params: {
-                            to_name: recipientName,
-                            to_email: recipientEmail,
-                            email: recipientEmail,
-                            user_name: recipientName,
-                            user_email: recipientEmail,
-                            temp_password: tempPassword,
-                            subject: subject,
-                            message: subject
-                        }
+                        template_params: templateParams
                     })
                 });
 
                 if (response.ok) {
-                    console.log(`Real email successfully dispatched to ${recipientEmail} via EmailJS!`);
+                    console.log(`Real email successfully dispatched to ${recipientEmail} via EmailJS API!`);
                     this.logAudit('System', 'Real Email Dispatched', `Real onboarding email delivered to ${recipientEmail} via EmailJS`);
                     return { ok: true, provider: 'emailjs' };
                 } else {
