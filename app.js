@@ -964,7 +964,7 @@ const leanLifeAppCore = {
                     weight: 60,
                     goal: 'Coaching excellence',
                     status: 'Active',
-                    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop',
+                    avatar: 'assets/coach_francess.png',
                     updatedAt: new Date().toISOString()
                 },
                 {
@@ -1043,7 +1043,7 @@ const leanLifeAppCore = {
                     title: 'My top 5 meal prep recipes for high protein diets!',
                     category: 'Recipes',
                     author: 'Coach Francess Orenuga',
-                    authorAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&auto=format&fit=crop',
+                    authorAvatar: 'assets/coach_francess.png',
                     body: 'Always include a base of dark leafy greens, 200g of lean protein (grilled chicken, tofu or salmon), and complex carbs like quinoa or roasted sweet potatoes. Drizzle with cold-pressed olive oil!',
                     image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop',
                     likes: 24,
@@ -3046,7 +3046,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                 title: 'Senior Lifestyle Medicine & Nutrition Coach',
                 spec: 'Specialization: Metabolic Restoration, Habit Loop Optimization, Integrative Nutrition.',
                 hours: 'Availability: Mon - Fri, 9:00 AM - 5:00 PM EST',
-                pic: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop',
+                pic: 'assets/coach_francess.png',
                 whatsapp: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.',
                 shortName: 'Coach Francess'
             },
