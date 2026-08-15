@@ -1558,7 +1558,7 @@ const leanLifeAppCore = {
                     dob: '1995-01-01',
                     gender: 'Female',
                     height: 170,
-                    weight: 65,
+                    weight: 155.4,
                     goal: 'Improve health consistency',
                     status: 'Active',
                     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
