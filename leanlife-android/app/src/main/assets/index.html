@@ -760,8 +760,19 @@
                         </div>
 
                         <div class="form-group" style="margin-top: 1rem;">
-                            <label for="meal-photo">Upload Progress / Meal Photo (Optional)</label>
-                            <input type="file" id="meal-photo" class="form-input" accept="image/*">
+                            <label for="meal-photo" style="display: flex; justify-content: space-between; align-items: center;">
+                                <span><i class="fa-solid fa-camera" style="color: var(--clr-primary-green);"></i> Upload Progress / Meal Photo (Optional)</span>
+                                <span style="font-size: 0.75rem; color: #666;">JPG, PNG, WebP</span>
+                            </label>
+                            <input type="file" id="meal-photo" class="form-input" accept="image/*" onchange="app.handlePhotoSelect(event)">
+                            <div id="meal-photo-preview-container" style="display: none; margin-top: 0.75rem; background: rgba(255,255,255,0.7); border: 1.5px dashed var(--clr-primary-green); border-radius: var(--radius-sm); padding: 0.75rem; align-items: center; gap: 1rem;">
+                                <img id="meal-photo-preview-img" src="" alt="Selected Photo" style="width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid #ddd;">
+                                <div style="flex: 1; min-width: 0;">
+                                    <div id="meal-photo-preview-name" style="font-weight: 600; font-size: 0.85rem; word-break: break-all; color: var(--clr-text-dark);">photo.jpg</div>
+                                    <div id="meal-photo-preview-size" style="font-size: 0.75rem; color: #666;">--</div>
+                                </div>
+                                <button type="button" class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; color: #d9534f; border-color: #d9534f;" onclick="app.clearSelectedPhoto()"><i class="fa-solid fa-trash-can"></i> Remove</button>
+                            </div>
                         </div>
                     </div>
 
@@ -808,10 +819,10 @@
                     <div class="glass-card">
                         <h3 class="log-section-title"><i class="fa-solid fa-circle-plus" style="color: #26af7f;"></i> Additional Daily Metrics</h3>
                         
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
                             <div class="form-group">
-                                <label for="metrics-weight">Weight (kg)</label>
-                                <input type="number" id="metrics-weight" class="form-input" step="0.1" value="70.5" oninput="app.calculateBMI()">
+                                <label for="metrics-weight">Weight (lbs)</label>
+                                <input type="number" id="metrics-weight" class="form-input" step="0.1" value="155.4" oninput="app.calculateBMI()">
                             </div>
                             <div class="form-group">
                                 <label for="metrics-bmi">BMI (Auto-calculated)</label>
@@ -820,6 +831,30 @@
                             <div class="form-group">
                                 <label for="metrics-bodyfat">Body Fat %</label>
                                 <input type="number" id="metrics-bodyfat" class="form-input" step="0.1" value="18.5">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-viscerafat">Visceral Fat %</label>
+                                <input type="number" id="metrics-viscerafat" class="form-input" step="0.1" value="10.0">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-skeletalmuscle">Skeletal Muscle Mass (lbs)</label>
+                                <input type="number" id="metrics-skeletalmuscle" class="form-input" step="0.1" value="66.1">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-leanmass">Lean Mass (lbs)</label>
+                                <input type="number" id="metrics-leanmass" class="form-input" step="0.1" value="110.2">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-bloodpressure">Blood Pressure (mmHg)</label>
+                                <input type="text" id="metrics-bloodpressure" class="form-input" value="120/80">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-bloodsugar">Blood Sugar (mg/dL)</label>
+                                <input type="number" id="metrics-bloodsugar" class="form-input" value="95">
+                            </div>
+                            <div class="form-group">
+                                <label for="metrics-heartrate">Resting Heart Rate (bpm)</label>
+                                <input type="number" id="metrics-heartrate" class="form-input" value="65">
                             </div>
                             <div class="form-group">
                                 <label for="metrics-stress">Stress Level (1 - 10)</label>
@@ -834,16 +869,16 @@
                                 <input type="number" id="metrics-screentime" class="form-input" step="0.1" value="4.5">
                             </div>
                             <div class="form-group">
-                                <label for="metrics-viscerafat">Visceral Fat %</label>
-                                <input type="number" id="metrics-viscerafat" class="form-input" step="0.1" value="10.0">
+                                <label for="metrics-outdoortime">Outdoor Time (Minutes)</label>
+                                <input type="number" id="metrics-outdoortime" class="form-input" value="45">
                             </div>
                             <div class="form-group">
-                                <label for="metrics-skeletalmuscle">Skeletal Muscle Mass (kg)</label>
-                                <input type="number" id="metrics-skeletalmuscle" class="form-input" step="0.1" value="30.0">
+                                <label for="metrics-sunlight">Sunlight Exposure (Minutes)</label>
+                                <input type="number" id="metrics-sunlight" class="form-input" value="20">
                             </div>
                             <div class="form-group">
-                                <label for="metrics-leanmass">Lean Mass (kg)</label>
-                                <input type="number" id="metrics-leanmass" class="form-input" step="0.1" value="50.0">
+                                <label for="metrics-meditation">Meditation (Minutes)</label>
+                                <input type="number" id="metrics-meditation" class="form-input" value="15">
                             </div>
                         </div>
 
@@ -1095,8 +1130,8 @@
                                 <input type="number" id="prof-height" class="form-input" value="172" oninput="app.updateProfileBMI()">
                             </div>
                             <div class="form-group">
-                                <label for="prof-weight">Weight (kg)</label>
-                                <input type="number" id="prof-weight" class="form-input" value="70.5" oninput="app.updateProfileBMI()">
+                                <label for="prof-weight">Weight (lbs)</label>
+                                <input type="number" id="prof-weight" class="form-input" value="155.4" step="0.1" oninput="app.updateProfileBMI()">
                             </div>
                         </div>
 
@@ -1266,8 +1301,8 @@
                                 <input type="number" id="health-height" class="form-input" min="50" max="250">
                             </div>
                             <div class="form-group">
-                                <label>Weight (kg)</label>
-                                <input type="number" id="health-weight" class="form-input" step="0.1" min="20" max="300">
+                                <label>Weight (lbs)</label>
+                                <input type="number" id="health-weight" class="form-input" step="0.1" min="40" max="600">
                             </div>
                             <div class="form-group">
                                 <label>Blood Group</label>
@@ -1318,6 +1353,33 @@
                         </div>
                         <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Save Health Biometrics</button>
                     </form>
+                </div>
+
+                <!-- Dedicated Client Wellness Logs History Modal (Admin / Coach View) -->
+                <div id="admin-client-logs-modal" class="glass-card" style="display: none; margin-top: 2rem; border-color: var(--clr-primary-green); box-shadow: var(--shadow-hover);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; border-bottom: 2px solid rgba(0,0,0,0.06); padding-bottom: 0.8rem; flex-wrap: wrap; gap: 0.8rem;">
+                        <div>
+                            <h3 style="font-family: var(--font-brand); color: var(--clr-primary-green); margin-bottom: 4px;">
+                                <i class="fa-solid fa-notes-medical"></i> Client Wellness Logs & Submissions
+                            </h3>
+                            <p style="font-size: 0.9rem; color: #555;">
+                                Member: <strong id="client-logs-modal-user-name">...</strong> (<span id="client-logs-modal-user-email">...</span>)
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 0.6rem; align-items: center;">
+                            <select id="client-logs-date-select" class="form-input" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;" onchange="app.handleClientLogDateSelect(this.value)">
+                                <option value="">Select Submission Date</option>
+                            </select>
+                            <button type="button" class="btn btn-outline" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;" onclick="document.getElementById('admin-client-logs-modal').style.display='none'">
+                                <i class="fa-solid fa-xmark"></i> Close
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Client Wellness Log Detailed Record View -->
+                    <div id="client-logs-modal-body">
+                        <!-- Populated dynamically by app.viewClientWellnessLogs() -->
+                    </div>
                 </div>
             </div>
 
@@ -1918,6 +1980,15 @@
                 </div>
             </div>
         </section>
+
+        <!-- Global Image Lightbox Modal -->
+        <div id="image-lightbox-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center; padding: 1.5rem; backdrop-filter: blur(4px);" onclick="if(event.target === this) app.closeLightbox()">
+            <div style="position: relative; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; align-items: center;">
+                <button type="button" style="position: absolute; top: -40px; right: 0; background: none; border: none; color: white; font-size: 1.8rem; cursor: pointer;" onclick="app.closeLightbox()" title="Close Image">&times;</button>
+                <img id="lightbox-img" src="" alt="Full Preview" style="max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: var(--radius-sm); box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 2px solid white;">
+                <div id="lightbox-caption" style="color: white; font-size: 0.9rem; margin-top: 0.8rem; text-align: center; font-family: var(--font-brand);"></div>
+            </div>
+        </div>
 
         <!-- Global Footer -->
         <footer>
