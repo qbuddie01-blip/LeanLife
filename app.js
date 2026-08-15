@@ -1892,14 +1892,14 @@ const leanLifeAppCore = {
         document.getElementById('dash-progress-calories').style.width = `${Math.min((caloriesBurned / 500) * 100, 100)}%`;
 
         // 4. Sleep Stat Update
-        const sleepHours = todayLog ? (parseFloat(todayLog.sleep.duration) || 0) : 0;
+        const sleepHours = todayLog ? (parseFloat(todayLog.sleep?.duration || (typeof todayLog.sleep === 'number' ? todayLog.sleep : 0)) || 0) : 0;
         document.getElementById('dash-val-sleep').textContent = `${sleepHours} hrs`;
         document.getElementById('dash-progress-sleep').style.width = `${Math.min((sleepHours / 8) * 100, 100)}%`;
 
         // 5. Tasks Checklist Update
         document.getElementById('chk-task-water').checked = waterCount >= 10;
         document.getElementById('chk-task-steps').checked = stepsCount >= 10000;
-        document.getElementById('chk-task-meal').checked = todayLog && todayLog.meals.breakfast.desc && todayLog.meals.lunch.desc && todayLog.meals.dinner.desc;
+        document.getElementById('chk-task-meal').checked = !!(todayLog && todayLog.meals?.breakfast?.desc && todayLog.meals?.lunch?.desc && todayLog.meals?.dinner?.desc);
 
         // 6. Wellness Score Gauge
         const latestReport = this.getLatestReport();
@@ -2662,13 +2662,13 @@ const leanLifeAppCore = {
         if (!log) return;
 
         // Perform algorithmic scoring based on log parameters
-        let sleepVal = parseFloat(log.sleep.duration) || 0;
+        let sleepVal = parseFloat(log.sleep?.duration || (typeof log.sleep === 'number' ? log.sleep : 0)) || 0;
         let sleepScore = sleepVal >= 8 ? 95 : (sleepVal >= 7 ? 85 : (sleepVal >= 6 ? 70 : 50));
         
         let waterVal = log.waterCount || 0;
         let waterScore = waterVal >= 10 ? 100 : (waterVal >= 8 ? 85 : (waterVal >= 5 ? 65 : 40));
 
-        let exerciseVal = log.exercise.completed === 'yes';
+        let exerciseVal = (log.exerciseCompleted === 'yes' || log.exercise?.completed === 'yes');
         let physicalScore = exerciseVal ? 90 : 50;
 
         let stepsVal = log.steps || 0;
@@ -2676,14 +2676,14 @@ const leanLifeAppCore = {
         else if (stepsVal >= 7500) physicalScore += 5;
         physicalScore = Math.min(physicalScore, 100);
 
-        let stressVal = log.metrics.stress || 5;
+        let stressVal = log.metrics?.stress || 5;
         let mentalScore = 100 - (stressVal * 7);
-        if (log.metrics.screenTime < 3) mentalScore += 10;
+        if (log.metrics?.screenTime && log.metrics.screenTime < 3) mentalScore += 10;
         mentalScore = Math.min(mentalScore, 100);
 
         let nutritionScore = 80; // baseline
-        if (log.meals.breakfast.desc && log.meals.lunch.desc && log.meals.dinner.desc) nutritionScore += 10;
-        if (log.meals.snacks.desc.toLowerCase().includes('fruit') || log.meals.snacks.desc.toLowerCase().includes('nuts')) nutritionScore += 5;
+        if (log.meals?.breakfast?.desc && log.meals?.lunch?.desc && log.meals?.dinner?.desc) nutritionScore += 10;
+        if (log.meals?.snacks?.desc && (log.meals.snacks.desc.toLowerCase().includes('fruit') || log.meals.snacks.desc.toLowerCase().includes('nuts'))) nutritionScore += 5;
         nutritionScore = Math.min(nutritionScore, 100);
 
         const overallScore = Math.round((sleepScore + waterScore + physicalScore + mentalScore + nutritionScore) / 5);
@@ -4236,8 +4236,8 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         this.db.wellnessLogs.forEach(r => {
             if (query && !r.userEmail.toLowerCase().includes(query) && !(r.mood || '').toLowerCase().includes(query)) return;
 
-            const sleepDuration = r.sleep?.duration || '8.0';
-            const sleepQuality = r.sleep?.quality || 'Restful';
+            const sleepDuration = (r.sleep && typeof r.sleep === 'object' ? r.sleep.duration : r.sleep) || '8.0';
+            const sleepQuality = (r.sleep && typeof r.sleep === 'object' && r.sleep.quality) ? r.sleep.quality : 'Restful';
             const waterGlasses = r.waterCount || 8;
             const steps = r.steps || 0;
             const mood = r.mood || 'happy';
@@ -4263,74 +4263,85 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
     },
 
     openAdminLogDetails(logId) {
-        const r = this.db.wellnessLogs.find(log => log.id === logId);
-        if (!r) return;
+        try {
+            const r = this.db.wellnessLogs.find(log => log.id === logId);
+            if (!r) {
+                alert("Log record not found.");
+                return;
+            }
 
-        const modal = document.getElementById('admin-log-detail-modal');
-        const container = document.getElementById('admin-log-detail-content');
-        if (!modal || !container) return;
+            const modal = document.getElementById('admin-log-detail-modal');
+            const container = document.getElementById('admin-log-detail-content');
+            if (!modal || !container) return;
 
-        const metrics = r.metrics || {};
-        const weightLbs = metrics.weight || r.weight || 155.4;
-        const bmiVal = metrics.bmi || '22.5';
-        const bodyFat = metrics.bodyFat || '18.5';
-        const visceralFat = metrics.visceralFat || metrics.visceraFat || '10.0';
-        const skeletalMuscle = metrics.skeletalMuscle || '66.1';
-        const leanMass = metrics.leanMass || '110.2';
-        const bloodPressure = metrics.bloodPressure || '120/80';
-        const bloodSugar = metrics.bloodSugar || 95;
-        const heartRate = metrics.heartRate || 65;
-        const outdoorTime = metrics.outdoorTime || r.outdoorTime || 45;
-        const sunlight = metrics.sunlight || r.sunlight || 20;
-        const meditation = metrics.meditation || r.meditation || 15;
-        const screenTime = metrics.screenTime || r.screenTime || 4.5;
+            const metrics = r.metrics || {};
+            const weightLbs = metrics.weight || r.weight || 155.4;
+            const bmiVal = metrics.bmi || '22.5';
+            const bodyFat = metrics.bodyFat || '18.5';
+            const visceralFat = metrics.visceralFat || metrics.visceraFat || '10.0';
+            const skeletalMuscle = metrics.skeletalMuscle || '66.1';
+            const leanMass = metrics.leanMass || '110.2';
+            const bloodPressure = metrics.bloodPressure || '120/80';
+            const bloodSugar = metrics.bloodSugar || 95;
+            const heartRate = metrics.heartRate || 65;
+            const outdoorTime = metrics.outdoorTime || r.outdoorTime || 45;
+            const sunlight = metrics.sunlight || r.sunlight || 20;
+            const meditation = metrics.meditation || r.meditation || 15;
+            const screenTime = metrics.screenTime || r.screenTime || 4.5;
 
-        const affirmations = r.affirmations?.join('; ') || r.journal?.affirmation || 'None logged';
-        const gratitudes = r.gratitudes?.join('; ') || r.journal?.gratitude || 'None logged';
-        const reflections = r.reflections?.join('; ') || r.journal?.reflections || 'None logged';
+            const sleepDuration = (r.sleep && typeof r.sleep === 'object' ? r.sleep.duration : r.sleep) || '8.0';
+            const sleepQuality = (r.sleep && typeof r.sleep === 'object' && r.sleep.quality) ? r.sleep.quality : 'Restful';
 
-        const photo = r.photoUrl || (r.photos && r.photos[0]) || (r.meals && r.meals.photo) || '';
+            const affirmations = r.affirmations?.length ? r.affirmations.join('; ') : (r.journal?.affirmation || 'None logged');
+            const gratitudes = r.gratitudes?.length ? r.gratitudes.join('; ') : (r.journal?.gratitude || 'None logged');
+            const reflections = r.reflections?.length ? r.reflections.join('; ') : (r.journal?.reflections || 'None logged');
 
-        container.innerHTML = `
-            <div>
-                <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Core Biometrics & Metrics (US lbs)</h4>
-                <p><strong>Member:</strong> ${r.userEmail}</p>
-                <p><strong>Logged Time:</strong> ${new Date(r.timestamp).toLocaleString()}</p>
-                <p><strong>Origin Device:</strong> ${r.device || 'Mobile / Web'}</p>
-                <p><strong>Weight:</strong> <strong>${weightLbs} lbs</strong> (BMI: ${bmiVal})</p>
-                <p><strong>Body Composition:</strong> Fat: ${bodyFat}% | Visceral: ${visceralFat}%</p>
-                <p><strong>Muscle & Lean Mass:</strong> Skeletal: ${skeletalMuscle} lbs | Lean: ${leanMass} lbs</p>
-                <p><strong>Vitals:</strong> BP: ${bloodPressure} | Sugar: ${bloodSugar} mg/dL | HR: ${heartRate} bpm</p>
-                <p><strong>Mood / Streak:</strong> <span style="text-transform:capitalize;">${r.mood || 'happy'}</span> (${r.streakCount || 1} day streak)</p>
-            </div>
-            <div>
-                <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Sleep, Habits & Activity</h4>
-                <p><strong>Sleep Duration:</strong> ${r.sleep?.duration || '8.0'} Hours (${r.sleep?.quality || 'Restful'})</p>
-                <p><strong>Daily Steps:</strong> ${(r.steps || 0).toLocaleString()} steps</p>
-                <p><strong>Outdoor & Sunlight:</strong> Outdoor: ${outdoorTime} mins | Sunlight: ${sunlight} mins</p>
-                <p><strong>Meditation:</strong> ${meditation} mins</p>
-                <p><strong>Exercise:</strong> ${r.exerciseCompleted === 'yes' || r.exercise?.completed === 'yes' ? `${r.exercise?.type || 'General'} (${r.exercise?.duration || 30} mins, ${r.exercise?.intensity || 'Moderate'})` : 'Rest Day'}</p>
-                <p><strong>Hydration:</strong> ${r.waterCount || 8} Glasses (${(r.waterCount || 8) * 8} oz)</p>
-                <p><strong>Screen Time:</strong> ${screenTime} Hours</p>
-            </div>
-            <div style="grid-column: span 2;">
-                <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Journals & Reflections</h4>
-                <p><strong>Daily Affirmation:</strong> <em>"${affirmations}"</em></p>
-                <p><strong>Gratitude List:</strong> <em>"${gratitudes}"</em></p>
-                <p><strong>Personal Reflections:</strong> <em>"${reflections}"</em></p>
-                ${photo ? `
-                    <div style="margin-top: 1rem;">
-                        <strong>Submitted Progress / Meal Photo:</strong>
-                        <div style="margin-top: 0.5rem; display: inline-block; cursor: pointer;" onclick="app.openLightbox('${photo}', 'Submission photo by ${r.userEmail}')">
-                            <img src="${photo}" alt="Progress Photo" style="width: 140px; height: 140px; object-fit: cover; border-radius: 8px; border: 2px solid var(--clr-primary-green);">
+            const photo = r.photoUrl || (r.photos && r.photos[0]) || (r.meals && r.meals.photo) || '';
+
+            container.innerHTML = `
+                <div>
+                    <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Core Biometrics & Metrics (US lbs)</h4>
+                    <p><strong>Member:</strong> ${r.userEmail || 'Client'}</p>
+                    <p><strong>Logged Time:</strong> ${new Date(r.timestamp).toLocaleString()}</p>
+                    <p><strong>Origin Device:</strong> ${r.device || 'Mobile / Web'}</p>
+                    <p><strong>Weight:</strong> <strong>${weightLbs} lbs</strong> (BMI: ${bmiVal})</p>
+                    <p><strong>Body Composition:</strong> Fat: ${bodyFat}% | Visceral: ${visceralFat}%</p>
+                    <p><strong>Muscle & Lean Mass:</strong> Skeletal: ${skeletalMuscle} lbs | Lean: ${leanMass} lbs</p>
+                    <p><strong>Vitals:</strong> BP: ${bloodPressure} | Sugar: ${bloodSugar} mg/dL | HR: ${heartRate} bpm</p>
+                    <p><strong>Mood / Streak:</strong> <span style="text-transform:capitalize;">${r.mood || 'happy'}</span> (${r.streakCount || 1} day streak)</p>
+                </div>
+                <div>
+                    <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Sleep, Habits & Activity</h4>
+                    <p><strong>Sleep Duration:</strong> ${sleepDuration} Hours (${sleepQuality})</p>
+                    <p><strong>Daily Steps:</strong> ${(r.steps || 0).toLocaleString()} steps</p>
+                    <p><strong>Outdoor & Sunlight:</strong> Outdoor: ${outdoorTime} mins | Sunlight: ${sunlight} mins</p>
+                    <p><strong>Meditation:</strong> ${meditation} mins</p>
+                    <p><strong>Exercise:</strong> ${r.exerciseCompleted === 'yes' || r.exercise?.completed === 'yes' ? `${r.exercise?.type || 'General'} (${r.exercise?.duration || 30} mins, ${r.exercise?.intensity || 'Moderate'})` : 'Rest Day'}</p>
+                    <p><strong>Hydration:</strong> ${r.waterCount || 8} Glasses (${(r.waterCount || 8) * 8} oz)</p>
+                    <p><strong>Screen Time:</strong> ${screenTime} Hours</p>
+                </div>
+                <div style="grid-column: span 2;">
+                    <h4 style="color:var(--clr-primary-green); margin-bottom: 0.8rem; border-bottom:1px solid #eee; padding-bottom:4px;">Journals & Reflections</h4>
+                    <p><strong>Daily Affirmation:</strong> <em>"${affirmations}"</em></p>
+                    <p><strong>Gratitude List:</strong> <em>"${gratitudes}"</em></p>
+                    <p><strong>Personal Reflections:</strong> <em>"${reflections}"</em></p>
+                    ${photo ? `
+                        <div style="margin-top: 1rem;">
+                            <strong>Submitted Progress / Meal Photo:</strong>
+                            <div style="margin-top: 0.5rem; display: inline-block; cursor: pointer;" onclick="app.openLightbox('${photo}', 'Submission photo by ${r.userEmail}')">
+                                <img src="${photo}" alt="Progress Photo" style="width: 140px; height: 140px; object-fit: cover; border-radius: 8px; border: 2px solid var(--clr-primary-green);">
+                            </div>
                         </div>
-                    </div>
-                ` : ''}
-            </div>
-        `;
+                    ` : ''}
+                </div>
+            `;
 
-        modal.style.display = 'block';
-        modal.scrollIntoView({ behavior: 'smooth' });
+            modal.style.display = 'block';
+            modal.scrollIntoView({ behavior: 'smooth' });
+        } catch (err) {
+            console.error("Error opening log details:", err);
+            alert("Could not load log details: " + err.message);
+        }
     },
 
     renderAdminReportsCMS() {
