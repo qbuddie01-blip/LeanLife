@@ -2326,6 +2326,13 @@ const leanLifeAppCore = {
     async handleWellnessLogSubmit(e) {
         e.preventDefault();
         
+        const submitBtn = e.target?.querySelector('button[type="submit"]') || document.getElementById('wellness-submit-btn');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting Wellness Log...';
+        }
+
         try {
             // 1. Detect platform & environment for data telemetry
             const isAndroid = /Android/i.test(navigator.userAgent);
@@ -2521,12 +2528,22 @@ const leanLifeAppCore = {
 
         } catch (submitErr) {
             console.error("Critical submission error in handleWellnessLogSubmit:", submitErr);
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHtml || '<i class="fa-solid fa-cloud-arrow-up"></i> Submit Daily Wellness Log';
+            }
             alert("A problem occurred while saving your wellness log. Please try again: " + submitErr.message);
         }
     },
 
     closeSuccessOverlay() {
-        document.getElementById('success-overlay').style.display = 'none';
+        const overlay = document.getElementById('success-overlay');
+        if (overlay) overlay.style.display = 'none';
+        const submitBtn = document.getElementById('wellness-submit-btn');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Submit Daily Wellness Log';
+        }
         this.navigateTo('dashboard');
     },
 
@@ -3839,6 +3856,11 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
 
     // View complete client wellness history in dedicated modal
     viewClientWellnessLogs(email) {
+        if (!this.currentUser || (this.currentUser.role !== 'admin' && this.currentUser.role !== 'coach')) {
+            alert("Unauthorized access. Only Coaches and Administrators can inspect client logs.");
+            return;
+        }
+
         const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
         if (!user) return;
 
