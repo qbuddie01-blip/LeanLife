@@ -38,39 +38,60 @@
     </script>
     <script>
         window.onerror = function(message, source, lineno, colno, error) {
-            const errorDiv = document.createElement('div');
-            errorDiv.id = 'fatal-error-banner';
-            errorDiv.style.position = 'fixed';
-            errorDiv.style.top = '0';
-            errorDiv.style.left = '0';
-            errorDiv.style.width = '100%';
-            errorDiv.style.background = '#ffcccc';
-            errorDiv.style.color = '#cc0000';
-            errorDiv.style.padding = '15px';
-            errorDiv.style.borderBottom = '3px solid #cc0000';
-            errorDiv.style.zIndex = '999999';
-            errorDiv.style.fontFamily = 'monospace';
-            errorDiv.style.fontSize = '0.9rem';
-            errorDiv.innerHTML = '<strong>LEANLIFE FATAL ERROR:</strong> ' + message + ' <br>File: ' + source + ' <br>Line: ' + lineno + ':' + colno + (error ? '<br>Stack: ' + error.stack : '');
-            document.body.insertBefore(errorDiv, document.body.firstChild);
+            try {
+                console.error("[LeanLife Global Error]", message, source, lineno, colno, error);
+                if (document.body) {
+                    let errorDiv = document.getElementById('fatal-error-banner');
+                    if (!errorDiv) {
+                        errorDiv = document.createElement('div');
+                        errorDiv.id = 'fatal-error-banner';
+                        errorDiv.style.position = 'fixed';
+                        errorDiv.style.top = '0';
+                        errorDiv.style.left = '0';
+                        errorDiv.style.width = '100%';
+                        errorDiv.style.background = '#ffcccc';
+                        errorDiv.style.color = '#cc0000';
+                        errorDiv.style.padding = '15px';
+                        errorDiv.style.borderBottom = '3px solid #cc0000';
+                        errorDiv.style.zIndex = '999999';
+                        errorDiv.style.fontFamily = 'monospace';
+                        errorDiv.style.fontSize = '0.9rem';
+                        document.body.insertBefore(errorDiv, document.body.firstChild);
+                    }
+                    errorDiv.innerHTML = '<strong>LEANLIFE FATAL ERROR:</strong> ' + message + ' <br>File: ' + source + ' <br>Line: ' + lineno + ':' + colno + (error ? '<br>Stack: ' + error.stack : '');
+                }
+            } catch (errBoundaryEx) {
+                console.error("Error in window.onerror handler:", errBoundaryEx);
+            }
             return false;
         };
         window.onunhandledrejection = function(event) {
-            const errorDiv = document.createElement('div');
-            errorDiv.id = 'fatal-rejection-banner';
-            errorDiv.style.position = 'fixed';
-            errorDiv.style.top = '0';
-            errorDiv.style.left = '0';
-            errorDiv.style.width = '100%';
-            errorDiv.style.background = '#ffcccc';
-            errorDiv.style.color = '#cc0000';
-            errorDiv.style.padding = '15px';
-            errorDiv.style.borderBottom = '3px solid #cc0000';
-            errorDiv.style.zIndex = '999999';
-            errorDiv.style.fontFamily = 'monospace';
-            errorDiv.style.fontSize = '0.9rem';
-            errorDiv.innerHTML = '<strong>LEANLIFE PROMISE REJECTION:</strong> ' + event.reason;
-            document.body.insertBefore(errorDiv, document.body.firstChild);
+            try {
+                console.error("[LeanLife Unhandled Rejection]", event.reason);
+                if (document.body) {
+                    let errorDiv = document.getElementById('fatal-rejection-banner');
+                    if (!errorDiv) {
+                        errorDiv = document.createElement('div');
+                        errorDiv.id = 'fatal-rejection-banner';
+                        errorDiv.style.position = 'fixed';
+                        errorDiv.style.top = '0';
+                        errorDiv.style.left = '0';
+                        errorDiv.style.width = '100%';
+                        errorDiv.style.background = '#ffcccc';
+                        errorDiv.style.color = '#cc0000';
+                        errorDiv.style.padding = '15px';
+                        errorDiv.style.borderBottom = '3px solid #cc0000';
+                        errorDiv.style.zIndex = '999999';
+                        errorDiv.style.fontFamily = 'monospace';
+                        errorDiv.style.fontSize = '0.9rem';
+                        document.body.insertBefore(errorDiv, document.body.firstChild);
+                    }
+                    const reasonMsg = event.reason ? (event.reason.message || event.reason.stack || String(event.reason)) : 'Unknown rejection';
+                    errorDiv.innerHTML = '<strong>LEANLIFE PROMISE REJECTION:</strong> ' + reasonMsg;
+                }
+            } catch (errBoundaryEx) {
+                console.error("Error in window.onunhandledrejection handler:", errBoundaryEx);
+            }
         };
     </script>
 </head>

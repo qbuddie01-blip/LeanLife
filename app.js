@@ -1181,7 +1181,6 @@ const leanLifeAppCore = {
             ];
             this.saveDatabase();
         }
-        this.updateDebugInfo();
     },
 
     updateDebugInfo() {
