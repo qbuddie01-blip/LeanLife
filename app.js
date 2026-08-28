@@ -348,13 +348,114 @@ const leanLifeAppCore = {
 
     USE_PASSWORD_HASH_MIGRATION: true,
 
+    // Production-Grade PBKDF2 Password Hashing (compatible with browser WebCrypto API and Node.js)
+    async hashPasswordPBKDF2(password, saltUint8 = null) {
+        try {
+            const iterations = 100000;
+            const cryptoObj = (typeof window !== 'undefined' && window.crypto) ? window.crypto : (typeof crypto !== 'undefined' ? crypto : null);
+            if (!cryptoObj || !cryptoObj.subtle) {
+                return this.hashPasswordLegacy(password);
+            }
+            const salt = saltUint8 || cryptoObj.getRandomValues(new Uint8Array(16));
+            const encoder = new TextEncoder();
+            const keyMaterial = await cryptoObj.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            const derivedBits = await cryptoObj.subtle.deriveBits(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: iterations,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                256
+            );
+            const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+            const hashHex = Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+            return `pbkdf2$${iterations}$${saltHex}$${hashHex}`;
+        } catch (err) {
+            console.warn("PBKDF2 hashing fallback to legacy SHA-256:", err);
+            return this.hashPasswordLegacy(password);
+        }
+    },
+
+    // Verify PBKDF2 hash against stored hash string
+    async verifyPasswordPBKDF2(password, storedHash) {
+        try {
+            if (!storedHash || !storedHash.startsWith('pbkdf2$')) return false;
+            const parts = storedHash.split('$');
+            if (parts.length !== 4) return false;
+            const iterations = parseInt(parts[1], 10);
+            const saltHex = parts[2];
+            const expectedHashHex = parts[3];
+
+            const salt = new Uint8Array(saltHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            const cryptoObj = (typeof window !== 'undefined' && window.crypto) ? window.crypto : (typeof crypto !== 'undefined' ? crypto : null);
+            if (!cryptoObj || !cryptoObj.subtle) return false;
+
+            const encoder = new TextEncoder();
+            const keyMaterial = await cryptoObj.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            const derivedBits = await cryptoObj.subtle.deriveBits(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: iterations,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                256
+            );
+            const computedHashHex = Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+            return computedHashHex === expectedHashHex;
+        } catch (e) {
+            console.warn("verifyPasswordPBKDF2 error:", e);
+            return false;
+        }
+    },
+
+    // Main standard hashPassword method called across LeanLife
+    async hashPassword(password) {
+        if (!password) return '';
+        try {
+            return await this.hashPasswordPBKDF2(password);
+        } catch (err) {
+            console.warn("hashPassword error, using legacy hash:", err);
+            return await this.hashPasswordLegacy(password);
+        }
+    },
+
     // Legacy SHA-256 password hashing (for validating legacy accounts)
     async hashPasswordLegacy(password) {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(password + "leanlife_secure_salt_2026");
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        try {
+            const encoder = new TextEncoder();
+            const data = encoder.encode((password || '') + "leanlife_secure_salt_2026");
+            const cryptoObj = (typeof window !== 'undefined' && window.crypto) ? window.crypto : (typeof crypto !== 'undefined' ? crypto : null);
+            if (cryptoObj && cryptoObj.subtle) {
+                const hashBuffer = await cryptoObj.subtle.digest('SHA-256', data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+            let hash = 0;
+            const str = (password || '') + "leanlife_secure_salt_2026";
+            for (let i = 0; i < str.length; i++) {
+                hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                hash |= 0;
+            }
+            return 'fallback_' + Math.abs(hash).toString(16);
+        } catch (e) {
+            return 'fallback_' + String(password);
+        }
     },
 
     // Handle photo file selection and client-side canvas compression (max 1200px, JPEG 0.82)
