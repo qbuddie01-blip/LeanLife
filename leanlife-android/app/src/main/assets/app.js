@@ -322,6 +322,7 @@ const leanLifeAppCore = {
 
     CACHE_VERSION: 'v2_selective',
     MAX_CACHE_AGE_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
+    _tempPasswordResolve: null,
 
     // Helper to open selective IndexedDB Cache safely
     openDB() {
@@ -1181,6 +1182,21 @@ const leanLifeAppCore = {
             this.saveDatabase();
         }
         this.updateDebugInfo();
+    },
+
+    updateDebugInfo() {
+        try {
+            const countEl = document.getElementById('debug-users-count');
+            const listEl = document.getElementById('debug-users-list');
+            if (countEl && this.db && this.db.users) {
+                countEl.textContent = this.db.users.length;
+            }
+            if (listEl && this.db && this.db.users) {
+                listEl.textContent = this.db.users.map(u => u.email).join(', ');
+            }
+        } catch (e) {
+            console.debug("Debug info update skipped:", e);
+        }
     },
 
     // Session validation
