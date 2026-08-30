@@ -4848,7 +4848,7 @@ const leanLifeAppCore = {
         this.showCustomAlert("User account deleted successfully.", "Account Deleted");
     },
 
-    handleAdminRegisterMember(e) {
+    async handleAdminRegisterMember(e) {
         if (e && typeof e.preventDefault === 'function') {
             e.preventDefault();
         }
@@ -4861,91 +4861,107 @@ const leanLifeAppCore = {
             const gender = document.getElementById('reg-gender')?.value || 'Female';
             const coach = document.getElementById('reg-coach')?.value || 'sarah';
 
-        const newMember = {
-            name: name,
-            email: email,
-            password: hashedPassword,
-            role: 'member',
-            phone: phone,
-            dob: dob,
-            gender: gender,
-            preferredCoach: coach,
-            status: 'Active',
-            firstLogin: true,
-            height: 170,
-            weight: 155.4,
-            goal: 'General Wellness',
-            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
-            streakCount: 0,
-            healthProfile: {
+            if (!name || !email) {
+                this.showCustomAlert("Please enter member full name and valid email address.", "Required Fields", "fa-circle-exclamation");
+                return;
+            }
+
+            // Check if user already exists
+            const existingUser = this.db.users.find(u => (u.email || '').toLowerCase().trim() === email);
+            if (existingUser) {
+                this.showCustomAlert(`A user with email "${email}" is already registered on LeanLife.`, "Account Exists", "fa-triangle-exclamation");
+                return;
+            }
+
+            // Generate secure temporary credentials
+            const username = email.split('@')[0];
+            const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
+            const hashedPassword = await this.hashPassword(tempPassword);
+
+            const newMember = {
+                name: name,
+                email: email,
+                password: hashedPassword,
+                tempPasswordRaw: tempPassword,
+                role: 'member',
+                phone: phone,
+                dob: dob,
+                gender: gender,
+                preferredCoach: coach,
+                status: 'Active',
+                firstLogin: true,
                 height: 170,
                 weight: 155.4,
-                bloodGroup: 'Unknown',
-                dietPreference: 'None',
-                emergencyName: '',
-                emergencyPhone: '',
-                allergies: 'None',
-                conditions: 'None',
-                medications: 'None',
-                goals: 'General Wellness'
-            }
-        };
+                goal: 'General Wellness',
+                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+                streakCount: 0,
+                updatedAt: new Date().toISOString(),
+                healthProfile: {
+                    height: 170,
+                    weight: 155.4,
+                    bloodGroup: 'Unknown',
+                    dietPreference: 'None',
+                    emergencyName: '',
+                    emergencyPhone: '',
+                    allergies: 'None',
+                    conditions: 'None',
+                    medications: 'None',
+                    goals: 'General Wellness'
+                }
+            };
 
-            // 1. INSTANT (0ms): Add user to local directory at top of list
+            // 1. INSTANT: Add user to local directory at top of list
             this.db.users.unshift(newMember);
 
-            // 2. INSTANT (0ms): Clear search/filters & reset form
+            // 2. Persist to cache & database
+            await this.saveDatabase();
+
+            // 3. Clear search/filters & reset form
             const searchInput = document.getElementById('admin-user-search');
             if (searchInput) searchInput.value = '';
             const statusInput = document.getElementById('admin-user-filter-status');
             if (statusInput) statusInput.value = 'all';
-
             document.getElementById('admin-register-form')?.reset();
 
-            // 3. INSTANT (0ms): Re-render admin user table so user appears at top of list immediately
+            // 4. Re-render admin user table so user appears at top of list immediately
             this.renderAdminUsers();
 
-            // 4. INSTANT (0ms): Display pop-up notification modal at top of screen without delay
+            // 5. Display pop-up notification modal at top of screen without delay
             const coachName = coach === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
             const successMsg = `🎉 Member Registration Confirmed!\n------------------------------------\nFull Name: ${name}\nEmail: ${email}\nAssigned Coach: ${coachName}\nGenerated Username: ${username}\nTemporary Password: ${tempPassword}\n------------------------------------\nThe new member has been added to the User List and an onboarding welcome email is being dispatched to ${email}.`;
             
             this.showCustomAlert(successMsg, "Member Account Created", "fa-user-check");
 
-            // 5. ASYNCHRONOUS (Background): Hash password, save to cloud, & dispatch real onboarding email
-            setTimeout(async () => {
-                try {
-                    const hashedPassword = await this.hashPassword(tempPassword);
-                    newMember.password = hashedPassword;
-                    await this.saveDatabase();
+            // 6. ASYNCHRONOUS (Background): Dispatch real onboarding email
+            const outboxId = 'EML-' + Date.now();
+            this.db.emails = this.db.emails || [];
+            this.db.emails.unshift({
+                id: outboxId,
+                timestamp: new Date().toISOString(),
+                recipient: email,
+                subject: 'Welcome to LeanLife Onboarding',
+                templateName: 'Welcome Email',
+                status: 'Pending'
+            });
+            this.saveDatabase(true);
 
-                    const outboxId = 'EML-' + Date.now();
-                    this.db.emails = this.db.emails || [];
-                    this.db.emails.unshift({
-                        id: outboxId,
-                        timestamp: new Date().toISOString(),
-                        recipient: email,
-                        subject: 'Welcome to LeanLife Onboarding',
-                        templateName: 'Welcome Email',
-                        status: 'Pending'
-                    });
-                    await this.saveDatabase();
-
-                    const emailResult = await this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome');
+            this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome')
+                .then(emailResult => {
                     const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
                     const rec = this.db.emails.find(item => item.id === outboxId);
                     if (rec) {
                         rec.status = deliveryStatus;
-                        this.saveDatabase();
+                        this.saveDatabase(true);
                     }
                     this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'Admin Registered User', `Registered user ${email} with temporary credentials. Email delivery: ${deliveryStatus}`);
                     this.renderAdminUsers();
-                } catch (bgErr) {
+                })
+                .catch(bgErr => {
                     console.error("Background registration task error:", bgErr);
-                }
-            }, 10);
+                });
         } catch (err) {
             console.error("Error in handleAdminRegisterMember:", err);
-            this.showCustomAlert("An error occurred while creating the member account. Please try again.", "Error", "fa-circle-exclamation");
+            this.showCustomAlert("An error occurred while creating the member account: " + (err.message || err), "Error", "fa-circle-exclamation");
         }
     },
 
