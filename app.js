@@ -5598,17 +5598,18 @@ const leanLifeAppCore = {
         if (resendFromField) resendFromField.value = this.db.systemSettings.resendFromEmail || '';
 
         // Populate EmailJS settings
+        const config = window.SUPABASE_CONFIG || {};
         const serviceIdField = document.getElementById('settings-emailjs-service-id');
         const templateIdField = document.getElementById('settings-emailjs-template-id');
         const publicKeyField = document.getElementById('settings-emailjs-public-key');
         const autoreplyTemplateIdField = document.getElementById('settings-emailjs-autoreply-template-id');
         const welcomeTemplateIdField = document.getElementById('settings-emailjs-welcome-template-id');
         
-        if (serviceIdField) serviceIdField.value = this.db.systemSettings.emailjsServiceId || '';
-        if (templateIdField) templateIdField.value = this.db.systemSettings.emailjsTemplateId || '';
-        if (publicKeyField) publicKeyField.value = this.db.systemSettings.emailjsPublicKey || '';
-        if (autoreplyTemplateIdField) autoreplyTemplateIdField.value = this.db.systemSettings.emailjsAutoreplyTemplateId || '';
-        if (welcomeTemplateIdField) welcomeTemplateIdField.value = this.db.systemSettings.emailjsWelcomeTemplateId || '';
+        if (serviceIdField) serviceIdField.value = this.db.systemSettings.emailjsServiceId || config.EMAILJS_SERVICE_ID || '';
+        if (templateIdField) templateIdField.value = this.db.systemSettings.emailjsTemplateId || config.EMAILJS_TEMPLATE_ID || '';
+        if (publicKeyField) publicKeyField.value = this.db.systemSettings.emailjsPublicKey || config.EMAILJS_PUBLIC_KEY || '';
+        if (autoreplyTemplateIdField) autoreplyTemplateIdField.value = this.db.systemSettings.emailjsAutoreplyTemplateId || config.EMAILJS_AUTOREPLY_TEMPLATE_ID || '';
+        if (welcomeTemplateIdField) welcomeTemplateIdField.value = this.db.systemSettings.emailjsWelcomeTemplateId || config.EMAILJS_WELCOME_TEMPLATE_ID || '';
     },
 
     handleAdminSaveSettings(e) {
