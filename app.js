@@ -1807,7 +1807,7 @@ const leanLifeAppCore = {
                     "fa-user-check"
                 );
             } else {
-                // Bulletproof Universal Login Validation (Email/Username + Multi-Password Match & PBKDF2 Auto-Upgrade)
+                // Standard Secure Login Validation (PBKDF2 & Legacy Hash Verification)
                 const inputId = email;
                 const rawPassword = password;
                 const trimmedPassword = password ? password.trim() : '';
@@ -1831,7 +1831,7 @@ const leanLifeAppCore = {
                         );
                     }
 
-                    // Check direct match against tempPasswordRaw, rawPassword, trimmedPassword, case-insensitive temp password
+                    // Check direct match against tempPasswordRaw
                     if (!isMatch && u.tempPasswordRaw) {
                         const cleanTemp = u.tempPasswordRaw.trim();
                         if (
@@ -1843,30 +1843,15 @@ const leanLifeAppCore = {
                         }
                     }
 
-                    if (!isMatch && u.password === 'TEMP_HASH_PENDING') {
-                        if (u.tempPasswordRaw && u.tempPasswordRaw.toLowerCase().trim() === trimmedPassword.toLowerCase()) {
-                            isMatch = true;
-                        }
-                    }
-
-                    // Universal fallback verification for system & simulation accounts
-                    if (!isMatch) {
-                        const uEmail = (u.email || '').trim().toLowerCase();
-                        if (
-                            (uEmail.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                            (uEmail.includes('emma') && rawPassword === 'password123') ||
-                            (uEmail.includes('sarah') && rawPassword === 'password123') ||
-                            (uEmail.includes('francess') && rawPassword === 'password123')
-                        ) {
-                            isMatch = true;
-                        }
-                    }
-
-                    // Automatic PBKDF2 upgrade & timestamp sync on successful match
+                    // Transparently upgrade legacy hashes to PBKDF2 upon successful match
                     if (isMatch && !u.password.startsWith('pbkdf2$')) {
-                        u.password = await this.hashPasswordPBKDF2(rawPassword);
-                        u.updatedAt = new Date().toISOString();
-                        await this.saveDatabase();
+                        try {
+                            u.password = await this.hashPasswordPBKDF2(rawPassword);
+                            u.updatedAt = new Date().toISOString();
+                            await this.saveDatabase();
+                        } catch (upgradeErr) {
+                            console.warn("Notice: PBKDF2 hash upgrade deferred:", upgradeErr);
+                        }
                     }
 
                     return isMatch;
@@ -1881,11 +1866,7 @@ const leanLifeAppCore = {
                     const matchesIdentifier = (
                         uEmail === inputId ||
                         uName === inputId ||
-                        uUsername === inputId ||
-                        (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
-                        (inputId === 'emma' && uEmail.includes('emma')) ||
-                        (inputId === 'sarah' && uEmail.includes('sarah')) ||
-                        (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
+                        uUsername === inputId
                     );
                     
                     if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
@@ -1894,80 +1875,38 @@ const leanLifeAppCore = {
                     }
                 }
                 
+                // If account not found in local memory, sync from Supabase without blocking timeouts
                 if (!user && this.supabase) {
-                    console.log("Account not found in local cache. Performing fast real-time cloud sync with Supabase...");
                     try {
-                        await Promise.race([
-                            (async () => {
-                                const { data, error } = await this.supabase
-                                    .from('system_settings')
-                                    .select('data')
-                                    .eq('id', 'leanlife_cloud_db')
-                                    .single();
+                        const { data, error } = await this.supabase
+                            .from('system_settings')
+                            .select('data')
+                            .eq('id', 'leanlife_cloud_db')
+                            .single();
 
-                                if (data && data.data) {
-                                    this.mergeCloudDatabase(data.data);
-                                    await this.saveDatabase();
+                        if (data && data.data) {
+                            this.mergeCloudDatabase(data.data);
+                            await this.saveDatabase();
+
+                            for (const u of this.db.users) {
+                                const uEmail = (u.email || '').trim().toLowerCase();
+                                const uName = (u.name || '').trim().toLowerCase();
+                                const uUsername = uEmail.split('@')[0];
+                                
+                                const matchesIdentifier = (
+                                    uEmail === inputId ||
+                                    uName === inputId ||
+                                    uUsername === inputId
+                                );
+                                
+                                if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
+                                    user = u;
+                                    break;
                                 }
-                            })(),
-                            new Promise(r => setTimeout(r, 1000))
-                        ]);
-
-                        // Re-evaluate user lookup after real-time cloud merge
-                        for (const u of this.db.users) {
-                            const uEmail = (u.email || '').trim().toLowerCase();
-                            const uName = (u.name || '').trim().toLowerCase();
-                            const uUsername = uEmail.split('@')[0];
-                            
-                            const matchesIdentifier = (
-                                uEmail === inputId ||
-                                uName === inputId ||
-                                uUsername === inputId ||
-                                (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
-                                (inputId === 'emma' && uEmail.includes('emma')) ||
-                                (inputId === 'sarah' && uEmail.includes('sarah')) ||
-                                (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
-                            );
-                            
-                            if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
-                                user = u;
-                                break;
                             }
                         }
                     } catch(cloudErr) {
-                        console.warn("Live cloud sync lookup failed:", cloudErr);
-                    }
-                }
-
-                if (!user) {
-                    // Universal System Account Self-Healing Auto-Recovery
-                    if (
-                        (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin' || rawPassword === 'password123')) ||
-                        (inputId === 'admin@leanlife.com') ||
-                        (inputId.includes('francess') && (rawPassword === 'password123' || rawPassword === 'admin123')) ||
-                        (inputId.includes('sarah') && (rawPassword === 'password123' || rawPassword === 'admin123')) ||
-                        (inputId.includes('qbuddie') && (rawPassword === 'password123' || rawPassword === 'admin123'))
-                    ) {
-                        const targetRole = inputId.includes('admin') ? 'admin' : (inputId.includes('francess') || inputId.includes('sarah') ? 'coach' : 'member');
-                        const targetEmail = inputId.includes('admin') ? 'admin@leanlife.com' : (inputId.includes('francess') ? 'francessronke21@gmail.com' : (inputId.includes('sarah') ? 'sarah@leanlife.com' : 'qbuddie01@gmail.com'));
-                        const targetName = inputId.includes('admin') ? 'Super Administrator' : (inputId.includes('francess') ? 'Coach Francess Orenuga' : (inputId.includes('sarah') ? 'Coach Sarah Jenkins' : 'LeanLife Member'));
-
-                        let healedUser = this.db.users.find(u => (u.email || '').toLowerCase() === targetEmail);
-                        if (!healedUser) {
-                            healedUser = {
-                                name: targetName,
-                                email: targetEmail,
-                                role: targetRole,
-                                status: 'Active',
-                                updatedAt: new Date().toISOString()
-                            };
-                            this.db.users.push(healedUser);
-                        }
-                        healedUser.password = await this.hashPasswordPBKDF2(rawPassword || 'admin123');
-                        healedUser.status = 'Active';
-                        healedUser.updatedAt = new Date().toISOString();
-                        await this.saveDatabase();
-                        user = healedUser;
+                        console.warn("Cloud lookup notice:", cloudErr);
                     }
                 }
 
@@ -2977,61 +2916,282 @@ const leanLifeAppCore = {
             motivate: `Outstanding execution today, ${this.currentUser.name}! Logging your details consistently builds accountability. Coach Frannie is highly impressed with your gratitude practices. Let's hit 10,000 steps tomorrow!`
         };
 
+        report.log = log;
+        report.userName = this.currentUser ? this.currentUser.name : 'LeanLife Member';
+        report.metrics = log.metrics || {};
+        report.sleepData = log.sleep;
+        report.mealsData = log.meals;
+        report.exerciseData = log.exercise;
+        report.photos = log.photos || (log.photoUrl ? [log.photoUrl] : []);
+        report.affirmations = log.affirmations;
+        report.gratitudes = log.gratitudes;
+        report.reflections = log.reflections;
+        report.goals = log.goals;
+        report.waterCount = log.waterCount;
+        report.steps = log.steps;
+        report.mood = log.mood;
+        report.outdoorTime = log.outdoorTime;
+        report.sunlight = log.sunlight;
+        report.meditation = log.meditation;
+        report.screenTime = log.screenTime;
+
         this.saveDatabase();
         this.activeCountdown = null;
         
         this.logAudit(this.currentUser.name, 'AI Report Generated', `Wellness analysis finished for log ${log.id}`);
         
-        // Show browser push notification (simulated in console / alert)
-        alert(`🔔 Coach Frannie's Wellness Analysis is ready! Overall Wellness Score: ${overallScore} (Grade: ${grade}). Go check the Wellness Report tab.`);
+        // Show notification
+        if (this.showCustomAlert) {
+            this.showCustomAlert(
+                `🔔 Coach Frannie's Wellness Analysis is ready!\n\nOverall Wellness Score: ${overallScore} (Grade: ${grade}).\n\nClick 'View Full Wellness Report' to explore your complete biometric recovery insights.`,
+                "Wellness Report Ready",
+                "fa-square-poll-horizontal"
+            );
+        }
 
         // If user is currently looking at dashboard, refresh it
         if (this.activeView === 'dashboard') {
             this.renderDashboard();
+        } else if (this.activeView === 'ai-report') {
+            this.renderAIReportView(report.id);
         }
     },
 
+    getLatestReport() {
+        if (!this.currentUser) return null;
+        const userEmail = (this.currentUser.email || '').toLowerCase().trim();
+        const userReports = (this.db.aiReports || []).filter(r => {
+            const rEmail = (r.userEmail || r.user_email || '').toLowerCase().trim();
+            return rEmail === userEmail;
+        });
+
+        if (userReports.length === 0) {
+            // Check if there are user wellness logs to construct a report from
+            const userLogs = (this.db.wellnessLogs || []).filter(l => {
+                const lEmail = (l.userEmail || l.user_email || '').toLowerCase().trim();
+                return lEmail === userEmail;
+            });
+            if (userLogs.length > 0) {
+                const latestLog = userLogs[userLogs.length - 1];
+                let newRep = (this.db.aiReports || []).find(r => r.logId === latestLog.id);
+                if (!newRep) {
+                    newRep = {
+                        id: 'REP-' + Date.now(),
+                        logId: latestLog.id,
+                        userEmail: this.currentUser.email,
+                        timestamp: latestLog.timestamp || new Date().toISOString(),
+                        status: 'completed'
+                    };
+                    this.db.aiReports.push(newRep);
+                    this.generateAIReport(newRep.id);
+                }
+                return newRep;
+            }
+            return null;
+        }
+
+        // Prioritize newest completed report
+        const completedReports = userReports.filter(r => r.status === 'completed');
+        if (completedReports.length > 0) {
+            return completedReports[completedReports.length - 1];
+        }
+        return userReports[userReports.length - 1];
+    },
+
     viewLatestAIReport() {
-        const latest = this.getLatestReport();
+        if (!this.currentUser) {
+            this.navigateTo('login');
+            return;
+        }
+
+        let latest = this.getLatestReport();
         if (latest) {
-            this.renderAIReportView(latest.id);
+            this.navigateTo('ai-report', { reportId: latest.id });
         } else {
             alert("No completed Wellness Reports found. Please submit a Daily Wellness Log first.");
             this.navigateTo('wellness-log');
         }
     },
 
+    refreshAIReportState() {
+        if (this.activeCountdown && Date.now() >= this.activeCountdown.reportTargetTime) {
+            this.generateAIReport(this.activeCountdown.id);
+        }
+        const latest = this.getLatestReport();
+        if (latest) {
+            this.renderAIReportView(latest.id);
+        }
+    },
+
     renderAIReportView(reportId) {
-        const report = this.db.aiReports.find(r => r.id === reportId);
+        let report = this.db.aiReports.find(r => r.id === reportId);
+        if (!report) {
+            report = this.getLatestReport();
+        }
         if (!report) return;
 
-        // Overall Score Ring Gauges
-        document.getElementById('report-val-overall').textContent = report.overallScore;
-        document.getElementById('report-grade-val').textContent = `Grade: ${report.grade}`;
-        document.getElementById('report-gauge-overall').style.background = `conic-gradient(var(--clr-accent-green) 0% ${report.overallScore}%, #eee ${report.overallScore}% 100%)`;
+        const log = this.db.wellnessLogs.find(l => l.id === report.logId) || report.log || {};
+        const memberName = report.userName || (this.currentUser ? this.currentUser.name : 'LeanLife Member');
+        const reportTimestamp = report.timestamp ? new Date(report.timestamp).toLocaleString() : new Date().toLocaleString();
 
-        document.getElementById('report-val-nutrition').textContent = report.scores.nutrition;
-        document.getElementById('report-gauge-nutrition').style.background = `conic-gradient(var(--clr-accent-green) 0% ${report.scores.nutrition}%, #eee ${report.scores.nutrition}% 100%)`;
+        // 1. Header Information
+        const nameEl = document.getElementById('report-member-name');
+        if (nameEl) nameEl.textContent = memberName;
+        const timeEl = document.getElementById('report-timestamp-val');
+        if (timeEl) timeEl.textContent = reportTimestamp;
 
-        document.getElementById('report-val-physical').textContent = report.scores.physical;
-        document.getElementById('report-gauge-physical').style.background = `conic-gradient(var(--clr-accent-green) 0% ${report.scores.physical}%, #eee ${report.scores.physical}% 100%)`;
+        // 2. 1-Hour Processing Status Banner Handling
+        const banner = document.getElementById('report-status-banner');
+        const bannerText = document.getElementById('report-status-banner-text');
+        const userEmail = (this.currentUser ? this.currentUser.email : '').toLowerCase().trim();
+        const pending = (this.db.aiReports || []).find(r => (r.userEmail || '').toLowerCase().trim() === userEmail && r.status === 'pending');
 
-        document.getElementById('report-val-mental').textContent = report.scores.mental;
-        document.getElementById('report-gauge-mental').style.background = `conic-gradient(var(--clr-accent-green) 0% ${report.scores.mental}%, #eee ${report.scores.mental}% 100%)`;
+        if (pending && banner && bannerText) {
+            const diffMs = pending.reportTargetTime - Date.now();
+            if (diffMs > 0) {
+                const mins = Math.floor(diffMs / 60000);
+                const secs = Math.floor((diffMs % 60000) / 1000);
+                banner.style.display = 'flex';
+                bannerText.textContent = `Coach Frannie is currently analyzing your latest wellness submission (${mins}m ${secs}s remaining). Showing your latest completed report below.`;
+            } else {
+                banner.style.display = 'none';
+            }
+        } else if (banner) {
+            banner.style.display = 'none';
+        }
 
-        // Report Text Elements
-        document.getElementById('report-sleep-desc').textContent = report.analyses.sleep.desc;
-        document.getElementById('report-sleep-recovery').textContent = report.analyses.sleep.rec;
-        document.getElementById('report-water-desc').textContent = report.analyses.water.desc;
-        document.getElementById('report-water-tips').textContent = report.analyses.water.tips;
-        document.getElementById('report-nutrition-profile').textContent = report.analyses.nutrition.profile;
-        document.getElementById('report-nutrition-subs').textContent = report.analyses.nutrition.subs;
-        document.getElementById('report-fitness-desc').textContent = report.analyses.fitness.desc;
-        document.getElementById('report-steps-fasting-desc').textContent = report.analyses.fitness.steps;
-        document.getElementById('report-mood-journal-desc').textContent = report.analyses.mental.desc;
-        document.getElementById('report-ai-motivate').textContent = report.analyses.motivate;
+        // 3. Overall Score Ring Gauges
+        const overallScore = report.overallScore || 88;
+        const nutritionScore = report.scores?.nutrition || 75;
+        const physicalScore = report.scores?.physical || 90;
+        const mentalScore = report.scores?.mental || 92;
 
-        // Render Macro Pie Chart
+        const valOverall = document.getElementById('report-val-overall');
+        if (valOverall) valOverall.textContent = overallScore;
+        const gradeVal = document.getElementById('report-grade-val');
+        if (gradeVal) gradeVal.textContent = `Grade: ${report.grade || 'A'}`;
+        const gaugeOverall = document.getElementById('report-gauge-overall');
+        if (gaugeOverall) gaugeOverall.style.background = `conic-gradient(var(--clr-accent-green) 0% ${overallScore}%, #eee ${overallScore}% 100%)`;
+
+        const valNutrition = document.getElementById('report-val-nutrition');
+        if (valNutrition) valNutrition.textContent = nutritionScore;
+        const gaugeNutrition = document.getElementById('report-gauge-nutrition');
+        if (gaugeNutrition) gaugeNutrition.style.background = `conic-gradient(var(--clr-accent-green) 0% ${nutritionScore}%, #eee ${nutritionScore}% 100%)`;
+
+        const valPhysical = document.getElementById('report-val-physical');
+        if (valPhysical) valPhysical.textContent = physicalScore;
+        const gaugePhysical = document.getElementById('report-gauge-physical');
+        if (gaugePhysical) gaugePhysical.style.background = `conic-gradient(var(--clr-accent-green) 0% ${physicalScore}%, #eee ${physicalScore}% 100%)`;
+
+        const valMental = document.getElementById('report-val-mental');
+        if (valMental) valMental.textContent = mentalScore;
+        const gaugeMental = document.getElementById('report-gauge-mental');
+        if (gaugeMental) gaugeMental.style.background = `conic-gradient(var(--clr-accent-green) 0% ${mentalScore}%, #eee ${mentalScore}% 100%)`;
+
+        // 4. Complete Biometric Vitals
+        const met = log.metrics || report.metrics || {};
+        const setEl = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = (val !== undefined && val !== null && val !== '') ? val : '--';
+        };
+
+        setEl('report-metric-weight', met.weight || log.weight || (this.currentUser ? this.currentUser.weight : '--'));
+        setEl('report-metric-bmi', met.bmi || '--');
+        setEl('report-metric-bodyfat', met.bodyFat ? `${met.bodyFat}%` : '--');
+        setEl('report-metric-bp', met.bloodPressure || '--');
+        setEl('report-metric-bloodsugar', met.bloodSugar || '--');
+        setEl('report-metric-heartrate', met.heartRate || '--');
+
+        // Lifestyle Metrics
+        setEl('report-metric-stress', met.stress || '--');
+        setEl('report-metric-energy', met.energy || '--');
+        setEl('report-metric-outdoor', (met.outdoorTime !== undefined ? `${met.outdoorTime}m` : (log.outdoorTime ? `${log.outdoorTime}m` : '--')));
+        setEl('report-metric-sunlight', (met.sunlight !== undefined ? `${met.sunlight}m` : (log.sunlight ? `${log.sunlight}m` : '--')));
+        setEl('report-metric-meditation', (met.meditation !== undefined ? `${met.meditation}m` : (log.meditation ? `${log.meditation}m` : '--')));
+        setEl('report-metric-screentime', (met.screenTime !== undefined ? `${met.screenTime}h` : (log.screenTime ? `${log.screenTime}h` : '--')));
+
+        // 5. Analyses Text Elements
+        const analyses = report.analyses || {};
+        const setText = (id, txt) => {
+            const el = document.getElementById(id);
+            if (el && txt) el.textContent = txt;
+        };
+
+        setText('report-sleep-desc', analyses.sleep?.desc || `You logged consistent sleep. Circadian recovery is rated high.`);
+        setText('report-sleep-recovery', analyses.sleep?.rec || `Target bedtime is 10:15 PM to optimize growth hormone release.`);
+        setText('report-water-desc', analyses.water?.desc || `Water hydration completion is at optimal levels.`);
+        setText('report-water-tips', analyses.water?.tips || `Ensure consistent water intake before and after physical workouts.`);
+        setText('report-nutrition-profile', analyses.nutrition?.profile || `Balanced macronutrient distribution observed.`);
+        setText('report-nutrition-subs', analyses.nutrition?.subs || `Incorporate whole foods, fiber, and antioxidant-rich greens.`);
+        setText('report-fitness-desc', analyses.fitness?.desc || `Daily activity performed with high consistency.`);
+        setText('report-steps-fasting-desc', analyses.fitness?.steps || `Daily step goals tracking towards optimal cardiovascular health.`);
+        setText('report-mood-journal-desc', analyses.mental?.desc || `Emotional wellness and mental focus are balanced.`);
+        setText('report-ai-motivate', analyses.motivate || `"You are doing exceptionally well, ${memberName}! Keep logging consistently to build lifelong health habits."`);
+
+        // 6. Render Full Meals Breakdown
+        const mealsContainer = document.getElementById('report-meals-container');
+        if (mealsContainer) {
+            const meals = log.meals || report.mealsData || {};
+            const mealSlots = [
+                { key: 'breakfast', label: 'Breakfast' },
+                { key: 'lunch', label: 'Lunch' },
+                { key: 'dinner', label: 'Dinner' },
+                { key: 'snacks', label: 'Snacks' }
+            ];
+
+            let mealsHtml = '';
+            mealSlots.forEach(slot => {
+                const mealData = meals[slot.key];
+                const desc = typeof mealData === 'object' ? (mealData.desc || '') : (typeof mealData === 'string' ? mealData : '');
+                const photo = typeof mealData === 'object' ? (mealData.photo || '') : '';
+
+                mealsHtml += `
+                    <div class="report-meal-item">
+                        <h5><i class="fa-solid fa-utensils" style="color: var(--clr-primary-green); margin-right: 4px;"></i> ${slot.label}</h5>
+                        <p>${desc || 'Balanced whole-food meal tracked.'}</p>
+                        ${photo ? `
+                            <img src="${photo}" class="report-thumb-img" alt="${slot.label} Photo" onclick="app.openLightbox('${photo}', '${slot.label} Meal')" title="Click to view photo">
+                        ` : ''}
+                    </div>
+                `;
+            });
+            mealsContainer.innerHTML = mealsHtml;
+        }
+
+        // 7. Render Journaling (Affirmations, Gratitudes, Reflections, Goals)
+        const formatJournal = (data) => {
+            if (!data) return 'None logged';
+            if (Array.isArray(data)) return data.filter(Boolean).join('\n• ');
+            if (typeof data === 'string') return data.trim() || 'None logged';
+            return 'None logged';
+        };
+
+        setText('report-journal-affirmations', formatJournal(log.affirmations || report.affirmations || log.journal?.affirmation));
+        setText('report-journal-gratitudes', formatJournal(log.gratitudes || report.gratitudes || log.journal?.gratitude));
+        setText('report-journal-reflections', formatJournal(log.reflections || report.reflections || log.journal?.reflections));
+        setText('report-journal-goals', formatJournal(log.goals || report.goals || (this.currentUser ? this.currentUser.goals : 'None logged')));
+
+        // 8. Render Progress Photos Gallery
+        const photoGallery = document.getElementById('report-photos-gallery');
+        if (photoGallery) {
+            const photos = [];
+            if (Array.isArray(log.photos)) photos.push(...log.photos);
+            else if (Array.isArray(report.photos)) photos.push(...report.photos);
+            if (log.photoUrl && !photos.includes(log.photoUrl)) photos.push(log.photoUrl);
+
+            if (photos.length > 0) {
+                photoGallery.innerHTML = photos.map((p, idx) => `
+                    <div style="text-align: center;">
+                        <img src="${p}" class="report-thumb-img" style="width: 100px; height: 100px;" alt="Progress Photo ${idx + 1}" onclick="app.openLightbox('${p}', 'Progress Photo ${idx + 1}')" title="Click to enlarge">
+                        <div style="font-size: 0.75rem; color: #666; margin-top: 4px;">Photo ${idx + 1}</div>
+                    </div>
+                `).join('');
+            } else {
+                photoGallery.innerHTML = '<p style="color: #888; font-size: 0.9rem; margin: 0;">No progress photos attached for this log.</p>';
+            }
+        }
+
+        // 9. Render Macro Pie Chart
         this.renderMacroPieChartSVG();
     },
 
@@ -3041,21 +3201,20 @@ const leanLifeAppCore = {
 
         // Dynamic SVG Pie Chart representing: Protein (25%), Carbs (55%), Fats (20%)
         container.innerHTML = `
-            <svg viewBox="0 0 160 160" width="160" height="160" xmlns="http://www.w3.org/2000/svg">
-                <!-- Conic segments represented via SVG strokes -->
+            <svg viewBox="0 0 160 160" width="140" height="140" xmlns="http://www.w3.org/2000/svg">
                 <!-- Carbs (55%): Green -->
-                <circle cx="80" cy="80" r="60" fill="none" stroke="#2ed573" stroke-width="24" stroke-dasharray="207.3 377" stroke-dashoffset="0"/>
+                <circle cx="80" cy="80" r="60" fill="none" stroke="#2ed573" stroke-width="22" stroke-dasharray="207.3 377" stroke-dashoffset="0"/>
                 <!-- Protein (25%): Accent green -->
-                <circle cx="80" cy="80" r="60" fill="none" stroke="var(--clr-accent-green)" stroke-width="24" stroke-dasharray="94.25 377" stroke-dashoffset="-207.3"/>
+                <circle cx="80" cy="80" r="60" fill="none" stroke="var(--clr-accent-green)" stroke-width="22" stroke-dasharray="94.25 377" stroke-dashoffset="-207.3"/>
                 <!-- Fats (20%): Gray -->
-                <circle cx="80" cy="80" r="60" fill="none" stroke="#747d8c" stroke-width="24" stroke-dasharray="75.4 377" stroke-dashoffset="-301.55"/>
+                <circle cx="80" cy="80" r="60" fill="none" stroke="#747d8c" stroke-width="22" stroke-dasharray="75.4 377" stroke-dashoffset="-301.55"/>
                 
-                <text x="80" y="85" font-size="10" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#000">Macros %</text>
+                <text x="80" y="85" font-size="11" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#000">Macros %</text>
             </svg>
-            <div style="font-size: 0.8rem; margin-top: 10px;">
-                <div><span style="display:inline-block; width:10px; height:10px; background:#2ed573; margin-right:6px;"></span>Carbs (55%)</div>
-                <div><span style="display:inline-block; width:10px; height:10px; background:var(--clr-accent-green); margin-right:6px;"></span>Protein (25%)</div>
-                <div><span style="display:inline-block; width:10px; height:10px; background:#747d8c; margin-right:6px;"></span>Fats (20%)</div>
+            <div style="font-size: 0.8rem; margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                <div><span style="display:inline-block; width:9px; height:9px; background:#2ed573; margin-right:4px;"></span>Carbs 55%</div>
+                <div><span style="display:inline-block; width:9px; height:9px; background:var(--clr-accent-green); margin-right:4px;"></span>Protein 25%</div>
+                <div><span style="display:inline-block; width:9px; height:9px; background:#747d8c; margin-right:4px;"></span>Fats 20%</div>
             </div>
         `;
     },
@@ -3077,11 +3236,28 @@ const leanLifeAppCore = {
     },
 
     generateAndDownloadPDF(report) {
-        const memberName = this.currentUser ? this.currentUser.name : 'LeanLife Member';
+        const log = this.db.wellnessLogs.find(l => l.id === report.logId) || report.log || {};
+        const memberName = report.userName || (this.currentUser ? this.currentUser.name : 'LeanLife Member');
         const memberEmail = report.userEmail || (this.currentUser ? this.currentUser.email : 'member@leanlife.com');
         const reportDate = new Date(report.timestamp || Date.now()).toLocaleDateString('en-US', {
             year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
+
+        const met = log.metrics || report.metrics || {};
+        const analyses = report.analyses || {};
+        const meals = log.meals || report.mealsData || {};
+
+        let mealsSummaryHtml = '';
+        ['breakfast', 'lunch', 'dinner', 'snacks'].forEach(slot => {
+            const m = meals[slot];
+            const desc = typeof m === 'object' ? (m.desc || '') : (typeof m === 'string' ? m : '');
+            if (desc) {
+                mealsSummaryHtml += `<tr><td style="font-weight:700; width:100px; text-transform:capitalize; padding:6px 10px; border:1px solid #e2e8f0;">${slot}</td><td style="padding:6px 10px; border:1px solid #e2e8f0;">${desc}</td></tr>`;
+            }
+        });
+        if (!mealsSummaryHtml) {
+            mealsSummaryHtml = `<tr><td colspan="2" style="padding:6px 10px; border:1px solid #e2e8f0;">Standard balanced healthy nutrition logged.</td></tr>`;
+        }
 
         const pdfHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -3092,170 +3268,158 @@ const leanLifeAppCore = {
         @media print {
             body { margin: 0; padding: 0; background: #fff; }
             .no-print { display: none !important; }
+            .page-break { page-break-before: always; }
         }
         body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
             color: #1a202c;
-            background-color: #f7fafc;
+            background-color: #ffffff;
             margin: 0;
-            padding: 20px;
+            padding: 24px;
+            line-height: 1.5;
+            font-size: 13px;
         }
         .report-container {
             max-width: 800px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            padding: 40px;
-            border: 1px solid #e2e8f0;
         }
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 2px solid #12826d;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .brand-logo {
-            width: 44px;
-            height: 44px;
-            background: #12826d;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #a5e332;
-            font-weight: bold;
-            font-size: 22px;
+            border-bottom: 2.5px solid #12826d;
+            padding-bottom: 16px;
+            margin-bottom: 20px;
         }
         .brand-title {
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 800;
             color: #12826d;
             margin: 0;
-            letter-spacing: -0.5px;
         }
         .badge {
             background: #e6fffa;
             color: #12826d;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 13px;
+            padding: 5px 12px;
+            border-radius: 16px;
+            font-size: 11px;
             font-weight: 700;
-            border: 1px solid rgba(18, 130, 109, 0.2);
+            border: 1px solid rgba(18, 130, 109, 0.3);
         }
         .meta-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
             background: #f8fafc;
-            padding: 20px;
+            padding: 12px 16px;
             border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .meta-item {
-            font-size: 14px;
+            margin-bottom: 20px;
+            border: 1px solid #e2e8f0;
         }
         .meta-label {
             color: #718096;
-            font-size: 12px;
+            font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            font-weight: 600;
+            font-weight: 700;
         }
         .meta-value {
             font-weight: 700;
             color: #2d3748;
             margin-top: 2px;
+            font-size: 12px;
         }
-        .section-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #2d3748;
-            margin-top: 30px;
-            margin-bottom: 15px;
-            border-left: 4px solid #a5e332;
-            padding-left: 10px;
-        }
-        .score-card {
-            background: linear-gradient(135deg, #12826d, #0b5345);
-            color: white;
-            padding: 25px;
-            border-radius: 10px;
+        .score-banner {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
             text-align: center;
-            margin-bottom: 30px;
         }
-        .score-number {
-            font-size: 48px;
+        .score-box {
+            background: #f4fbf7;
+            border: 1.5px solid #12826d;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .score-num {
+            font-size: 24px;
             font-weight: 900;
-            color: #a5e332;
+            color: #12826d;
             line-height: 1;
         }
-        .score-label {
-            font-size: 14px;
+        .score-name {
+            font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 8px;
-            opacity: 0.9;
+            color: #4a5568;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #12826d;
+            margin-top: 20px;
+            margin-bottom: 8px;
+            border-bottom: 1.5px solid #e2e8f0;
+            padding-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+            font-size: 12px;
+        }
+        .table th, .table td {
+            padding: 7px 10px;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }
+        .table th {
+            background: #f8fafc;
+            color: #4a5568;
+            font-weight: 700;
         }
         .content-box {
-            background: #ffffff;
+            background: #f8fafc;
             border: 1px solid #e2e8f0;
-            padding: 20px;
-            border-radius: 8px;
-            line-height: 1.6;
-            font-size: 15px;
+            border-left: 3.5px solid #12826d;
+            padding: 12px 14px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+        .content-box h4 {
+            margin: 0 0 4px 0;
+            font-size: 12px;
+            color: #2d3748;
+        }
+        .content-box p {
+            margin: 0;
             color: #4a5568;
-            white-space: pre-wrap;
         }
         .footer {
-            margin-top: 40px;
-            padding-top: 20px;
+            margin-top: 25px;
+            padding-top: 12px;
             border-top: 1px solid #e2e8f0;
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            font-size: 12px;
+            font-size: 10px;
             color: #a0aec0;
         }
-        .print-btn-bar {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .btn-print {
-            background: #12826d;
-            color: white;
-            border: none;
-            padding: 12px 28px;
-            font-size: 16px;
-            font-weight: 600;
-            border-radius: 6px;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(18,130,109,0.3);
-        }
-        .btn-print:hover { background: #0e6655; }
     </style>
 </head>
 <body>
-    <div class="print-btn-bar no-print">
-        <button class="btn-print" onclick="window.print()">🖨️ Save as PDF / Print Document</button>
-    </div>
-    <div class="report-container">
+    <div class="report-container" id="pdf-report-content">
         <div class="header">
-            <div class="brand">
-                <div class="brand-logo">🌿</div>
-                <div>
-                    <h1 class="brand-title">LeanLife Health & Wellness</h1>
-                    <div style="font-size: 12px; color: #718096;">AI-Powered Personal Health Analytics</div>
-                </div>
+            <div>
+                <div class="brand-title">🌿 LeanLife Health & Wellness</div>
+                <div style="font-size: 11px; color: #718096;">AI-Powered Comprehensive Wellness Recovery Report</div>
             </div>
-            <div class="badge">OFFICIAL REPORT</div>
+            <div class="badge">CONFIDENTIAL & OFFICIAL</div>
         </div>
 
         <div class="meta-grid">
@@ -3277,47 +3441,292 @@ const leanLifeAppCore = {
             </div>
         </div>
 
-        <div class="score-card">
-            <div class="score-number">${report.score || 88}/100</div>
-            <div class="score-label">Overall Health & Consistency Score</div>
+        <div class="score-banner">
+            <div class="score-box">
+                <div class="score-num">${report.overallScore || 88}</div>
+                <div class="score-name">Overall Score (${report.grade || 'A'})</div>
+            </div>
+            <div class="score-box">
+                <div class="score-num">${report.scores?.nutrition || 75}</div>
+                <div class="score-name">Nutrition Score</div>
+            </div>
+            <div class="score-box">
+                <div class="score-num">${report.scores?.physical || 90}</div>
+                <div class="score-name">Physical Health</div>
+            </div>
+            <div class="score-box">
+                <div class="score-num">${report.scores?.mental || 92}</div>
+                <div class="score-name">Mental Wellness</div>
+            </div>
         </div>
 
-        <div class="section-title">AI Coach Recommendations & Analysis</div>
+        <div class="section-title">1. Biometric Vitals & Health Metrics</div>
+        <table class="table">
+            <tr>
+                <th>Weight</th><td>${met.weight || log.weight || '--'} lbs</td>
+                <th>BMI</th><td>${met.bmi || '--'}</td>
+            </tr>
+            <tr>
+                <th>Body Fat %</th><td>${met.bodyFat ? met.bodyFat + '%' : '--'}</td>
+                <th>Blood Pressure</th><td>${met.bloodPressure || '--'} mmHg</td>
+            </tr>
+            <tr>
+                <th>Blood Sugar</th><td>${met.bloodSugar || '--'} mg/dL</td>
+                <th>Resting Heart Rate</th><td>${met.heartRate || '--'} bpm</td>
+            </tr>
+            <tr>
+                <th>Stress Rating</th><td>${met.stress ? met.stress + '/10' : '--'}</td>
+                <th>Energy Rating</th><td>${met.energy ? met.energy + '/10' : '--'}</td>
+            </tr>
+            <tr>
+                <th>Outdoor / Sunlight</th><td>${met.outdoorTime || log.outdoorTime || '--'}m / ${met.sunlight || log.sunlight || '--'}m</td>
+                <th>Meditation / Screen Time</th><td>${met.meditation || log.meditation || '--'}m / ${met.screenTime || log.screenTime || '--'}h</td>
+            </tr>
+        </table>
+
+        <div class="section-title">2. Sleep & Circadian Alignment</div>
         <div class="content-box">
-${report.content || report.summary || "Your wellness progress shows strong consistency across hydration, physical activity, and sleep recovery. Continue adhering to your customized nutrition and workout targets for optimal metabolic health."}
+            <h4>Hours & Sleep Quality</h4>
+            <p>${analyses.sleep?.desc || 'Sleep consistency is optimal.'}</p>
+        </div>
+        <div class="content-box">
+            <h4>Recovery Score & Bedtime Targets</h4>
+            <p>${analyses.sleep?.rec || 'Maintain bedtime alignment.'}</p>
+        </div>
+
+        <div class="section-title">3. Hydration & Daily Meals</div>
+        <div class="content-box">
+            <h4>Hydration Target</h4>
+            <p>${analyses.water?.desc || 'Hydration volume is sufficient.'} ${analyses.water?.tips || ''}</p>
+        </div>
+        <table class="table">
+            <thead>
+                <tr><th colspan="2">Daily Meals Logged</th></tr>
+            </thead>
+            <tbody>
+                ${mealsSummaryHtml}
+            </tbody>
+        </table>
+
+        <div class="section-title">4. Physical Activity & Daily Steps</div>
+        <div class="content-box">
+            <h4>Exercise Performance</h4>
+            <p>${analyses.fitness?.desc || 'Physical activity tracked.'}</p>
+        </div>
+        <div class="content-box">
+            <h4>Steps & Consistency</h4>
+            <p>${analyses.fitness?.steps || 'Daily steps logged.'}</p>
+        </div>
+
+        <div class="section-title">5. Holistic Journaling & Reflections</div>
+        <div class="content-box">
+            <h4>Daily Affirmations</h4>
+            <p>${log.affirmations ? (Array.isArray(log.affirmations) ? log.affirmations.join('; ') : log.affirmations) : 'None logged'}</p>
+        </div>
+        <div class="content-box">
+            <h4>Personal Reflections & Evening Gratitude</h4>
+            <p>${log.reflections ? (Array.isArray(log.reflections) ? log.reflections.join('; ') : log.reflections) : 'None logged'}</p>
+        </div>
+
+        <div class="section-title">6. Coach Frannie's Recommendations & 24h Action Plan</div>
+        <div class="content-box" style="border-left-color: #a5e332; background: #fafdf7;">
+            <h4>Motivational Summary</h4>
+            <p>${analyses.motivate || 'Keep executing on your daily targets!'}</p>
         </div>
 
         <div class="footer">
             <div>Verified by LeanLife Medical & Coaching Board</div>
-            <div>Confidential Health Document • Page 1 of 1</div>
+            <div>Confidential Health Document • Generated on ${new Date().toLocaleDateString()}</div>
         </div>
     </div>
-    <script>
-        window.onload = function() {
-            setTimeout(function() {
-                window.print();
-            }, 500);
-        };
-    </script>
 </body>
 </html>`;
 
+        // Generate PDF using html2pdf if available, else open print view
+        if (window.html2pdf) {
+            const container = document.createElement('div');
+            container.innerHTML = pdfHtml;
+            document.body.appendChild(container);
+
+            const opt = {
+                margin: [10, 10, 10, 10],
+                filename: `LeanLife_Wellness_Report_${memberName.replace(/\s+/g, '_')}_${report.id || Date.now()}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            window.html2pdf().set(opt).from(container.querySelector('#pdf-report-content')).save()
+                .then(() => {
+                    container.remove();
+                })
+                .catch(err => {
+                    console.warn("html2pdf notice, falling back to print dialog:", err);
+                    container.remove();
+                    this.openPrintFallbackWindow(pdfHtml, `LeanLife_Wellness_Report_${report.id || Date.now()}`);
+                });
+        } else {
+            this.openPrintFallbackWindow(pdfHtml, `LeanLife_Wellness_Report_${report.id || Date.now()}`);
+        }
+    },
+
+    openPrintFallbackWindow(htmlContent, fileName) {
         const printWindow = window.open('', '_blank');
         if (printWindow) {
             printWindow.document.open();
-            printWindow.document.write(pdfHtml);
+            printWindow.document.write(htmlContent);
             printWindow.document.close();
+            setTimeout(() => {
+                try { printWindow.print(); } catch(e) {}
+            }, 500);
         } else {
-            const blob = new Blob([pdfHtml], { type: 'text/html' });
+            const blob = new Blob([htmlContent], { type: 'text/html' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `LeanLife_Wellness_Report_${report.id || Date.now()}.html`;
+            a.download = `${fileName}.html`;
             document.body.appendChild(a);
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
         }
+    },
+
+    downloadLogsPDF(logId = null) {
+        let logsToExport = this.db.wellnessLogs || [];
+        if (logId) {
+            logsToExport = logsToExport.filter(l => l.id === logId);
+        }
+        if (logsToExport.length === 0) {
+            alert("No wellness logs available to export.");
+            return;
+        }
+
+        let logsHtmlRows = '';
+        logsToExport.forEach((l, idx) => {
+            const met = l.metrics || {};
+            const sleepDur = typeof l.sleep === 'object' ? (l.sleep.duration || '--') : (l.sleep || '--');
+            const sleepQual = typeof l.sleep === 'object' ? (l.sleep.quality || '--') : '--';
+            const exType = l.exercise?.type || (l.exerciseCompleted === 'yes' ? 'Exercise' : 'None');
+            const exDur = l.exercise?.duration || 0;
+            const photoCount = (l.photos && l.photos.length) || (l.photoUrl ? 1 : 0);
+
+            logsHtmlRows += `
+                <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${l.timestamp ? new Date(l.timestamp).toLocaleDateString() : (l.date || '--')}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; font-weight:600;">${l.userEmail || l.user_email || '--'}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${sleepDur}h (${sleepQual})</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${l.waterCount || 0} drops (${((l.waterCount || 0) * 8.45).toFixed(0)} oz)</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${(l.steps || 0).toLocaleString()}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; text-transform:capitalize;">${l.mood || 'Neutral'}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${exType} (${exDur}m)</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${met.bloodPressure || '--'} | ${met.bloodSugar ? met.bloodSugar + ' mg' : '--'}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${photoCount > 0 ? `Yes (${photoCount})` : 'None'}</td>
+                </tr>
+            `;
+        });
+
+        const pdfHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LeanLife Wellness Logs Export</title>
+    <style>
+        @media print {
+            body { margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+        }
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+            color: #1a202c;
+            padding: 20px;
+            font-size: 11px;
+        }
+        .header {
+            border-bottom: 2px solid #12826d;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10.5px;
+        }
+        .table th {
+            background: #12826d;
+            color: #ffffff;
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #12826d;
+        }
+        .table td {
+            padding: 7px 8px;
+            border: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div id="pdf-logs-content">
+        <div class="header">
+            <div>
+                <h2 style="margin:0; color:#12826d; font-size:18px;">🌿 LeanLife Wellness Logs Submissions</h2>
+                <div style="font-size:11px; color:#666;">Generated on ${new Date().toLocaleString()} • Total Records: ${logsToExport.length}</div>
+            </div>
+            <div style="font-weight:bold; color:#12826d;">ADMIN AUDIT EXPORT</div>
+        </div>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Member Email</th>
+                    <th>Sleep</th>
+                    <th>Hydration</th>
+                    <th>Steps</th>
+                    <th>Mood</th>
+                    <th>Exercise</th>
+                    <th>Vitals (BP | Sugar)</th>
+                    <th>Photos</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${logsHtmlRows}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>`;
+
+        if (window.html2pdf) {
+            const container = document.createElement('div');
+            container.innerHTML = pdfHtml;
+            document.body.appendChild(container);
+
+            const opt = {
+                margin: [8, 8, 8, 8],
+                filename: `LeanLife_Wellness_Logs_${logId ? logId : 'Export'}_${Date.now()}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            window.html2pdf().set(opt).from(container.querySelector('#pdf-logs-content')).save()
+                .then(() => container.remove())
+                .catch(err => {
+                    container.remove();
+                    this.openPrintFallbackWindow(pdfHtml, `LeanLife_Wellness_Logs_Export`);
+                });
+        } else {
+            this.openPrintFallbackWindow(pdfHtml, `LeanLife_Wellness_Logs_Export`);
+        }
+    },
+
+    downloadLogPDF(logId) {
+        this.downloadLogsPDF(logId);
     },
 
     // ==================== COACHING & NOTICE BOARD EVENTS ====================
@@ -3327,6 +3736,11 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         const date = document.getElementById('consult-date').value;
         const time = document.getElementById('consult-time').value;
         const notes = document.getElementById('consult-notes').value;
+
+        if (!mode || !date || !time) {
+            alert("Please select consultation mode, date, and time.");
+            return;
+        }
 
         this.db.blockedDates = this.db.blockedDates || [];
         if (this.db.blockedDates.some(d => d.id === date && d.status === 'blocked')) {
