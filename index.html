@@ -129,6 +129,7 @@
                 <ul class="nav-links">
                     <li><a id="nav-home" onclick="app.navigateTo('home')" class="active">Home</a></li>
                     <li class="logged-in-only" style="display: none;"><a id="nav-dashboard" onclick="app.navigateTo('dashboard')">Dashboard</a></li>
+                    <li class="logged-in-only" style="display: none;"><a id="nav-monthly-report" onclick="app.navigateTo('monthly-report')">Monthly Report</a></li>
                     <li class="logged-in-only" style="display: none;"><a id="nav-community" onclick="app.navigateTo('community')">Community</a></li>
                     <li class="logged-in-only" style="display: none;"><a id="nav-notice-board" onclick="app.navigateTo('notice-board')">Notice Board</a></li>
                     <li class="logged-in-only" style="display: none;"><a id="nav-coaching" onclick="app.navigateTo('coaching')">Speak with Coach</a></li>
@@ -463,6 +464,7 @@
                         <h3 style="margin-bottom: 1rem; font-family: var(--font-brand);">Quick Actions</h3>
                         <div class="quick-actions-bar">
                             <button class="quick-action-btn" onclick="app.navigateTo('wellness-log')"><i class="fa-solid fa-pen-to-square" style="color: var(--clr-accent-green-hover);"></i> Log Daily Activity</button>
+                            <button class="quick-action-btn" onclick="app.navigateTo('monthly-report')"><i class="fa-solid fa-chart-pie" style="color: #9c27b0;"></i> Monthly Report</button>
                             <button class="quick-action-btn" onclick="app.quickLogWater()"><i class="fa-solid fa-glass-water" style="color: #2196f3;"></i> Log Glass of Water</button>
                             <button class="quick-action-btn" onclick="app.navigateTo('coaching')"><i class="fa-solid fa-user-doctor" style="color: var(--clr-success);"></i> Consult Coach</button>
                             <button class="quick-action-btn" onclick="app.navigateTo('community')"><i class="fa-solid fa-rss" style="color: #f77f00;"></i> Share Feed Post</button>
@@ -2118,6 +2120,280 @@
                 </div>
             </div>
         </section>
+
+        <!-- 11. MONTHLY WELLNESS PROGRESS REPORT VIEW -->
+        <section id="view-monthly-report" class="view-section">
+            <div class="ai-report-header" style="flex-wrap: wrap; gap: 1rem; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem;">
+                <div>
+                    <h2 style="font-family: var(--font-brand); font-size: 2.2rem; margin-bottom: 0.3rem;"><i class="fa-solid fa-calendar-check" style="color: var(--clr-accent-green);"></i> Monthly Wellness Progress Report</h2>
+                    <p style="color: #555; margin: 0;">Cumulative 30-day health vitals, habit consistency, and clinical analysis for <span id="monthly-report-member-name" style="font-weight: 600; color: var(--clr-primary-green);">Member</span></p>
+                </div>
+                <div style="display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px; background: white; padding: 6px 12px; border-radius: var(--radius-sm); border: 1.5px solid var(--clr-primary-green); box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
+                        <i class="fa-solid fa-calendar-days" style="color: var(--clr-primary-green);"></i>
+                        <select id="monthly-report-select" class="form-input" style="border: none; padding: 4px; font-weight: 600; cursor: pointer; outline: none;" onchange="app.handleMonthlyReportMonthChange(event)">
+                            <!-- Populated dynamically via JS -->
+                        </select>
+                    </div>
+                    <button class="btn btn-outline" style="padding: 0.6rem 1rem;" onclick="app.downloadMonthlyReportPDF()"><i class="fa-solid fa-file-pdf"></i> Download PDF</button>
+                    <button class="btn btn-primary" style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border: none; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.35); padding: 0.6rem 1.2rem;" onclick="app.openCoachMonthlyReviewModal()">
+                        <i class="fa-brands fa-whatsapp" style="font-size: 1.1rem;"></i> Want review monthly report with coach?
+                    </button>
+                </div>
+            </div>
+
+            <!-- Top Monthly Performance Highlight Cards -->
+            <div class="report-summary-boxes" style="margin-bottom: 1.5rem;">
+                <div class="glass-card score-gauge-box">
+                    <div class="gauge-circle" id="monthly-gauge-overall" style="background: conic-gradient(var(--clr-accent-green) 0% 95%, #eee 95% 100%);">
+                        <div class="gauge-value" id="monthly-val-overall">95</div>
+                    </div>
+                    <span style="font-family: var(--font-brand); font-weight: 700; margin-top: 0.5rem;">Monthly Score</span>
+                    <span style="font-size: 0.85rem; color: #555;" id="monthly-grade-val">Grade: A+</span>
+                </div>
+                <div class="glass-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 1.2rem;">
+                    <div style="font-size: 2rem; color: #ff9800; margin-bottom: 4px;"><i class="fa-solid fa-fire"></i></div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: var(--clr-text-dark);" id="monthly-val-days-logged">-- / --</div>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--clr-primary-green);" id="monthly-val-consistency-pct">--% Consistency</div>
+                    <div style="font-size: 0.75rem; color: #888; margin-top: 2px;">Days Logged this Month</div>
+                </div>
+                <div class="glass-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 1.2rem;">
+                    <div style="font-size: 2rem; color: #673ab7; margin-bottom: 4px;"><i class="fa-solid fa-moon"></i></div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: var(--clr-text-dark);" id="monthly-val-avg-sleep">-- hrs</div>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: #673ab7;" id="monthly-val-sleep-quality">-- Restful</div>
+                    <div style="font-size: 0.75rem; color: #888; margin-top: 2px;">Average Sleep Duration</div>
+                </div>
+                <div class="glass-card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 1.2rem;">
+                    <div style="font-size: 2rem; color: #2196f3; margin-bottom: 4px;"><i class="fa-solid fa-glass-water"></i></div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: var(--clr-text-dark);" id="monthly-val-total-water">-- gl</div>
+                    <div style="font-size: 0.85rem; font-weight: 600; color: #2196f3;" id="monthly-val-avg-water">-- gl / day avg</div>
+                    <div style="font-size: 0.75rem; color: #888; margin-top: 2px;">Hydration Consumed</div>
+                </div>
+            </div>
+
+            <!-- Cumulative Movement & Activity Summary Banner -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+                <div class="glass-card" style="display: flex; align-items: center; gap: 1rem; padding: 1.1rem 1.3rem;">
+                    <div style="background: rgba(139, 195, 74, 0.15); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: #8bc34a;">
+                        <i class="fa-solid fa-shoe-prints"></i>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Total Steps</div>
+                        <div style="font-size: 1.35rem; font-weight: 700; color: var(--clr-text-dark);" id="monthly-val-total-steps">--</div>
+                        <div style="font-size: 0.78rem; color: #888;" id="monthly-val-avg-steps">Avg: -- / day</div>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="display: flex; align-items: center; gap: 1rem; padding: 1.1rem 1.3rem;">
+                    <div style="background: rgba(233, 30, 99, 0.15); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: #e91e63;">
+                        <i class="fa-solid fa-fire-burner"></i>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Calories Burned</div>
+                        <div style="font-size: 1.35rem; font-weight: 700; color: var(--clr-text-dark);" id="monthly-val-total-calories">-- kcal</div>
+                        <div style="font-size: 0.78rem; color: #888;" id="monthly-val-workouts-count">-- Workouts Logged</div>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="display: flex; align-items: center; gap: 1rem; padding: 1.1rem 1.3rem;">
+                    <div style="background: rgba(33, 150, 243, 0.15); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: #2196f3;">
+                        <i class="fa-solid fa-weight-scale"></i>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Weight Progression</div>
+                        <div style="font-size: 1.35rem; font-weight: 700; color: var(--clr-text-dark);" id="monthly-val-weight-trend">-- lbs</div>
+                        <div style="font-size: 0.78rem; color: #888;" id="monthly-val-weight-delta">--</div>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="display: flex; align-items: center; gap: 1rem; padding: 1.1rem 1.3rem;">
+                    <div style="background: rgba(156, 39, 176, 0.15); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: #9c27b0;">
+                        <i class="fa-solid fa-hourglass-half"></i>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Intermittent Fasting</div>
+                        <div style="font-size: 1.35rem; font-weight: 700; color: var(--clr-text-dark);" id="monthly-val-fasting-days">-- Days</div>
+                        <div style="font-size: 0.78rem; color: #888;" id="monthly-val-fasting-rate">--% Adherence</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Clinical Vitals & Biometrics Grid -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+                <h3 style="font-family: var(--font-brand); margin-bottom: 1rem; border-bottom: 1.5px solid var(--clr-accent-green); padding-bottom: 6px;">
+                    <i class="fa-solid fa-heart-pulse"></i> Monthly Average Biometrics & Health Vitals
+                </h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1rem; text-align: center;">
+                    <div style="background: rgba(255,255,255,0.7); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.06);">
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Average BMI</div>
+                        <div style="font-size: 1.4rem; font-weight: 700; color: var(--clr-text-dark); margin: 4px 0;" id="monthly-metric-bmi">--</div>
+                        <div style="font-size: 0.75rem; color: #888;">Clinical BMI Scale</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.7); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.06);">
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Average Body Fat</div>
+                        <div style="font-size: 1.4rem; font-weight: 700; color: var(--clr-text-dark); margin: 4px 0;" id="monthly-metric-bodyfat">--</div>
+                        <div style="font-size: 0.75rem; color: #888;">Bio-impedance %</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.7); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.06);">
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Blood Pressure</div>
+                        <div style="font-size: 1.4rem; font-weight: 700; color: var(--clr-text-dark); margin: 4px 0;" id="monthly-metric-bp">--</div>
+                        <div style="font-size: 0.75rem; color: #888;">Systolic / Diastolic avg</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.7); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.06);">
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Fasting Blood Sugar</div>
+                        <div style="font-size: 1.4rem; font-weight: 700; color: var(--clr-text-dark); margin: 4px 0;" id="monthly-metric-bloodsugar">--</div>
+                        <div style="font-size: 0.75rem; color: #888;">mg/dL (Glucose)</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.7); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.06);">
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Resting Heart Rate</div>
+                        <div style="font-size: 1.4rem; font-weight: 700; color: var(--clr-text-dark); margin: 4px 0;" id="monthly-metric-heartrate">--</div>
+                        <div style="font-size: 0.75rem; color: #888;">bpm avg</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.7); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.06);">
+                        <div style="font-size: 0.8rem; text-transform: uppercase; color: #666; font-weight: 600;">Stress / Energy</div>
+                        <div style="font-size: 1.4rem; font-weight: 700; color: var(--clr-text-dark); margin: 4px 0;" id="monthly-metric-stress-energy">-- / --</div>
+                        <div style="font-size: 0.75rem; color: #888;">Scale (1 - 10)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Coach Frannie's Comprehensive Monthly Synthesis -->
+            <div class="ai-report-details" style="margin-bottom: 2rem;">
+                <div class="report-analysis-tabs" style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    <!-- Synthesis Card -->
+                    <div class="glass-card">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1.2rem; border-bottom: 1.5px solid var(--clr-accent-green); padding-bottom: 6px;">
+                            <i class="fa-solid fa-user-doctor"></i> Coach Frannie's Monthly Clinical Assessment
+                        </h3>
+                        <div class="analysis-bubble" style="border-left-color: var(--clr-primary-green);">
+                            <h4>Monthly Executive Performance Review</h4>
+                            <p id="monthly-ai-executive-review">Your monthly logging consistency demonstrates exceptional commitment. Your biological circadian markers show steady stabilization, and your metabolic recovery indicators remain optimal throughout high-activity days.</p>
+                        </div>
+                        <div class="analysis-bubble" style="border-left-color: #2196f3;">
+                            <h4>Hydration & Circadian Synchronization Insights</h4>
+                            <p id="monthly-ai-circadian-insights">Average sleep hours aligned with cellular repair windows. Mid-day hydration was maintained consistently, supporting lean muscle preservation and metabolic energy equilibrium.</p>
+                        </div>
+                        <div class="analysis-bubble" style="border-left-color: #ff9800;">
+                            <h4>Mood, Stress & Positivity Progression</h4>
+                            <p id="monthly-ai-mental-progression">Monthly reflection notes and daily affirmations exhibit a strong upward trend in mental resilience and stress management.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Side 3-Point Action Plan for Next Month -->
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    <div class="glass-card" style="border-left: 6px solid var(--clr-accent-green);">
+                        <h3 style="font-family: var(--font-brand); margin-bottom: 1rem;"><i class="fa-solid fa-bullseye"></i> Next Month's 3-Point Strategy</h3>
+                        <ul style="display: flex; flex-direction: column; gap: 14px; font-size: 0.95rem; padding-left: 1.2rem;" id="monthly-action-strategy">
+                            <li>Maintain target daily hydration of 8+ glasses during afternoon focus blocks.</li>
+                            <li>Incorporate 2 recovery stretching routines per week to optimize muscle repair.</li>
+                            <li>Sustain consistent 10:15 PM bedtime to maximize deep REM restorative sleep cycles.</li>
+                        </ul>
+                    </div>
+
+                    <!-- Coach Contact Card with CTA -->
+                    <div class="glass-card" style="background: linear-gradient(135deg, rgba(37,211,102,0.1) 0%, rgba(18,140,126,0.15) 100%); border: 1.5px solid #25D366;">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 0.8rem;">
+                            <img id="monthly-card-coach-avatar" src="assets/coach_francess.png" alt="Coach" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid #25D366;">
+                            <div>
+                                <h4 style="font-family: var(--font-brand); margin: 0; color: var(--clr-text-dark);" id="monthly-card-coach-name">Coach Francess Orenuga</h4>
+                                <span style="font-size: 0.78rem; color: #128C7E; font-weight: 600;"><i class="fa-brands fa-whatsapp"></i> Verified Wellness Coach</span>
+                            </div>
+                        </div>
+                        <p style="font-size: 0.88rem; color: #444; margin-bottom: 1rem;">Ready to discuss your monthly achievements and personalize next month's targets? Review this report directly with your coach.</p>
+                        <button class="btn btn-primary" style="width: 100%; justify-content: center; background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border: none; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.35);" onclick="app.openCoachMonthlyReviewModal()">
+                            <i class="fa-brands fa-whatsapp"></i> Want review monthly report with coach?
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Daily Logs Breakdown Table for the Month -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+                <h3 style="font-family: var(--font-brand); margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                    <span><i class="fa-solid fa-list-check"></i> Monthly Daily Submissions Log (<span id="monthly-table-count">0</span> Days)</span>
+                    <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.3rem 0.7rem;" onclick="app.navigateTo('wellness-log')"><i class="fa-solid fa-plus"></i> Submit Today's Log</button>
+                </h3>
+                <div class="table-responsive">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Sleep</th>
+                                <th>Hydration</th>
+                                <th>Steps</th>
+                                <th>Mood</th>
+                                <th>Workout</th>
+                                <th>Weight</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthly-logs-tbody">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Coach WhatsApp Review Modal -->
+        <div id="monthly-coach-review-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 9999; align-items: center; justify-content: center; padding: 1.5rem; backdrop-filter: blur(4px);" onclick="if(event.target === this) document.getElementById('monthly-coach-review-modal').style.display = 'none'">
+            <div class="glass-card" style="background: white; max-width: 540px; width: 100%; border-radius: var(--radius-md); box-shadow: 0 12px 35px rgba(0,0,0,0.3); border: 2px solid #25D366; overflow: hidden; padding: 0; animation: modalFadeIn 0.25s ease-out;">
+                <!-- Modal Header -->
+                <div style="background: linear-gradient(135deg, #0DBE85 0%, #12826D 50%, #0A5849 100%); color: white; padding: 1.25rem 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-brands fa-whatsapp" style="font-size: 1.6rem; color: #a5e332;"></i>
+                        <div>
+                            <h3 style="margin: 0; font-family: var(--font-brand); font-size: 1.25rem;">Review Monthly Report with Coach</h3>
+                            <span style="font-size: 0.78rem; opacity: 0.9;">Direct WhatsApp Consultation & PDF Dispatch</span>
+                        </div>
+                    </div>
+                    <button type="button" style="background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer;" onclick="document.getElementById('monthly-coach-review-modal').style.display = 'none'">&times;</button>
+                </div>
+
+                <!-- Modal Body -->
+                <div style="padding: 1.5rem;">
+                    <!-- Coach Card -->
+                    <div style="display: flex; align-items: center; gap: 14px; background: #f8fafc; padding: 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,0.06); margin-bottom: 1.2rem;">
+                        <img id="modal-coach-avatar" src="assets/coach_francess.png" alt="Coach Avatar" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid #25D366;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 0.72rem; text-transform: uppercase; color: #128C7E; font-weight: 700; letter-spacing: 0.5px;">Assigned Wellness Coach</div>
+                            <div style="font-size: 1.1rem; font-weight: 700; color: var(--clr-text-dark);" id="modal-coach-name">Coach Francess Orenuga</div>
+                            <div style="font-size: 0.8rem; color: #555;" id="modal-coach-spec">Lifestyle Medicine & Habit Loop Optimization</div>
+                        </div>
+                    </div>
+
+                    <!-- Month Badge -->
+                    <div style="background: #e8f8f5; border: 1px solid var(--clr-primary-green); border-radius: var(--radius-sm); padding: 0.8rem 1rem; margin-bottom: 1.2rem;">
+                        <div style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--clr-primary-green);">Selected Report Period</div>
+                        <div style="font-size: 1rem; font-weight: 700; color: var(--clr-text-dark);" id="modal-report-month-title">August 2026 Monthly Progress Report</div>
+                        <div style="font-size: 0.8rem; color: #555; margin-top: 3px;" id="modal-report-summary-stats">30 Days Logged • Avg Sleep: 7.8h • Total Steps: 245,600</div>
+                    </div>
+
+                    <!-- User Message Box -->
+                    <form onsubmit="app.submitCoachMonthlyReview(event)">
+                        <div class="form-group" style="margin-bottom: 1.2rem;">
+                            <label style="font-weight: 600; color: var(--clr-text-dark); margin-bottom: 4px; display: block;">Your Message to Coach:</label>
+                            <textarea id="modal-coach-user-msg" class="form-input" rows="4" style="resize: vertical; font-size: 0.9rem;" placeholder="Add any specific questions or areas you'd like to focus on during your monthly review..."></textarea>
+                        </div>
+
+                        <div style="background: #fff8f1; border-left: 3px solid #ff9800; padding: 0.75rem 1rem; border-radius: 4px; font-size: 0.8rem; color: #666; margin-bottom: 1.4rem;">
+                            <i class="fa-solid fa-circle-info" style="color: #ff9800;"></i> <strong>What happens when you click submit:</strong><br>
+                            1. A high-resolution PDF copy of your Monthly Progress Report will be downloaded.<br>
+                            2. Your coach receives an email notification with your monthly metrics and message.<br>
+                            3. You will be redirected immediately to your Coach's WhatsApp chat with your pre-filled inquiry.
+                        </div>
+
+                        <div style="display: flex; gap: 0.8rem; justify-content: flex-end;">
+                            <button type="button" class="btn btn-outline" onclick="document.getElementById('monthly-coach-review-modal').style.display = 'none'">Cancel</button>
+                            <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border: none; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.35);">
+                                <i class="fa-brands fa-whatsapp"></i> Send to Coach & Open WhatsApp
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
 
         <!-- Global Image Lightbox Modal -->
         <div id="image-lightbox-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center; padding: 1.5rem; backdrop-filter: blur(4px);" onclick="if(event.target === this) app.closeLightbox()">

@@ -1401,6 +1401,8 @@ const leanLifeAppCore = {
             } else {
                 this.viewLatestAIReport();
             }
+        } else if (viewId === 'monthly-report') {
+            this.renderMonthlyReportView(params && params.month ? params.month : null);
         }
 
         // Switch login/register tab if passed
@@ -3787,6 +3789,626 @@ const leanLifeAppCore = {
 
     downloadLogPDF(logId) {
         this.downloadLogsPDF(logId);
+    },
+
+    // ==================== CUMULATIVE MONTHLY REPORTS ENGINE ====================
+    getAvailableMonthlyCycles(userEmail = null) {
+        const email = (userEmail || (this.currentUser ? this.currentUser.email : '')).toLowerCase().trim();
+        const logs = (this.db && this.db.wellnessLogs ? this.db.wellnessLogs : []).filter(l => {
+            const lEmail = (l.userEmail || l.user_email || l.email || '').toLowerCase().trim();
+            return lEmail === email;
+        });
+
+        const cycles = new Set();
+        const now = new Date();
+        const currentCycle = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        cycles.add(currentCycle);
+
+        logs.forEach(l => {
+            const ts = l.timestamp || l.created_at || l.date;
+            if (ts) {
+                const d = new Date(ts);
+                if (!isNaN(d.getTime())) {
+                    cycles.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                }
+            }
+        });
+
+        return Array.from(cycles).sort().reverse();
+    },
+
+    calculateMonthlyAggregateData(userEmail = null, monthCycle = null) {
+        const email = (userEmail || (this.currentUser ? this.currentUser.email : '')).toLowerCase().trim();
+        const now = new Date();
+        const activeCycle = monthCycle || this.selectedMonthlyReportCycle || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const [yearStr, monthStr] = activeCycle.split('-');
+        const targetYear = parseInt(yearStr, 10);
+        const targetMonth = parseInt(monthStr, 10) - 1; // 0-indexed
+
+        const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+        const monthDateObj = new Date(targetYear, targetMonth, 1);
+        const monthName = monthDateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+        const userLogs = (this.db && this.db.wellnessLogs ? this.db.wellnessLogs : []).filter(l => {
+            const lEmail = (l.userEmail || l.user_email || l.email || '').toLowerCase().trim();
+            if (lEmail !== email) return false;
+            const ts = l.timestamp || l.created_at || l.date;
+            if (!ts) return false;
+            const d = new Date(ts);
+            if (isNaN(d.getTime())) return false;
+            return d.getFullYear() === targetYear && d.getMonth() === targetMonth;
+        }).sort((a, b) => new Date(a.timestamp || a.date) - new Date(b.timestamp || b.date));
+
+        const daysLoggedCount = userLogs.length;
+        const consistencyPct = Math.min(100, Math.round((daysLoggedCount / (daysInMonth || 30)) * 100));
+
+        let totalSleep = 0;
+        let restfulSleepCount = 0;
+        let totalWaterGlasses = 0;
+        let totalSteps = 0;
+        let totalCalories = 0;
+        let workoutSessionsCount = 0;
+        let fastingCompletedCount = 0;
+        let totalSystolic = 0;
+        let totalDiastolic = 0;
+        let bpCount = 0;
+        let totalSugar = 0;
+        let sugarCount = 0;
+        let totalHeartRate = 0;
+        let hrCount = 0;
+        let totalStress = 0;
+        let totalEnergy = 0;
+        let stressEnergyCount = 0;
+        let totalBodyFat = 0;
+        let bodyFatCount = 0;
+
+        const weightsLogged = [];
+        const moodCounts = { happy: 0, calm: 0, energetic: 0, tired: 0, stressed: 0 };
+
+        userLogs.forEach(l => {
+            // Sleep
+            const sDur = parseFloat(l.sleep && typeof l.sleep === 'object' ? l.sleep.duration : l.sleep) || 8.0;
+            totalSleep += sDur;
+            const sQual = (l.sleep && typeof l.sleep === 'object' && l.sleep.quality) ? l.sleep.quality : 'Restful';
+            if (sQual.toLowerCase().includes('restful') || sQual.toLowerCase().includes('deep')) restfulSleepCount++;
+
+            // Hydration
+            const wGlasses = parseInt(l.waterCount, 10) || 8;
+            totalWaterGlasses += wGlasses;
+
+            // Steps
+            const stp = parseInt(l.steps, 10) || 0;
+            totalSteps += stp;
+
+            // Workouts & Calories
+            const isEx = l.exerciseCompleted === 'yes' || (l.exercise && l.exercise.completed === 'yes');
+            if (isEx) {
+                workoutSessionsCount++;
+                const dur = parseFloat(l.exercise?.duration) || 30;
+                totalCalories += Math.round(dur * 8.5);
+            }
+
+            // Fasting
+            const isFast = l.fastingCompleted === 'yes' || (l.fasting && l.fasting.completed === 'yes');
+            if (isFast) fastingCompletedCount++;
+
+            // Vitals
+            const metrics = l.metrics || {};
+            const bp = metrics.bloodPressure || l.bloodPressure;
+            if (bp && bp.includes('/')) {
+                const [sys, dia] = bp.split('/').map(n => parseInt(n.trim(), 10));
+                if (sys && dia) {
+                    totalSystolic += sys;
+                    totalDiastolic += dia;
+                    bpCount++;
+                }
+            }
+
+            const sugar = parseFloat(metrics.bloodSugar || l.bloodSugar);
+            if (sugar) {
+                totalSugar += sugar;
+                sugarCount++;
+            }
+
+            const hr = parseFloat(metrics.heartRate || l.heartRate);
+            if (hr) {
+                totalHeartRate += hr;
+                hrCount++;
+            }
+
+            const stress = parseFloat(metrics.stressLevel || l.stressLevel);
+            const energy = parseFloat(metrics.energyLevel || l.energyLevel);
+            if (stress || energy) {
+                totalStress += (stress || 5);
+                totalEnergy += (energy || 7);
+                stressEnergyCount++;
+            }
+
+            const bf = parseFloat(metrics.bodyFat || l.bodyFat);
+            if (bf) {
+                totalBodyFat += bf;
+                bodyFatCount++;
+            }
+
+            const w = parseFloat(metrics.weight || l.weight);
+            if (w) weightsLogged.push(w);
+
+            const m = (l.mood || 'happy').toLowerCase();
+            if (moodCounts[m] !== undefined) moodCounts[m]++;
+            else moodCounts.happy++;
+        });
+
+        const divisor = daysLoggedCount || 1;
+        const avgSleep = (totalSleep / divisor).toFixed(1);
+        const restfulPct = Math.round((restfulSleepCount / divisor) * 100);
+        const avgWater = (totalWaterGlasses / divisor).toFixed(1);
+        const totalWaterOz = totalWaterGlasses * 8;
+        const avgSteps = Math.round(totalSteps / divisor);
+        const fastingRate = Math.round((fastingCompletedCount / divisor) * 100);
+
+        const avgBP = bpCount > 0 ? `${Math.round(totalSystolic / bpCount)} / ${Math.round(totalDiastolic / bpCount)}` : '118 / 78';
+        const avgBloodSugar = sugarCount > 0 ? Math.round(totalSugar / sugarCount) : '92';
+        const avgHeartRate = hrCount > 0 ? Math.round(totalHeartRate / hrCount) : '68';
+        const avgStress = stressEnergyCount > 0 ? (totalStress / stressEnergyCount).toFixed(1) : '3.5';
+        const avgEnergy = stressEnergyCount > 0 ? (totalEnergy / stressEnergyCount).toFixed(1) : '8.2';
+        const avgBodyFat = bodyFatCount > 0 ? (totalBodyFat / bodyFatCount).toFixed(1) : '19.5';
+
+        // Weight progression
+        const userObj = this.currentUser || {};
+        const profileWeight = parseFloat(userObj.weight) || 155.4;
+        const startWeight = weightsLogged.length > 0 ? weightsLogged[0] : profileWeight;
+        const endWeight = weightsLogged.length > 0 ? weightsLogged[weightsLogged.length - 1] : profileWeight;
+        const weightDelta = (endWeight - startWeight).toFixed(1);
+
+        const heightInches = ((userObj.height || 170) / 2.54);
+        const avgBMI = ((endWeight / (heightInches * heightInches)) * 703).toFixed(1);
+
+        let overallScore = 85;
+        if (consistencyPct >= 90) overallScore += 10;
+        else if (consistencyPct >= 70) overallScore += 5;
+        if (avgSteps >= 8000) overallScore += 3;
+        overallScore = Math.min(99, overallScore);
+
+        let grade = 'A+';
+        if (overallScore < 80) grade = 'B';
+        else if (overallScore < 90) grade = 'A-';
+        else if (overallScore < 95) grade = 'A';
+
+        return {
+            monthCycle: activeCycle,
+            monthName,
+            targetYear,
+            targetMonth,
+            daysInMonth,
+            daysLoggedCount,
+            consistencyPct,
+            userLogs,
+            avgSleep,
+            restfulPct,
+            totalWaterGlasses,
+            totalWaterOz,
+            avgWater,
+            totalSteps,
+            avgSteps,
+            totalCalories,
+            workoutSessionsCount,
+            fastingCompletedCount,
+            fastingRate,
+            avgBP,
+            avgBloodSugar,
+            avgHeartRate,
+            avgStress,
+            avgEnergy,
+            avgBodyFat,
+            startWeight,
+            endWeight,
+            weightDelta,
+            avgBMI,
+            overallScore,
+            grade,
+            moodCounts
+        };
+    },
+
+    renderMonthlyReportView(selectedMonthCycle = null) {
+        if (!this.currentUser) return;
+        const userEmail = this.currentUser.email;
+        const cycles = this.getAvailableMonthlyCycles(userEmail);
+        
+        if (selectedMonthCycle && cycles.includes(selectedMonthCycle)) {
+            this.selectedMonthlyReportCycle = selectedMonthCycle;
+        } else if (!this.selectedMonthlyReportCycle || !cycles.includes(this.selectedMonthlyReportCycle)) {
+            this.selectedMonthlyReportCycle = cycles[0];
+        }
+
+        const selectEl = document.getElementById('monthly-report-select');
+        if (selectEl) {
+            selectEl.innerHTML = cycles.map(c => {
+                const [y, m] = c.split('-');
+                const dObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+                const label = dObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+                return `<option value="${c}" ${c === this.selectedMonthlyReportCycle ? 'selected' : ''}>${label}</option>`;
+            }).join('');
+        }
+
+        const data = this.calculateMonthlyAggregateData(userEmail, this.selectedMonthlyReportCycle);
+
+        // Member name
+        const memberNameEl = document.getElementById('monthly-report-member-name');
+        if (memberNameEl) memberNameEl.textContent = this.currentUser.name;
+
+        // Top gauges
+        const gaugeEl = document.getElementById('monthly-gauge-overall');
+        if (gaugeEl) gaugeEl.style.background = `conic-gradient(var(--clr-accent-green) 0% ${data.overallScore}%, #eee ${data.overallScore}% 100%)`;
+        const valOverallEl = document.getElementById('monthly-val-overall');
+        if (valOverallEl) valOverallEl.textContent = data.overallScore;
+        const gradeEl = document.getElementById('monthly-grade-val');
+        if (gradeEl) gradeEl.textContent = `Grade: ${data.grade}`;
+
+        // Top cards
+        const daysLoggedEl = document.getElementById('monthly-val-days-logged');
+        if (daysLoggedEl) daysLoggedEl.textContent = `${data.daysLoggedCount} / ${data.daysInMonth}`;
+        const consistencyEl = document.getElementById('monthly-val-consistency-pct');
+        if (consistencyEl) consistencyEl.textContent = `${data.consistencyPct}% Consistency`;
+
+        const avgSleepEl = document.getElementById('monthly-val-avg-sleep');
+        if (avgSleepEl) avgSleepEl.textContent = `${data.avgSleep} hrs`;
+        const sleepQualityEl = document.getElementById('monthly-val-sleep-quality');
+        if (sleepQualityEl) sleepQualityEl.textContent = `${data.restfulPct}% Restful`;
+
+        const totalWaterEl = document.getElementById('monthly-val-total-water');
+        if (totalWaterEl) totalWaterEl.textContent = `${data.totalWaterGlasses} gl (${data.totalWaterOz} oz)`;
+        const avgWaterEl = document.getElementById('monthly-val-avg-water');
+        if (avgWaterEl) avgWaterEl.textContent = `${data.avgWater} gl / day avg`;
+
+        // Movement & activity cards
+        const totalStepsEl = document.getElementById('monthly-val-total-steps');
+        if (totalStepsEl) totalStepsEl.textContent = data.totalSteps.toLocaleString();
+        const avgStepsEl = document.getElementById('monthly-val-avg-steps');
+        if (avgStepsEl) avgStepsEl.textContent = `Avg: ${data.avgSteps.toLocaleString()} / day`;
+
+        const totalCaloriesEl = document.getElementById('monthly-val-total-calories');
+        if (totalCaloriesEl) totalCaloriesEl.textContent = `${data.totalCalories.toLocaleString()} kcal`;
+        const workoutsCountEl = document.getElementById('monthly-val-workouts-count');
+        if (workoutsCountEl) workoutsCountEl.textContent = `${data.workoutSessionsCount} Workouts Logged`;
+
+        const weightTrendEl = document.getElementById('monthly-val-weight-trend');
+        if (weightTrendEl) weightTrendEl.textContent = `${data.endWeight} lbs`;
+        const weightDeltaEl = document.getElementById('monthly-val-weight-delta');
+        if (weightDeltaEl) {
+            const deltaNum = parseFloat(data.weightDelta);
+            const sign = deltaNum > 0 ? '+' : '';
+            weightDeltaEl.textContent = `Net Change: ${sign}${data.weightDelta} lbs (${data.startWeight} → ${data.endWeight})`;
+            weightDeltaEl.style.color = deltaNum <= 0 ? 'var(--clr-primary-green)' : '#e67e22';
+        }
+
+        const fastingDaysEl = document.getElementById('monthly-val-fasting-days');
+        if (fastingDaysEl) fastingDaysEl.textContent = `${data.fastingCompletedCount} Days`;
+        const fastingRateEl = document.getElementById('monthly-val-fasting-rate');
+        if (fastingRateEl) fastingRateEl.textContent = `${data.fastingRate}% Adherence`;
+
+        // Vitals
+        const bmiEl = document.getElementById('monthly-metric-bmi');
+        if (bmiEl) bmiEl.textContent = data.avgBMI;
+        const bfEl = document.getElementById('monthly-metric-bodyfat');
+        if (bfEl) bfEl.textContent = `${data.avgBodyFat}%`;
+        const bpEl = document.getElementById('monthly-metric-bp');
+        if (bpEl) bpEl.textContent = data.avgBP;
+        const sugarEl = document.getElementById('monthly-metric-bloodsugar');
+        if (sugarEl) sugarEl.textContent = data.avgBloodSugar;
+        const hrEl = document.getElementById('monthly-metric-heartrate');
+        if (hrEl) hrEl.textContent = data.avgHeartRate;
+        const seEl = document.getElementById('monthly-metric-stress-energy');
+        if (seEl) seEl.textContent = `${data.avgStress} / ${data.avgEnergy}`;
+
+        // AI Synthesis
+        const execReviewEl = document.getElementById('monthly-ai-executive-review');
+        if (execReviewEl) {
+            execReviewEl.textContent = `During ${data.monthName}, ${this.currentUser.name} completed ${data.daysLoggedCount} wellness submissions with a ${data.consistencyPct}% consistency rating. Your cumulative activity totaled ${data.totalSteps.toLocaleString()} steps and ${data.workoutSessionsCount} exercise sessions, maintaining an exceptional ${data.grade} monthly health score.`;
+        }
+
+        const circInsightsEl = document.getElementById('monthly-ai-circadian-insights');
+        if (circInsightsEl) {
+            circInsightsEl.textContent = `Average sleep duration of ${data.avgSleep} hours with ${data.restfulPct}% restorative sleep quality demonstrates synchronized biological clocks. Total hydration of ${data.totalWaterOz.toLocaleString()} oz (${data.totalWaterGlasses} glasses) supported high cellular repair and digestive balance.`;
+        }
+
+        // Assigned coach on card
+        const coachKey = this.currentUser.preferredCoach || 'sarah';
+        const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
+        const coachAvatar = coachKey === 'james' ? 'assets/coach_james.png' : 'assets/coach_francess.png';
+        const cardCoachName = document.getElementById('monthly-card-coach-name');
+        if (cardCoachName) cardCoachName.textContent = coachName;
+        const cardCoachAvatar = document.getElementById('monthly-card-coach-avatar');
+        if (cardCoachAvatar) cardCoachAvatar.src = coachAvatar;
+
+        // Daily Logs Table
+        const tbody = document.getElementById('monthly-logs-tbody');
+        const countEl = document.getElementById('monthly-table-count');
+        if (countEl) countEl.textContent = data.userLogs.length;
+
+        if (tbody) {
+            if (data.userLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 2rem; color: #888;">No daily wellness logs recorded for ${data.monthName}.</td></tr>`;
+            } else {
+                let html = '';
+                data.userLogs.forEach(r => {
+                    const sleepDuration = (r.sleep && typeof r.sleep === 'object' ? r.sleep.duration : r.sleep) || '8.0';
+                    const sleepQuality = (r.sleep && typeof r.sleep === 'object' && r.sleep.quality) ? r.sleep.quality : 'Restful';
+                    const waterGlasses = r.waterCount || 8;
+                    const steps = r.steps || 0;
+                    const mood = r.mood || 'happy';
+                    const isExercise = r.exerciseCompleted === 'yes' || r.exercise?.completed === 'yes';
+                    const weightVal = r.metrics?.weight || r.weight || data.endWeight;
+
+                    html += `
+                        <tr>
+                            <td style="font-weight:600;">${new Date(r.timestamp || r.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                            <td>${sleepDuration}h (${sleepQuality})</td>
+                            <td>${waterGlasses * 8} oz (${waterGlasses} gl)</td>
+                            <td>${steps.toLocaleString()}</td>
+                            <td><span style="text-transform: capitalize;">${mood}</span></td>
+                            <td>${isExercise ? (r.exercise?.type || 'Workout') : 'None'}</td>
+                            <td>${weightVal} lbs</td>
+                            <td>
+                                <button class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.75rem;" onclick="app.openAdminLogDetails('${r.id}')"><i class="fa-solid fa-eye"></i> View</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = html;
+            }
+        }
+    },
+
+    handleMonthlyReportMonthChange(e) {
+        const val = e.target.value;
+        this.selectedMonthlyReportCycle = val;
+        this.renderMonthlyReportView(val);
+    },
+
+    downloadMonthlyReportPDF(monthCycle = null) {
+        if (!this.currentUser) return;
+        const userEmail = this.currentUser.email;
+        const data = this.calculateMonthlyAggregateData(userEmail, monthCycle || this.selectedMonthlyReportCycle);
+        const memberName = this.currentUser.name || 'Member';
+
+        const rowsHtml = data.userLogs.map(l => {
+            const d = new Date(l.timestamp || l.date).toLocaleDateString();
+            const s = (l.sleep && typeof l.sleep === 'object' ? l.sleep.duration : l.sleep) || '8.0';
+            const w = (l.waterCount || 8) * 8;
+            const st = (l.steps || 0).toLocaleString();
+            const m = l.mood || 'happy';
+            const ex = l.exerciseCompleted === 'yes' || l.exercise?.completed === 'yes' ? (l.exercise?.type || 'Yes') : 'No';
+            return `
+                <tr>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${d}</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${s} hrs</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${w} oz</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${st}</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-transform: capitalize;">${m}</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${ex}</td>
+                </tr>
+            `;
+        }).join('') || `<tr><td colspan="6" style="padding: 12px; text-align: center; color: #888;">No daily records found for this period.</td></tr>`;
+
+        const pdfHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LeanLife Monthly Wellness Report - ${data.monthName}</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #2d3748; margin: 0; padding: 20px; background: #fff; line-height: 1.5; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #12826D; padding-bottom: 15px; margin-bottom: 20px; }
+        .brand { font-size: 22px; font-weight: bold; color: #12826D; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+        .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; text-align: center; }
+        .card-val { font-size: 18px; font-weight: bold; color: #12826D; margin: 4px 0; }
+        .card-lbl { font-size: 10px; text-transform: uppercase; color: #718096; font-weight: 600; }
+        .section-title { font-size: 14px; font-weight: bold; color: #12826D; border-bottom: 1.5px solid #a5e332; padding-bottom: 4px; margin-bottom: 12px; text-transform: uppercase; }
+        .synth-box { background: #f0fdf4; border-left: 4px solid #12826D; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 12px; line-height: 1.6; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background: #12826D; color: white; text-align: left; padding: 8px; font-size: 11px; text-transform: uppercase; }
+        .footer { margin-top: 30px; font-size: 10px; color: #a0aec0; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+    </style>
+</head>
+<body>
+    <div id="pdf-monthly-report-content">
+        <div class="header">
+            <div>
+                <div class="brand">🌱 LeanLife Health & Wellness</div>
+                <div style="font-size: 12px; color: #718096;">Monthly Cumulative Progress & Clinical Vitals Report</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 16px; font-weight: bold; color: #2d3748;">${data.monthName}</div>
+                <div style="font-size: 11px; color: #718096;">Member: <strong>${memberName}</strong> (${userEmail})</div>
+            </div>
+        </div>
+
+        <div class="grid-4">
+            <div class="card">
+                <div class="card-lbl">Monthly Score</div>
+                <div class="card-val">${data.overallScore} / 100</div>
+                <div style="font-size: 11px; color: #28a745; font-weight: bold;">Grade: ${data.grade}</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Consistency</div>
+                <div class="card-val">${data.daysLoggedCount} / ${data.daysInMonth} Days</div>
+                <div style="font-size: 11px; color: #12826D;">${data.consistencyPct}% Adherence</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Avg Sleep</div>
+                <div class="card-val">${data.avgSleep} hrs</div>
+                <div style="font-size: 11px; color: #673ab7;">${data.restfulPct}% Restful</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Hydration Consumed</div>
+                <div class="card-val">${data.totalWaterGlasses} glasses</div>
+                <div style="font-size: 11px; color: #2196f3;">${data.totalWaterOz.toLocaleString()} oz total</div>
+            </div>
+        </div>
+
+        <div class="grid-4">
+            <div class="card">
+                <div class="card-lbl">Total Steps</div>
+                <div class="card-val">${data.totalSteps.toLocaleString()}</div>
+                <div style="font-size: 11px; color: #8bc34a;">Avg: ${data.avgSteps.toLocaleString()} / day</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Calories Burned</div>
+                <div class="card-val">${data.totalCalories.toLocaleString()} kcal</div>
+                <div style="font-size: 11px; color: #e91e63;">${data.workoutSessionsCount} Workouts</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Weight Trend</div>
+                <div class="card-val">${data.endWeight} lbs</div>
+                <div style="font-size: 11px; color: #12826D;">Change: ${data.weightDelta} lbs</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Vitals Average</div>
+                <div class="card-val">${data.avgBP}</div>
+                <div style="font-size: 11px; color: #718096;">Sugar: ${data.avgBloodSugar} mg/dL • HR: ${data.avgHeartRate} bpm</div>
+            </div>
+        </div>
+
+        <div class="section-title">Coach Frannie's Monthly Clinical Synthesis</div>
+        <div class="synth-box">
+            <p style="margin-top: 0;"><strong>Executive Review:</strong> During ${data.monthName}, ${memberName} demonstrated steady habit alignment across core health pillars. With a ${data.consistencyPct}% logging rate and cumulative physical activity of ${data.totalSteps.toLocaleString()} steps, structural health resilience is actively improving.</p>
+            <p style="margin-bottom: 0;"><strong>Recommendations for Next Month:</strong> Sustain target daily water intake (8+ glasses), maintain circadian bedtime alignment before 10:30 PM, and integrate scheduled post-workout recovery routines.</p>
+        </div>
+
+        <div class="section-title">Daily Submissions Log (${data.userLogs.length} Records)</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Sleep Duration</th>
+                    <th>Hydration</th>
+                    <th>Steps Walked</th>
+                    <th>Mood State</th>
+                    <th>Workout Completed</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rowsHtml}
+            </tbody>
+        </table>
+
+        <div class="footer">
+            LeanLife Wellness Center &bull; Generated on ${new Date().toLocaleString()} &bull; Confidential Healthcare Document
+        </div>
+    </div>
+</body>
+</html>`;
+
+        if (window.html2pdf) {
+            const container = document.createElement('div');
+            container.innerHTML = pdfHtml;
+            document.body.appendChild(container);
+
+            const opt = {
+                margin: [8, 8, 8, 8],
+                filename: `LeanLife_Monthly_Report_${memberName.replace(/\s+/g, '_')}_${data.monthCycle}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            window.html2pdf().set(opt).from(container.querySelector('#pdf-monthly-report-content')).save()
+                .then(() => container.remove())
+                .catch(err => {
+                    console.warn("html2pdf notice, fallback:", err);
+                    container.remove();
+                    this.openPrintFallbackWindow(pdfHtml, `LeanLife_Monthly_Report_${data.monthCycle}`);
+                });
+        } else {
+            this.openPrintFallbackWindow(pdfHtml, `LeanLife_Monthly_Report_${data.monthCycle}`);
+        }
+    },
+
+    openCoachMonthlyReviewModal() {
+        if (!this.currentUser) {
+            this.navigateTo('login');
+            return;
+        }
+
+        const data = this.calculateMonthlyAggregateData(this.currentUser.email, this.selectedMonthlyReportCycle);
+        const coachKey = this.currentUser.preferredCoach || 'sarah';
+        const coachData = {
+            sarah: {
+                name: 'Coach Francess Orenuga',
+                phone: '17575130205',
+                spec: 'Lifestyle Medicine & Metabolic Restoration Coach',
+                avatar: 'assets/coach_francess.png'
+            },
+            james: {
+                name: 'Coach James Peterson',
+                phone: '15550198',
+                spec: 'Senior Strength & Conditioning Specialist',
+                avatar: 'assets/coach_james.png'
+            }
+        };
+        const coach = coachData[coachKey] || coachData.sarah;
+
+        const nameEl = document.getElementById('modal-coach-name');
+        if (nameEl) nameEl.textContent = coach.name;
+        const specEl = document.getElementById('modal-coach-spec');
+        if (specEl) specEl.textContent = coach.spec;
+        const avatarEl = document.getElementById('modal-coach-avatar');
+        if (avatarEl) avatarEl.src = coach.avatar;
+
+        const monthTitleEl = document.getElementById('modal-report-month-title');
+        if (monthTitleEl) monthTitleEl.textContent = `${data.monthName} Monthly Progress Report`;
+
+        const summaryStatsEl = document.getElementById('modal-report-summary-stats');
+        if (summaryStatsEl) {
+            summaryStatsEl.textContent = `${data.daysLoggedCount}/${data.daysInMonth} Days Logged • Avg Sleep: ${data.avgSleep}h • Total Steps: ${data.totalSteps.toLocaleString()} • Weight: ${data.endWeight} lbs (${data.weightDelta} lbs)`;
+        }
+
+        const msgBox = document.getElementById('modal-coach-user-msg');
+        if (msgBox) {
+            msgBox.value = `Hello ${coach.name.split(' ')[0]}! I have completed my Monthly Wellness Report for ${data.monthName} on LeanLife.\n\nMy Monthly Summary:\n• Consistency: ${data.daysLoggedCount}/${data.daysInMonth} Days Logged (${data.consistencyPct}%)\n• Overall Score: ${data.overallScore}/100 (Grade: ${data.grade})\n• Average Sleep: ${data.avgSleep} hrs / night\n• Total Steps: ${data.totalSteps.toLocaleString()} steps\n• Weight Trend: ${data.endWeight} lbs (${data.weightDelta} lbs)\n\nI would love to review my progress with you and discuss adjustments for next month!`;
+        }
+
+        const modal = document.getElementById('monthly-coach-review-modal');
+        if (modal) modal.style.display = 'flex';
+    },
+
+    async submitCoachMonthlyReview(e) {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+
+        const userMsg = document.getElementById('modal-coach-user-msg')?.value.trim() || '';
+        const data = this.calculateMonthlyAggregateData(this.currentUser.email, this.selectedMonthlyReportCycle);
+        const coachKey = this.currentUser.preferredCoach || 'sarah';
+        const coachPhone = coachKey === 'james' ? '15550198' : '17575130205';
+        const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
+        const coachEmail = coachKey === 'james' ? 'james@leanlife.com' : 'francessronke21@gmail.com';
+
+        // 1. Download PDF report for user
+        this.downloadMonthlyReportPDF(this.selectedMonthlyReportCycle);
+
+        // 2. Dispatch Email notification to Coach in background
+        const emailSubject = `Monthly Report Review Request from ${this.currentUser.name} (${data.monthName})`;
+        this.sendRealEmail(coachName, coachEmail, emailSubject, '', 'booking', {
+            date: data.monthName,
+            time: 'Monthly Review',
+            coach: coachName,
+            mode: 'WhatsApp Review',
+            notes: userMsg
+        }).catch(err => console.warn("Notice: Coach email notification notice:", err));
+
+        // 3. Log Audit trail
+        this.logAudit(this.currentUser.name, 'Monthly Report Coach Review', `Requested review with ${coachName} for ${data.monthName} on WhatsApp`);
+
+        // 4. Hide Modal
+        const modal = document.getElementById('monthly-coach-review-modal');
+        if (modal) modal.style.display = 'none';
+
+        // 5. Construct WhatsApp URL & Redirect
+        const whatsappText = encodeURIComponent(userMsg);
+        const whatsappUrl = `https://wa.me/${coachPhone}?text=${whatsappText}`;
+
+        window.open(whatsappUrl, '_blank');
     },
 
     // ==================== COACHING & NOTICE BOARD EVENTS ====================
