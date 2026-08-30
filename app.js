@@ -802,7 +802,7 @@ const leanLifeAppCore = {
     },
 
     // Save selective cache through LeanLifeCacheManager and sync full state to Supabase Cloud
-    async saveDatabase() {
+    async saveDatabase(background = false) {
         // 1. Ensure legacy leanlife_db key is NEVER stored in localStorage and purge if present
         try {
             if (localStorage.getItem('leanlife_db')) {
@@ -814,41 +814,58 @@ const leanLifeAppCore = {
 
         // Supabase Cloud Sync with Safe Merging (Prevents overwriting submissions from other devices)
         if (this.supabase) {
-            const syncStart = performance.now();
-            LeanLifeCacheManager.metrics.syncStatus = 'syncing';
-            try {
-                // Fetch latest cloud state before upserting to ensure no concurrent submissions are wiped out
-                const { data: latestCloud } = await this.supabase
-                    .from('system_settings')
-                    .select('data')
-                    .eq('id', 'leanlife_cloud_db')
-                    .single();
+            const syncPromise = (async () => {
+                const syncStart = performance.now();
+                LeanLifeCacheManager.metrics.syncStatus = 'syncing';
+                try {
+                    const withTimeout = (promise, ms = 2000) => {
+                        return Promise.race([
+                            promise,
+                            new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase request timeout')), ms))
+                        ]);
+                    };
 
-                if (latestCloud && latestCloud.data) {
-                    this.mergeCloudDatabase(latestCloud.data);
-                }
+                    // Fetch latest cloud state before upserting with timeout protection
+                    const res = await withTimeout(
+                        this.supabase
+                            .from('system_settings')
+                            .select('data')
+                            .eq('id', 'leanlife_cloud_db')
+                            .single()
+                    );
 
-                const { error } = await this.supabase
-                    .from('system_settings')
-                    .upsert({
-                        id: 'leanlife_cloud_db',
-                        data: this.db,
-                        updated_at: new Date().toISOString()
-                    });
+                    if (res && res.data && res.data.data) {
+                        this.mergeCloudDatabase(res.data.data);
+                    }
 
-                const duration = performance.now() - syncStart;
-                LeanLifeCacheManager.metrics.lastSyncDurationMs = duration;
-                LeanLifeCacheManager.metrics.lastSyncTimestamp = Date.now();
+                    const { error } = await withTimeout(
+                        this.supabase
+                            .from('system_settings')
+                            .upsert({
+                                id: 'leanlife_cloud_db',
+                                data: this.db,
+                                updated_at: new Date().toISOString()
+                            })
+                    );
 
-                if (error) {
-                    console.warn("Supabase Cloud Sync warning:", error.message);
+                    const duration = performance.now() - syncStart;
+                    LeanLifeCacheManager.metrics.lastSyncDurationMs = duration;
+                    LeanLifeCacheManager.metrics.lastSyncTimestamp = Date.now();
+
+                    if (error) {
+                        console.warn("Supabase Cloud Sync warning:", error.message);
+                        LeanLifeCacheManager.metrics.syncStatus = 'offline';
+                    } else {
+                        console.log("Supabase Cloud Sync completed successfully with verified integrity.");
+                    }
+                } catch (err) {
+                    console.warn("Supabase Cloud Sync skipped/offline:", err.message || err);
                     LeanLifeCacheManager.metrics.syncStatus = 'offline';
-                } else {
-                    console.log("Supabase Cloud Sync completed successfully with verified integrity.");
                 }
-            } catch (err) {
-                console.error("Failed to sync to Supabase Cloud:", err);
-                LeanLifeCacheManager.metrics.syncStatus = 'offline';
+            })();
+
+            if (!background) {
+                await syncPromise;
             }
         }
     },
@@ -1678,14 +1695,14 @@ const leanLifeAppCore = {
                 this.calculateUserMonthlyStreak(user);
                 this.db.users.push(user);
             }
-            await this.saveDatabase();
+            this.saveDatabase(true);
         } else {
             // Force reset credentials to active defaults while preserving real streak
             user.status = 'Active';
             user.password = hashedPassword;
             user.firstLogin = false;
             this.calculateUserMonthlyStreak(user);
-            await this.saveDatabase();
+            this.saveDatabase(true);
         }
 
         const emailInput = document.getElementById('auth-email');
@@ -1789,7 +1806,7 @@ const leanLifeAppCore = {
                         const rec = this.db.emails.find(e => e.id === welcomeOutboxId);
                         if (rec) {
                             rec.status = (result && result.ok) ? 'Delivered' : 'Failed';
-                            this.saveDatabase();
+                            this.saveDatabase(true);
                         }
                     });
 
@@ -1848,7 +1865,7 @@ const leanLifeAppCore = {
                         try {
                             u.password = await this.hashPasswordPBKDF2(rawPassword);
                             u.updatedAt = new Date().toISOString();
-                            await this.saveDatabase();
+                            this.saveDatabase(true);
                         } catch (upgradeErr) {
                             console.warn("Notice: PBKDF2 hash upgrade deferred:", upgradeErr);
                         }
@@ -1886,7 +1903,7 @@ const leanLifeAppCore = {
 
                         if (data && data.data) {
                             this.mergeCloudDatabase(data.data);
-                            await this.saveDatabase();
+                            this.saveDatabase(true);
 
                             for (const u of this.db.users) {
                                 const uEmail = (u.email || '').trim().toLowerCase();
@@ -1928,7 +1945,7 @@ const leanLifeAppCore = {
                         console.log(`[AuthMigration] Upgrading hash for user ${user.email} to PBKDF2...`);
                         user.password = await this.hashPasswordPBKDF2(rawPassword);
                         user.updatedAt = new Date().toISOString();
-                        await this.saveDatabase();
+                        this.saveDatabase(true);
                         console.log(`[AuthMigration] Successfully upgraded password hash for ${user.email} to PBKDF2.`);
                     } catch (migErr) {
                         console.warn(`[AuthMigration] Notice: Hash upgrade failed for ${user.email}, continuing login:`, migErr);
