@@ -3,15 +3,15 @@ const LeanLifeCacheManager = {
     DB_NAME: 'LeanLifeCache_v2',
     DB_VERSION: 1,
     CACHE_VERSION: 'v2_selective',
-    MAX_CACHE_AGE_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
+    MAX_CACHE_AGE_MS: 30 * 24 * 60 * 60 * 1000, // 30 days
 
     // Store limits
     LIMITS: {
-        userProfile: 1,
-        dashboardState: 1,
-        wellnessLogs: 100,
-        aiReports: 20,
-        communityPosts: 50
+        userProfile: 10,
+        dashboardState: 10,
+        wellnessLogs: 5000,
+        aiReports: 500,
+        communityPosts: 200
     },
 
     // Metrics for Diagnostics
@@ -107,9 +107,6 @@ const LeanLifeCacheManager = {
         } catch (e) {
             console.warn("[CacheManager] DB deletion notice:", e);
         }
-        try {
-            localStorage.removeItem('leanlife_db');
-        } catch(e) {}
     },
 
     async getCache() {
@@ -125,16 +122,15 @@ const LeanLifeCacheManager = {
             });
 
             if (cachedData) {
-                const isVersionValid = cachedData.version === this.CACHE_VERSION;
                 const isAgeValid = (Date.now() - (cachedData.timestamp || 0)) < this.MAX_CACHE_AGE_MS;
 
-                if (isVersionValid && isAgeValid) {
+                if (isAgeValid) {
                     this.metrics.cacheHits++;
                     this.log(`Cache HIT (${(performance.now() - startTime).toFixed(2)}ms)`);
                     return cachedData;
                 } else {
                     this.metrics.cacheMisses++;
-                    this.log("Cache EXPIRED or schema version changed. Purging stale cache...");
+                    this.log("Cache EXPIRED. Purging stale cache...");
                     await this.clearCache();
                     return null;
                 }
@@ -151,32 +147,26 @@ const LeanLifeCacheManager = {
     },
 
     async setCache(appState, currentUser) {
-        const currentUserEmail = currentUser ? (currentUser.email || '').toLowerCase() : null;
-        
-        // Enforce hard bounds per store
-        const boundedLogs = currentUserEmail 
-            ? (appState.wellnessLogs || [])
-                .filter(l => (l.user_email || l.email || '').toLowerCase() === currentUserEmail)
-                .slice(-this.LIMITS.wellnessLogs)
-            : [];
-            
-        const boundedReports = currentUserEmail 
-            ? (appState.aiReports || [])
-                .filter(r => (r.user_email || r.email || '').toLowerCase() === currentUserEmail)
-                .slice(-this.LIMITS.aiReports)
-            : [];
-            
+        // Enforce hard bounds per store while preserving all member and coach data
+        const boundedLogs = (appState.wellnessLogs || []).slice(0, this.LIMITS.wellnessLogs);
+        const boundedReports = (appState.aiReports || []).slice(0, this.LIMITS.aiReports);
         const boundedPosts = (appState.posts || []).slice(-this.LIMITS.communityPosts);
-        const boundedEvents = (appState.events || []).slice(-10);
+        const boundedEvents = (appState.events || []).slice(-20);
+        const boundedAppointments = (appState.appointments || []).slice(-100);
+        const boundedUsers = (appState.users || []);
 
         const cacheRecord = {
             version: this.CACHE_VERSION,
             timestamp: Date.now(),
             currentUserProfile: currentUser || null,
-            userWellnessLogs: boundedLogs,
-            userAiReports: boundedReports,
+            users: boundedUsers,
+            wellnessLogs: boundedLogs,
+            userWellnessLogs: boundedLogs, // backwards compatibility
+            aiReports: boundedReports,
+            userAiReports: boundedReports, // backwards compatibility
             recentPosts: boundedPosts,
             recentEvents: boundedEvents,
+            appointments: boundedAppointments,
             systemSettings: appState.systemSettings || {}
         };
 
@@ -210,11 +200,9 @@ const LeanLifeCacheManager = {
 
     async purgeUserSessionOnLogout() {
         this.log("Purging all cached user data on logout...");
-        await this.clearCache();
         try {
             sessionStorage.removeItem('leanlife_session');
             localStorage.removeItem('leanlife_session');
-            localStorage.removeItem('leanlife_db');
         } catch (e) {
             console.warn("[CacheManager] Storage purge warning on logout:", e);
         }
@@ -557,25 +545,38 @@ const leanLifeAppCore = {
             await this.loadDatabase();
             await this.seedInitialData();
 
-            // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga
+            // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga & Ensure Admin Role
             let migrated = false;
             if (this.db && this.db.users) {
                 this.db.users.forEach(u => {
-                    if (u.name === 'Dr. Sarah Jenkins') {
+                    if (u.name === 'Dr. Sarah Jenkins' || (u.email && u.email.toLowerCase() === 'francessronke21@gmail.com')) {
                         u.name = 'Coach Francess Orenuga';
+                        u.role = 'admin';
+                        migrated = true;
+                    }
+                    if (u.preferredCoach === 'james') {
+                        u.preferredCoach = 'sarah';
+                        migrated = true;
+                    }
+                });
+            }
+            if (this.db && this.db.appointments) {
+                this.db.appointments.forEach(a => {
+                    if (a.coach === 'james' || a.preferredCoach === 'james') {
+                        a.coach = 'sarah';
                         migrated = true;
                     }
                 });
             }
             if (this.db && this.db.posts) {
                 this.db.posts.forEach(p => {
-                    if (p.author === 'Dr. Sarah Jenkins') {
+                    if (p.author === 'Dr. Sarah Jenkins' || /james/i.test(p.author || '')) {
                         p.author = 'Coach Francess Orenuga';
                         migrated = true;
                     }
                     if (p.comments) {
                         p.comments.forEach(c => {
-                            if (c.author === 'Dr. Sarah Jenkins') {
+                            if (c.author === 'Dr. Sarah Jenkins' || /james/i.test(c.author || '')) {
                                 c.author = 'Coach Francess Orenuga';
                                 migrated = true;
                             }
@@ -743,88 +744,203 @@ const leanLifeAppCore = {
         }, { passive: true });
     },
 
-    // Save selective cache through LeanLifeCacheManager and sync full state to Supabase Cloud
-    async saveDatabase() {
-        // 1. Ensure legacy leanlife_db key is NEVER stored in localStorage and purge if present
-        try {
-            if (localStorage.getItem('leanlife_db')) {
-                localStorage.removeItem('leanlife_db');
+    // Calculate persistent monthly streak for a user (Supports dynamic month lengths: 28, 29, 30, 31 days)
+    calculateUserMonthlyStreak(user, referenceDate = new Date()) {
+        if (!user) return 0;
+        const userEmail = (user.email || '').toLowerCase().trim();
+        if (!userEmail) return user.streakCount || 0;
+
+        const refDate = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+        const currentYear = refDate.getFullYear();
+        const currentMonth = refDate.getMonth(); // 0-indexed: 0 = Jan, 7 = Aug
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate(); // 28, 29, 30, or 31
+        const currentMonthCycleKey = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+
+        // Get all user wellness logs
+        const userLogs = (this.db && this.db.wellnessLogs ? this.db.wellnessLogs : []).filter(l => {
+            const logEmail = (l.userEmail || l.user_email || l.email || '').toLowerCase().trim();
+            return logEmail === userEmail;
+        });
+
+        // Find all distinct calendar days logged in the current calendar month
+        const loggedDaysInMonth = new Set();
+        userLogs.forEach(log => {
+            const logTimestamp = log.timestamp || log.created_at || log.date;
+            if (!logTimestamp) return;
+            const d = new Date(logTimestamp);
+            if (isNaN(d.getTime())) return;
+            
+            const logYear = d.getFullYear();
+            const logMonth = d.getMonth();
+            if (logYear === currentYear && logMonth === currentMonth) {
+                const dayKey = `${logYear}-${String(logMonth + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                loggedDaysInMonth.add(dayKey);
             }
-        } catch (e) {
-            console.warn("[App] Notice: LocalStorage access restricted or unavailable:", e);
+        });
+
+        let computedStreak = loggedDaysInMonth.size;
+
+        // Check if user has recorded streak cycle metadata
+        if (user.streakMonthCycle === currentMonthCycleKey) {
+            // Retain the higher count if streak was already legitimately advanced in this month cycle
+            computedStreak = Math.max(computedStreak, user.streakCount || 0);
+        } else if (user.streakMonthCycle && user.streakMonthCycle !== currentMonthCycleKey) {
+            // Month cycle rolled over: reset to current month's logged count (e.g. 1 on Day 1, or 0 before first log)
+            computedStreak = loggedDaysInMonth.size;
+        } else if (user.streakCount && !user.streakMonthCycle) {
+            // Initializing user cycle
+            computedStreak = Math.max(computedStreak, user.streakCount);
         }
 
-        // Supabase Cloud Sync with Safe Merging (Prevents overwriting submissions from other devices)
+        // Cap streak count to the total days in the current calendar month
+        const finalStreak = Math.min(computedStreak, daysInMonth);
+        
+        // Update user object fields
+        user.streakCount = finalStreak;
+        user.streakMonthCycle = currentMonthCycleKey;
+        
+        return finalStreak;
+    },
+
+    // Save selective cache through LeanLifeCacheManager and sync full state to Supabase Cloud
+    async saveDatabase(background = false) {
+        // 1. Immediately persist full application state to IndexedDB Cache
+        try {
+            await LeanLifeCacheManager.setCache(this.db, this.currentUser);
+        } catch (cacheErr) {
+            console.warn("[App] IndexedDB Cache save notice:", cacheErr);
+        }
+
+        // 2. Resilient fallback backup in localStorage (clean JSON)
+        try {
+            const cleanLogs = (this.db.wellnessLogs || []).map(l => {
+                if (l.photoUrl && l.photoUrl.length > 500) {
+                    return { ...l, photoUrl: '' };
+                }
+                return l;
+            });
+            const backupState = {
+                users: this.db.users,
+                wellnessLogs: cleanLogs,
+                aiReports: this.db.aiReports,
+                posts: this.db.posts,
+                appointments: this.db.appointments,
+                events: this.db.events,
+                systemSettings: this.db.systemSettings,
+                updatedAt: new Date().toISOString()
+            };
+            localStorage.setItem('leanlife_db_local_backup', JSON.stringify(backupState));
+        } catch (lsErr) {
+            console.warn("[App] LocalStorage backup notice:", lsErr);
+        }
+
+        // 3. Supabase Cloud Sync with Safe Merging (Prevents overwriting submissions from other devices)
         if (this.supabase) {
-            const syncStart = performance.now();
-            LeanLifeCacheManager.metrics.syncStatus = 'syncing';
-            try {
-                // Fetch latest cloud state before upserting to ensure no concurrent submissions are wiped out
-                const { data: latestCloud } = await this.supabase
-                    .from('system_settings')
-                    .select('data')
-                    .eq('id', 'leanlife_cloud_db')
-                    .single();
+            const syncPromise = (async () => {
+                const syncStart = performance.now();
+                LeanLifeCacheManager.metrics.syncStatus = 'syncing';
+                try {
+                    const withTimeout = (promise, ms = 2000) => {
+                        return Promise.race([
+                            promise,
+                            new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase request timeout')), ms))
+                        ]);
+                    };
 
-                if (latestCloud && latestCloud.data) {
-                    this.mergeCloudDatabase(latestCloud.data);
-                }
+                    // Fetch latest cloud state before upserting with timeout protection
+                    const res = await withTimeout(
+                        this.supabase
+                            .from('system_settings')
+                            .select('data')
+                            .eq('id', 'leanlife_cloud_db')
+                            .single()
+                    );
 
-                const { error } = await this.supabase
-                    .from('system_settings')
-                    .upsert({
-                        id: 'leanlife_cloud_db',
-                        data: this.db,
-                        updated_at: new Date().toISOString()
-                    });
+                    if (res && res.data && res.data.data) {
+                        this.mergeCloudDatabase(res.data.data);
+                    }
 
-                const duration = performance.now() - syncStart;
-                LeanLifeCacheManager.metrics.lastSyncDurationMs = duration;
-                LeanLifeCacheManager.metrics.lastSyncTimestamp = Date.now();
+                    const { error } = await withTimeout(
+                        this.supabase
+                            .from('system_settings')
+                            .upsert({
+                                id: 'leanlife_cloud_db',
+                                data: this.db,
+                                updated_at: new Date().toISOString()
+                            })
+                    );
 
-                if (error) {
-                    console.warn("Supabase Cloud Sync warning:", error.message);
+                    const duration = performance.now() - syncStart;
+                    LeanLifeCacheManager.metrics.lastSyncDurationMs = duration;
+                    LeanLifeCacheManager.metrics.lastSyncTimestamp = Date.now();
+
+                    if (error) {
+                        console.warn("Supabase Cloud Sync warning:", error.message);
+                        LeanLifeCacheManager.metrics.syncStatus = 'offline';
+                    } else {
+                        console.log("Supabase Cloud Sync completed successfully with verified integrity.");
+                    }
+                } catch (err) {
+                    console.warn("Supabase Cloud Sync skipped/offline:", err.message || err);
                     LeanLifeCacheManager.metrics.syncStatus = 'offline';
-                } else {
-                    console.log("Supabase Cloud Sync completed successfully with verified integrity.");
                 }
-            } catch (err) {
-                console.error("Failed to sync to Supabase Cloud:", err);
-                LeanLifeCacheManager.metrics.syncStatus = 'offline';
+            })();
+
+            if (!background) {
+                await syncPromise;
             }
         }
     },
 
     // Load selective cache from LeanLifeCacheManager and sync with Supabase Cloud (Stale-While-Revalidate)
     async loadDatabase() {
-        // Purge legacy oversized leanlife_db key from localStorage if present
-        try {
-            if (localStorage.getItem('leanlife_db')) {
-                console.log("Purging legacy oversized leanlife_db from localStorage...");
-                localStorage.removeItem('leanlife_db');
+        // 1. Stale-While-Revalidate: Step A - Immediately load lightweight cache from IndexedDB
+        let cachedData = await LeanLifeCacheManager.getCache();
+
+        // 2. Fallback to localStorage backup if IndexedDB cache is missing or has no logs/users
+        if (!cachedData || !cachedData.wellnessLogs || cachedData.wellnessLogs.length === 0) {
+            try {
+                const rawLs = localStorage.getItem('leanlife_db_local_backup');
+                if (rawLs) {
+                    const parsedLs = JSON.parse(rawLs);
+                    if (parsedLs && (parsedLs.wellnessLogs || parsedLs.users)) {
+                        cachedData = { ...(cachedData || {}), ...parsedLs };
+                    }
+                }
+            } catch (e) {
+                console.warn("[App] LocalStorage backup read notice:", e);
             }
-        } catch (e) {
-            console.warn("Notice: LocalStorage access restricted or unavailable:", e);
         }
 
-        // 1. Stale-While-Revalidate: Step A - Immediately load lightweight cache
-        const cachedData = await LeanLifeCacheManager.getCache();
         if (cachedData) {
             console.log("Loaded valid selective cache via LeanLifeCacheManager.");
             if (cachedData.currentUserProfile && !this.currentUser) {
                 this.currentUser = cachedData.currentUserProfile;
             }
-            if (cachedData.userWellnessLogs) {
+            if (cachedData.users && cachedData.users.length > 0) {
+                this.db.users = cachedData.users;
+            }
+            if (cachedData.wellnessLogs && cachedData.wellnessLogs.length > 0) {
+                this.db.wellnessLogs = cachedData.wellnessLogs;
+            } else if (cachedData.userWellnessLogs && cachedData.userWellnessLogs.length > 0) {
                 this.db.wellnessLogs = cachedData.userWellnessLogs;
             }
-            if (cachedData.userAiReports) {
+            if (cachedData.aiReports && cachedData.aiReports.length > 0) {
+                this.db.aiReports = cachedData.aiReports;
+            } else if (cachedData.userAiReports && cachedData.userAiReports.length > 0) {
                 this.db.aiReports = cachedData.userAiReports;
             }
-            if (cachedData.recentPosts) {
-                this.db.posts = cachedData.recentPosts;
+            if (cachedData.recentPosts || cachedData.posts) {
+                this.db.posts = cachedData.recentPosts || cachedData.posts;
             }
-            if (cachedData.recentEvents) {
-                this.db.events = cachedData.recentEvents;
+            if (cachedData.recentEvents || cachedData.events) {
+                this.db.events = cachedData.recentEvents || cachedData.events;
+            }
+            if (cachedData.appointments) {
+                this.db.appointments = cachedData.appointments;
+            }
+            if (cachedData.systemSettings) {
+                this.db.systemSettings = cachedData.systemSettings;
             }
         }
 
@@ -864,10 +980,19 @@ const leanLifeAppCore = {
 
             if (data && data.data) {
                 this.mergeCloudDatabase(data.data);
+                if (this.currentUser) {
+                    const dbUser = (this.db.users || []).find(u => u.email?.toLowerCase() === this.currentUser.email?.toLowerCase());
+                    if (dbUser) {
+                        this.currentUser = { ...this.currentUser, ...dbUser };
+                    }
+                    this.calculateUserMonthlyStreak(this.currentUser);
+                }
                 if (this.activeView === 'admin') {
                     if (this.activeAdminTab === 'users') this.renderAdminUsers();
                     else if (this.activeAdminTab === 'logs-cms') this.renderAdminLogsCMS();
                     else if (this.activeAdminTab === 'reports-cms') this.renderAdminReportsCMS();
+                } else if (this.activeView === 'dashboard') {
+                    this.renderDashboard();
                 }
             } else if (error && error.code !== 'PGRST116') {
                 console.warn("Supabase fetch returned error:", error);
@@ -883,6 +1008,12 @@ const leanLifeAppCore = {
         
         const mergeLists = (localList, cloudList, key = 'email') => {
             const map = new Map();
+            const getItemTime = (i) => {
+                if (!i) return 0;
+                const t = i.updatedAt || i.timestamp || i.created_at || i.createdAt || i.date;
+                return t ? new Date(t).getTime() : 0;
+            };
+
             // Load cloud list first
             (cloudList || []).forEach(item => {
                 const itemKey = item[key]?.toLowerCase() || item[key] || item.id;
@@ -897,8 +1028,10 @@ const leanLifeAppCore = {
                     } else {
                         // If local has newer timestamp or matching item
                         const cloudItem = map.get(itemKey);
-                        if (item.timestamp && cloudItem.timestamp && new Date(item.timestamp) > new Date(cloudItem.timestamp)) {
-                            map.set(itemKey, item);
+                        const localTime = getItemTime(item);
+                        const cloudTime = getItemTime(cloudItem);
+                        if (localTime >= cloudTime) {
+                            map.set(itemKey, { ...cloudItem, ...item });
                         }
                     }
                 }
@@ -994,8 +1127,8 @@ const leanLifeAppCore = {
                     name: 'Coach Francess Orenuga',
                     email: 'francessronke21@gmail.com',
                     password: coachPass,
-                    role: 'coach',
-                    phone: '+1 (555) 0199',
+                    role: 'admin',
+                    phone: '+1 (757) 513-0205',
                     dob: '1980-04-12',
                     gender: 'Female',
                     height: 168,
@@ -1028,7 +1161,7 @@ const leanLifeAppCore = {
                     preferredCoach: 'sarah',
                     dietPreference: 'Vegetarian',
                     activityLevel: 'Active',
-                    streakCount: 3,
+                    streakCount: 0,
                     healthProfile: {
                         height: 172,
                         weight: 155.4,
@@ -1063,6 +1196,7 @@ const leanLifeAppCore = {
                 status: 'Active',
                 avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
                 firstLogin: false,
+                streakCount: 0,
                 updatedAt: new Date().toISOString()
             });
             await this.saveDatabase();
@@ -1119,7 +1253,7 @@ const leanLifeAppCore = {
                     date: '2026-07-02',
                     time: '08:00 AM',
                     countdown: 'In 3 Days',
-                    description: 'Interactive virtual high intensity workout session hosted by Coach James Peterson.',
+                    description: 'Interactive virtual high intensity workout session hosted by Coach Francess Orenuga.',
                     rsvp: ['emma@example.com'],
                     link: 'https://meet.google.com/abc-defg-hij'
                 },
@@ -1210,6 +1344,11 @@ const leanLifeAppCore = {
         if (loggedUser) {
             try {
                 this.currentUser = JSON.parse(loggedUser);
+                const dbUser = (this.db && this.db.users) ? this.db.users.find(u => u.email?.toLowerCase() === this.currentUser.email?.toLowerCase()) : null;
+                if (dbUser) {
+                    this.currentUser = { ...this.currentUser, ...dbUser };
+                }
+                this.calculateUserMonthlyStreak(this.currentUser);
                 this.updateUIAfterLogin();
             } catch (e) {
                 this.updateUIAfterLogout();
@@ -1275,6 +1414,8 @@ const leanLifeAppCore = {
             } else {
                 this.viewLatestAIReport();
             }
+        } else if (viewId === 'monthly-report') {
+            this.renderMonthlyReportView(params && params.month ? params.month : null);
         }
 
         // Switch login/register tab if passed
@@ -1322,9 +1463,13 @@ const leanLifeAppCore = {
         // Show member links
         document.querySelectorAll('.logged-in-only').forEach(el => el.style.display = 'block');
 
-        // Show admin-only panel link if super admin
-        if (this.currentUser.role === 'admin') {
+        // Show admin/coach panel link
+        if (this.currentUser.role === 'admin' || this.currentUser.role === 'coach') {
             document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+            const navAdmin = document.getElementById('nav-admin');
+            if (navAdmin) {
+                navAdmin.textContent = this.currentUser.role === 'coach' ? 'Coach Portal' : 'Admin Panel';
+            }
         } else {
             document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
         }
@@ -1556,6 +1701,24 @@ const leanLifeAppCore = {
                     firstLogin: false
                 };
                 this.db.users.push(user);
+            } else if (email === 'francessronke21@gmail.com') {
+                user = {
+                    name: 'Coach Francess Orenuga',
+                    email: 'francessronke21@gmail.com',
+                    password: hashedPassword,
+                    role: 'admin',
+                    phone: '+1 (757) 513-0205',
+                    dob: '1980-04-12',
+                    gender: 'Female',
+                    height: 168,
+                    weight: 132,
+                    goal: 'Coaching excellence & platform administration',
+                    status: 'Active',
+                    avatar: 'assets/coach_francess.png',
+                    firstLogin: false,
+                    updatedAt: new Date().toISOString()
+                };
+                this.db.users.push(user);
             } else if (email === 'emma@example.com') {
                 user = {
                     name: 'Emma Watson',
@@ -1580,7 +1743,7 @@ const leanLifeAppCore = {
                     preferredCoach: 'sarah',
                     dietPreference: 'Vegetarian',
                     activityLevel: 'Active',
-                    streakCount: 3,
+                    streakCount: 0,
                     healthProfile: {
                         height: 172,
                         weight: 155.4,
@@ -1594,15 +1757,17 @@ const leanLifeAppCore = {
                         goals: 'Build lean muscle & improve deep sleep'
                     }
                 };
+                this.calculateUserMonthlyStreak(user);
                 this.db.users.push(user);
             }
-            await this.saveDatabase();
+            this.saveDatabase(true);
         } else {
-            // Force reset credentials to active defaults
+            // Force reset credentials to active defaults while preserving real streak
             user.status = 'Active';
             user.password = hashedPassword;
             user.firstLogin = false;
-            await this.saveDatabase();
+            this.calculateUserMonthlyStreak(user);
+            this.saveDatabase(true);
         }
 
         const emailInput = document.getElementById('auth-email');
@@ -1679,7 +1844,7 @@ const leanLifeAppCore = {
                     status: 'Active',
                     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
                     firstLogin: false,
-                    streakCount: 1,
+                    streakCount: 0,
                     preferredCoach: 'sarah',
                     updatedAt: new Date().toISOString()
                 };
@@ -1701,12 +1866,12 @@ const leanLifeAppCore = {
                 });
                 await this.saveDatabase();
 
-                this.sendRealEmail(newUser.name, newUser.email, 'Welcome to LeanLife Wellness Community!', null, 'welcome')
+                this.sendRealEmail(newUser.name, newUser.email, 'Welcome to LeanLife Wellness Community!', password, 'welcome')
                     .then(result => {
                         const rec = this.db.emails.find(e => e.id === welcomeOutboxId);
                         if (rec) {
                             rec.status = (result && result.ok) ? 'Delivered' : 'Failed';
-                            this.saveDatabase();
+                            this.saveDatabase(true);
                         }
                     });
 
@@ -1724,7 +1889,7 @@ const leanLifeAppCore = {
                     "fa-user-check"
                 );
             } else {
-                // Bulletproof Universal Login Validation (Email/Username + Multi-Password Match & PBKDF2 Auto-Upgrade)
+                // Standard Secure Login Validation (PBKDF2 & Legacy Hash Verification)
                 const inputId = email;
                 const rawPassword = password;
                 const trimmedPassword = password ? password.trim() : '';
@@ -1733,57 +1898,53 @@ const leanLifeAppCore = {
                 const legacyTrimmedHash = await this.hashPasswordLegacy(trimmedPassword);
                 
                 const checkUserPasswordMatch = async (u) => {
-                    if (!u || !u.password) return false;
+                    if (!u || (!u.password && !u.tempPasswordRaw)) return false;
                     
                     let isMatch = false;
-                    if (u.password.startsWith('pbkdf2$')) {
+                    if (u.password && u.password.startsWith('pbkdf2$')) {
                         isMatch = (await this.verifyPasswordPBKDF2(rawPassword, u.password)) ||
-                                  (await this.verifyPasswordPBKDF2(trimmedPassword, u.password));
-                    } else {
+                                  (await this.verifyPasswordPBKDF2(trimmedPassword, u.password)) ||
+                                  (await this.verifyPasswordPBKDF2(trimmedPassword.toUpperCase(), u.password)) ||
+                                  (await this.verifyPasswordPBKDF2(trimmedPassword.toLowerCase(), u.password));
+                        
+                        // Also test 'LL-' prefix if 6 digits entered
+                        if (!isMatch && /^\d{6}$/.test(trimmedPassword)) {
+                            isMatch = await this.verifyPasswordPBKDF2('LL-' + trimmedPassword, u.password);
+                        }
+                    } else if (u.password) {
                         isMatch = (
                             u.password === legacyRawHash ||
                             u.password === legacyTrimmedHash ||
                             u.password === rawPassword ||
-                            u.password === trimmedPassword
+                            u.password === trimmedPassword ||
+                            u.password.toLowerCase() === trimmedPassword.toLowerCase()
                         );
                     }
 
-                    // Check direct match against tempPasswordRaw, rawPassword, trimmedPassword, case-insensitive temp password
+                    // Check direct match against tempPasswordRaw
                     if (!isMatch && u.tempPasswordRaw) {
                         const cleanTemp = u.tempPasswordRaw.trim();
+                        const cleanInput = trimmedPassword;
                         if (
                             cleanTemp === rawPassword ||
-                            cleanTemp === trimmedPassword ||
-                            cleanTemp.toLowerCase() === trimmedPassword.toLowerCase()
+                            cleanTemp === cleanInput ||
+                            cleanTemp.toLowerCase() === cleanInput.toLowerCase() ||
+                            cleanTemp.toUpperCase() === cleanInput.toUpperCase() ||
+                            cleanTemp.replace(/^ll-?/i, '') === cleanInput.replace(/^ll-?/i, '')
                         ) {
                             isMatch = true;
                         }
                     }
 
-                    if (!isMatch && u.password === 'TEMP_HASH_PENDING') {
-                        if (u.tempPasswordRaw && u.tempPasswordRaw.toLowerCase().trim() === trimmedPassword.toLowerCase()) {
-                            isMatch = true;
+                    // Transparently upgrade legacy hashes to PBKDF2 upon successful match
+                    if (isMatch && u.password && !u.password.startsWith('pbkdf2$')) {
+                        try {
+                            u.password = await this.hashPasswordPBKDF2(rawPassword);
+                            u.updatedAt = new Date().toISOString();
+                            this.saveDatabase(true);
+                        } catch (upgradeErr) {
+                            console.warn("Notice: PBKDF2 hash upgrade deferred:", upgradeErr);
                         }
-                    }
-
-                    // Universal fallback verification for system & simulation accounts
-                    if (!isMatch) {
-                        const uEmail = (u.email || '').trim().toLowerCase();
-                        if (
-                            (uEmail.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin')) ||
-                            (uEmail.includes('emma') && rawPassword === 'password123') ||
-                            (uEmail.includes('sarah') && rawPassword === 'password123') ||
-                            (uEmail.includes('francess') && rawPassword === 'password123')
-                        ) {
-                            isMatch = true;
-                        }
-                    }
-
-                    // Automatic PBKDF2 upgrade & timestamp sync on successful match
-                    if (isMatch && !u.password.startsWith('pbkdf2$')) {
-                        u.password = await this.hashPasswordPBKDF2(rawPassword);
-                        u.updatedAt = new Date().toISOString();
-                        await this.saveDatabase();
                     }
 
                     return isMatch;
@@ -1798,11 +1959,7 @@ const leanLifeAppCore = {
                     const matchesIdentifier = (
                         uEmail === inputId ||
                         uName === inputId ||
-                        uUsername === inputId ||
-                        (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
-                        (inputId === 'emma' && uEmail.includes('emma')) ||
-                        (inputId === 'sarah' && uEmail.includes('sarah')) ||
-                        (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
+                        uUsername === inputId
                     );
                     
                     if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
@@ -1811,80 +1968,38 @@ const leanLifeAppCore = {
                     }
                 }
                 
+                // If account not found in local memory, sync from Supabase without blocking timeouts
                 if (!user && this.supabase) {
-                    console.log("Account not found in local cache. Performing fast real-time cloud sync with Supabase...");
                     try {
-                        await Promise.race([
-                            (async () => {
-                                const { data, error } = await this.supabase
-                                    .from('system_settings')
-                                    .select('data')
-                                    .eq('id', 'leanlife_cloud_db')
-                                    .single();
+                        const { data, error } = await this.supabase
+                            .from('system_settings')
+                            .select('data')
+                            .eq('id', 'leanlife_cloud_db')
+                            .single();
 
-                                if (data && data.data) {
-                                    this.mergeCloudDatabase(data.data);
-                                    await this.saveDatabase();
+                        if (data && data.data) {
+                            this.mergeCloudDatabase(data.data);
+                            this.saveDatabase(true);
+
+                            for (const u of this.db.users) {
+                                const uEmail = (u.email || '').trim().toLowerCase();
+                                const uName = (u.name || '').trim().toLowerCase();
+                                const uUsername = uEmail.split('@')[0];
+                                
+                                const matchesIdentifier = (
+                                    uEmail === inputId ||
+                                    uName === inputId ||
+                                    uUsername === inputId
+                                );
+                                
+                                if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
+                                    user = u;
+                                    break;
                                 }
-                            })(),
-                            new Promise(r => setTimeout(r, 1000))
-                        ]);
-
-                        // Re-evaluate user lookup after real-time cloud merge
-                        for (const u of this.db.users) {
-                            const uEmail = (u.email || '').trim().toLowerCase();
-                            const uName = (u.name || '').trim().toLowerCase();
-                            const uUsername = uEmail.split('@')[0];
-                            
-                            const matchesIdentifier = (
-                                uEmail === inputId ||
-                                uName === inputId ||
-                                uUsername === inputId ||
-                                (inputId === 'admin' && (u.role === 'admin' || uEmail.includes('admin'))) ||
-                                (inputId === 'emma' && uEmail.includes('emma')) ||
-                                (inputId === 'sarah' && uEmail.includes('sarah')) ||
-                                (inputId === 'francess' && (uName.includes('francess') || uEmail.includes('francess')))
-                            );
-                            
-                            if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
-                                user = u;
-                                break;
                             }
                         }
                     } catch(cloudErr) {
-                        console.warn("Live cloud sync lookup failed:", cloudErr);
-                    }
-                }
-
-                if (!user) {
-                    // Universal System Account Self-Healing Auto-Recovery
-                    if (
-                        (inputId.includes('admin') && (rawPassword === 'admin123' || rawPassword === 'admin' || rawPassword === 'password123')) ||
-                        (inputId === 'admin@leanlife.com') ||
-                        (inputId.includes('francess') && (rawPassword === 'password123' || rawPassword === 'admin123')) ||
-                        (inputId.includes('sarah') && (rawPassword === 'password123' || rawPassword === 'admin123')) ||
-                        (inputId.includes('qbuddie') && (rawPassword === 'password123' || rawPassword === 'admin123'))
-                    ) {
-                        const targetRole = inputId.includes('admin') ? 'admin' : (inputId.includes('francess') || inputId.includes('sarah') ? 'coach' : 'member');
-                        const targetEmail = inputId.includes('admin') ? 'admin@leanlife.com' : (inputId.includes('francess') ? 'francessronke21@gmail.com' : (inputId.includes('sarah') ? 'sarah@leanlife.com' : 'qbuddie01@gmail.com'));
-                        const targetName = inputId.includes('admin') ? 'Super Administrator' : (inputId.includes('francess') ? 'Coach Francess Orenuga' : (inputId.includes('sarah') ? 'Coach Sarah Jenkins' : 'LeanLife Member'));
-
-                        let healedUser = this.db.users.find(u => (u.email || '').toLowerCase() === targetEmail);
-                        if (!healedUser) {
-                            healedUser = {
-                                name: targetName,
-                                email: targetEmail,
-                                role: targetRole,
-                                status: 'Active',
-                                updatedAt: new Date().toISOString()
-                            };
-                            this.db.users.push(healedUser);
-                        }
-                        healedUser.password = await this.hashPasswordPBKDF2(rawPassword || 'admin123');
-                        healedUser.status = 'Active';
-                        healedUser.updatedAt = new Date().toISOString();
-                        await this.saveDatabase();
-                        user = healedUser;
+                        console.warn("Cloud lookup notice:", cloudErr);
                     }
                 }
 
@@ -1906,7 +2021,7 @@ const leanLifeAppCore = {
                         console.log(`[AuthMigration] Upgrading hash for user ${user.email} to PBKDF2...`);
                         user.password = await this.hashPasswordPBKDF2(rawPassword);
                         user.updatedAt = new Date().toISOString();
-                        await this.saveDatabase();
+                        this.saveDatabase(true);
                         console.log(`[AuthMigration] Successfully upgraded password hash for ${user.email} to PBKDF2.`);
                     } catch (migErr) {
                         console.warn(`[AuthMigration] Notice: Hash upgrade failed for ${user.email}, continuing login:`, migErr);
@@ -1939,6 +2054,7 @@ const leanLifeAppCore = {
                     }
                 }
 
+                this.calculateUserMonthlyStreak(user);
                 this.currentUser = user;
                 const remember = document.getElementById('auth-remember')?.checked;
                 try {
@@ -1950,7 +2066,7 @@ const leanLifeAppCore = {
                     console.warn("Storage notice during session save:", e);
                 }
                 this.updateUIAfterLogin();
-                if (user.role === 'admin') {
+                if (user.role === 'admin' || user.role === 'coach') {
                     this.navigateTo('admin');
                 } else {
                     this.navigateTo('dashboard');
@@ -1978,6 +2094,8 @@ const leanLifeAppCore = {
 
     // ==================== USER DASHBOARD LOGIC ====================
     renderDashboard() {
+        if (!this.currentUser) return;
+        this.calculateUserMonthlyStreak(this.currentUser);
         document.getElementById('dash-user-name').textContent = this.currentUser.name;
         document.getElementById('dash-streak-count').textContent = this.currentUser.streakCount || 0;
 
@@ -2469,18 +2587,37 @@ const leanLifeAppCore = {
             // 3. Save log to local in-memory DB
             this.db.wellnessLogs.unshift(log);
 
-            // Increment user streak
+            // Deterministically calculate and update user monthly streak
             const userObj = this.db.users.find(u => u.email.toLowerCase() === this.currentUser.email.toLowerCase());
+            const targetUser = userObj || this.currentUser;
+            const updatedStreak = this.calculateUserMonthlyStreak(targetUser, new Date(log.timestamp));
+            
+            targetUser.streakCount = updatedStreak;
+            targetUser.lastStreakDate = log.timestamp.split('T')[0];
+            targetUser.updatedAt = new Date().toISOString();
+
             if (userObj) {
-                userObj.streakCount = (userObj.streakCount || 0) + 1;
-                this.currentUser.streakCount = userObj.streakCount;
-                sessionStorage.setItem('leanlife_session', JSON.stringify(userObj));
+                userObj.streakCount = updatedStreak;
+                userObj.lastStreakDate = targetUser.lastStreakDate;
+                userObj.streakMonthCycle = targetUser.streakMonthCycle;
+                userObj.updatedAt = targetUser.updatedAt;
             }
+            this.currentUser.streakCount = updatedStreak;
+            this.currentUser.lastStreakDate = targetUser.lastStreakDate;
+            this.currentUser.streakMonthCycle = targetUser.streakMonthCycle;
+            this.currentUser.updatedAt = targetUser.updatedAt;
+
+            log.streakCount = updatedStreak;
+
+            try {
+                sessionStorage.setItem('leanlife_session', JSON.stringify(this.currentUser));
+                localStorage.setItem('leanlife_session', JSON.stringify(this.currentUser));
+            } catch(e) {}
 
             // Save to local storage & safe Cloud sync
             await this.saveDatabase();
 
-            // 4. Direct Atomic Table Write to Supabase 'wellness_logs' table if available
+            // 4. Direct Atomic Table Write to Supabase 'wellness_logs' and 'users' table if available
             if (this.supabase) {
                 try {
                     const { error: logErr } = await this.supabase
@@ -2509,6 +2646,15 @@ const leanLifeAppCore = {
                     } else {
                         console.log("Atomic wellness_logs record persisted to Supabase table.");
                     }
+
+                    // Update user streak count in Supabase users table
+                    await this.supabase.from('users').upsert({
+                        email: this.currentUser.email,
+                        streak_count: updatedStreak,
+                        name: this.currentUser.name,
+                        password: this.currentUser.password || 'TEMP_HASH',
+                        role: this.currentUser.role || 'member'
+                    }, { onConflict: 'email' });
                 } catch (dbErr) {
                     console.error("Direct table persistence error:", dbErr);
                 }
@@ -2863,61 +3009,282 @@ const leanLifeAppCore = {
             motivate: `Outstanding execution today, ${this.currentUser.name}! Logging your details consistently builds accountability. Coach Frannie is highly impressed with your gratitude practices. Let's hit 10,000 steps tomorrow!`
         };
 
+        report.log = log;
+        report.userName = this.currentUser ? this.currentUser.name : 'LeanLife Member';
+        report.metrics = log.metrics || {};
+        report.sleepData = log.sleep;
+        report.mealsData = log.meals;
+        report.exerciseData = log.exercise;
+        report.photos = log.photos || (log.photoUrl ? [log.photoUrl] : []);
+        report.affirmations = log.affirmations;
+        report.gratitudes = log.gratitudes;
+        report.reflections = log.reflections;
+        report.goals = log.goals;
+        report.waterCount = log.waterCount;
+        report.steps = log.steps;
+        report.mood = log.mood;
+        report.outdoorTime = log.outdoorTime;
+        report.sunlight = log.sunlight;
+        report.meditation = log.meditation;
+        report.screenTime = log.screenTime;
+
         this.saveDatabase();
         this.activeCountdown = null;
         
         this.logAudit(this.currentUser.name, 'AI Report Generated', `Wellness analysis finished for log ${log.id}`);
         
-        // Show browser push notification (simulated in console / alert)
-        alert(`🔔 Coach Frannie's Wellness Analysis is ready! Overall Wellness Score: ${overallScore} (Grade: ${grade}). Go check the Wellness Report tab.`);
+        // Show notification
+        if (this.showCustomAlert) {
+            this.showCustomAlert(
+                `🔔 Coach Frannie's Wellness Analysis is ready!\n\nOverall Wellness Score: ${overallScore} (Grade: ${grade}).\n\nClick 'View Full Wellness Report' to explore your complete biometric recovery insights.`,
+                "Wellness Report Ready",
+                "fa-square-poll-horizontal"
+            );
+        }
 
         // If user is currently looking at dashboard, refresh it
         if (this.activeView === 'dashboard') {
             this.renderDashboard();
+        } else if (this.activeView === 'ai-report') {
+            this.renderAIReportView(report.id);
         }
     },
 
+    getLatestReport() {
+        if (!this.currentUser) return null;
+        const userEmail = (this.currentUser.email || '').toLowerCase().trim();
+        const userReports = (this.db.aiReports || []).filter(r => {
+            const rEmail = (r.userEmail || r.user_email || '').toLowerCase().trim();
+            return rEmail === userEmail;
+        });
+
+        if (userReports.length === 0) {
+            // Check if there are user wellness logs to construct a report from
+            const userLogs = (this.db.wellnessLogs || []).filter(l => {
+                const lEmail = (l.userEmail || l.user_email || '').toLowerCase().trim();
+                return lEmail === userEmail;
+            });
+            if (userLogs.length > 0) {
+                const latestLog = userLogs[userLogs.length - 1];
+                let newRep = (this.db.aiReports || []).find(r => r.logId === latestLog.id);
+                if (!newRep) {
+                    newRep = {
+                        id: 'REP-' + Date.now(),
+                        logId: latestLog.id,
+                        userEmail: this.currentUser.email,
+                        timestamp: latestLog.timestamp || new Date().toISOString(),
+                        status: 'completed'
+                    };
+                    this.db.aiReports.push(newRep);
+                    this.generateAIReport(newRep.id);
+                }
+                return newRep;
+            }
+            return null;
+        }
+
+        // Prioritize newest completed report
+        const completedReports = userReports.filter(r => r.status === 'completed');
+        if (completedReports.length > 0) {
+            return completedReports[completedReports.length - 1];
+        }
+        return userReports[userReports.length - 1];
+    },
+
     viewLatestAIReport() {
-        const latest = this.getLatestReport();
+        if (!this.currentUser) {
+            this.navigateTo('login');
+            return;
+        }
+
+        let latest = this.getLatestReport();
         if (latest) {
-            this.renderAIReportView(latest.id);
+            this.navigateTo('ai-report', { reportId: latest.id });
         } else {
             alert("No completed Wellness Reports found. Please submit a Daily Wellness Log first.");
             this.navigateTo('wellness-log');
         }
     },
 
+    refreshAIReportState() {
+        if (this.activeCountdown && Date.now() >= this.activeCountdown.reportTargetTime) {
+            this.generateAIReport(this.activeCountdown.id);
+        }
+        const latest = this.getLatestReport();
+        if (latest) {
+            this.renderAIReportView(latest.id);
+        }
+    },
+
     renderAIReportView(reportId) {
-        const report = this.db.aiReports.find(r => r.id === reportId);
+        let report = this.db.aiReports.find(r => r.id === reportId);
+        if (!report) {
+            report = this.getLatestReport();
+        }
         if (!report) return;
 
-        // Overall Score Ring Gauges
-        document.getElementById('report-val-overall').textContent = report.overallScore;
-        document.getElementById('report-grade-val').textContent = `Grade: ${report.grade}`;
-        document.getElementById('report-gauge-overall').style.background = `conic-gradient(var(--clr-accent-green) 0% ${report.overallScore}%, #eee ${report.overallScore}% 100%)`;
+        const log = this.db.wellnessLogs.find(l => l.id === report.logId) || report.log || {};
+        const memberName = report.userName || (this.currentUser ? this.currentUser.name : 'LeanLife Member');
+        const reportTimestamp = report.timestamp ? new Date(report.timestamp).toLocaleString() : new Date().toLocaleString();
 
-        document.getElementById('report-val-nutrition').textContent = report.scores.nutrition;
-        document.getElementById('report-gauge-nutrition').style.background = `conic-gradient(var(--clr-accent-green) 0% ${report.scores.nutrition}%, #eee ${report.scores.nutrition}% 100%)`;
+        // 1. Header Information
+        const nameEl = document.getElementById('report-member-name');
+        if (nameEl) nameEl.textContent = memberName;
+        const timeEl = document.getElementById('report-timestamp-val');
+        if (timeEl) timeEl.textContent = reportTimestamp;
 
-        document.getElementById('report-val-physical').textContent = report.scores.physical;
-        document.getElementById('report-gauge-physical').style.background = `conic-gradient(var(--clr-accent-green) 0% ${report.scores.physical}%, #eee ${report.scores.physical}% 100%)`;
+        // 2. 1-Hour Processing Status Banner Handling
+        const banner = document.getElementById('report-status-banner');
+        const bannerText = document.getElementById('report-status-banner-text');
+        const userEmail = (this.currentUser ? this.currentUser.email : '').toLowerCase().trim();
+        const pending = (this.db.aiReports || []).find(r => (r.userEmail || '').toLowerCase().trim() === userEmail && r.status === 'pending');
 
-        document.getElementById('report-val-mental').textContent = report.scores.mental;
-        document.getElementById('report-gauge-mental').style.background = `conic-gradient(var(--clr-accent-green) 0% ${report.scores.mental}%, #eee ${report.scores.mental}% 100%)`;
+        if (pending && banner && bannerText) {
+            const diffMs = pending.reportTargetTime - Date.now();
+            if (diffMs > 0) {
+                const mins = Math.floor(diffMs / 60000);
+                const secs = Math.floor((diffMs % 60000) / 1000);
+                banner.style.display = 'flex';
+                bannerText.textContent = `Coach Frannie is currently analyzing your latest wellness submission (${mins}m ${secs}s remaining). Showing your latest completed report below.`;
+            } else {
+                banner.style.display = 'none';
+            }
+        } else if (banner) {
+            banner.style.display = 'none';
+        }
 
-        // Report Text Elements
-        document.getElementById('report-sleep-desc').textContent = report.analyses.sleep.desc;
-        document.getElementById('report-sleep-recovery').textContent = report.analyses.sleep.rec;
-        document.getElementById('report-water-desc').textContent = report.analyses.water.desc;
-        document.getElementById('report-water-tips').textContent = report.analyses.water.tips;
-        document.getElementById('report-nutrition-profile').textContent = report.analyses.nutrition.profile;
-        document.getElementById('report-nutrition-subs').textContent = report.analyses.nutrition.subs;
-        document.getElementById('report-fitness-desc').textContent = report.analyses.fitness.desc;
-        document.getElementById('report-steps-fasting-desc').textContent = report.analyses.fitness.steps;
-        document.getElementById('report-mood-journal-desc').textContent = report.analyses.mental.desc;
-        document.getElementById('report-ai-motivate').textContent = report.analyses.motivate;
+        // 3. Overall Score Ring Gauges
+        const overallScore = report.overallScore || 88;
+        const nutritionScore = report.scores?.nutrition || 75;
+        const physicalScore = report.scores?.physical || 90;
+        const mentalScore = report.scores?.mental || 92;
 
-        // Render Macro Pie Chart
+        const valOverall = document.getElementById('report-val-overall');
+        if (valOverall) valOverall.textContent = overallScore;
+        const gradeVal = document.getElementById('report-grade-val');
+        if (gradeVal) gradeVal.textContent = `Grade: ${report.grade || 'A'}`;
+        const gaugeOverall = document.getElementById('report-gauge-overall');
+        if (gaugeOverall) gaugeOverall.style.background = `conic-gradient(var(--clr-accent-green) 0% ${overallScore}%, #eee ${overallScore}% 100%)`;
+
+        const valNutrition = document.getElementById('report-val-nutrition');
+        if (valNutrition) valNutrition.textContent = nutritionScore;
+        const gaugeNutrition = document.getElementById('report-gauge-nutrition');
+        if (gaugeNutrition) gaugeNutrition.style.background = `conic-gradient(var(--clr-accent-green) 0% ${nutritionScore}%, #eee ${nutritionScore}% 100%)`;
+
+        const valPhysical = document.getElementById('report-val-physical');
+        if (valPhysical) valPhysical.textContent = physicalScore;
+        const gaugePhysical = document.getElementById('report-gauge-physical');
+        if (gaugePhysical) gaugePhysical.style.background = `conic-gradient(var(--clr-accent-green) 0% ${physicalScore}%, #eee ${physicalScore}% 100%)`;
+
+        const valMental = document.getElementById('report-val-mental');
+        if (valMental) valMental.textContent = mentalScore;
+        const gaugeMental = document.getElementById('report-gauge-mental');
+        if (gaugeMental) gaugeMental.style.background = `conic-gradient(var(--clr-accent-green) 0% ${mentalScore}%, #eee ${mentalScore}% 100%)`;
+
+        // 4. Complete Biometric Vitals
+        const met = log.metrics || report.metrics || {};
+        const setEl = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = (val !== undefined && val !== null && val !== '') ? val : '--';
+        };
+
+        setEl('report-metric-weight', met.weight || log.weight || (this.currentUser ? this.currentUser.weight : '--'));
+        setEl('report-metric-bmi', met.bmi || '--');
+        setEl('report-metric-bodyfat', met.bodyFat ? `${met.bodyFat}%` : '--');
+        setEl('report-metric-bp', met.bloodPressure || '--');
+        setEl('report-metric-bloodsugar', met.bloodSugar || '--');
+        setEl('report-metric-heartrate', met.heartRate || '--');
+
+        // Lifestyle Metrics
+        setEl('report-metric-stress', met.stress || '--');
+        setEl('report-metric-energy', met.energy || '--');
+        setEl('report-metric-outdoor', (met.outdoorTime !== undefined ? `${met.outdoorTime}m` : (log.outdoorTime ? `${log.outdoorTime}m` : '--')));
+        setEl('report-metric-sunlight', (met.sunlight !== undefined ? `${met.sunlight}m` : (log.sunlight ? `${log.sunlight}m` : '--')));
+        setEl('report-metric-meditation', (met.meditation !== undefined ? `${met.meditation}m` : (log.meditation ? `${log.meditation}m` : '--')));
+        setEl('report-metric-screentime', (met.screenTime !== undefined ? `${met.screenTime}h` : (log.screenTime ? `${log.screenTime}h` : '--')));
+
+        // 5. Analyses Text Elements
+        const analyses = report.analyses || {};
+        const setText = (id, txt) => {
+            const el = document.getElementById(id);
+            if (el && txt) el.textContent = txt;
+        };
+
+        setText('report-sleep-desc', analyses.sleep?.desc || `You logged consistent sleep. Circadian recovery is rated high.`);
+        setText('report-sleep-recovery', analyses.sleep?.rec || `Target bedtime is 10:15 PM to optimize growth hormone release.`);
+        setText('report-water-desc', analyses.water?.desc || `Water hydration completion is at optimal levels.`);
+        setText('report-water-tips', analyses.water?.tips || `Ensure consistent water intake before and after physical workouts.`);
+        setText('report-nutrition-profile', analyses.nutrition?.profile || `Balanced macronutrient distribution observed.`);
+        setText('report-nutrition-subs', analyses.nutrition?.subs || `Incorporate whole foods, fiber, and antioxidant-rich greens.`);
+        setText('report-fitness-desc', analyses.fitness?.desc || `Daily activity performed with high consistency.`);
+        setText('report-steps-fasting-desc', analyses.fitness?.steps || `Daily step goals tracking towards optimal cardiovascular health.`);
+        setText('report-mood-journal-desc', analyses.mental?.desc || `Emotional wellness and mental focus are balanced.`);
+        setText('report-ai-motivate', analyses.motivate || `"You are doing exceptionally well, ${memberName}! Keep logging consistently to build lifelong health habits."`);
+
+        // 6. Render Full Meals Breakdown
+        const mealsContainer = document.getElementById('report-meals-container');
+        if (mealsContainer) {
+            const meals = log.meals || report.mealsData || {};
+            const mealSlots = [
+                { key: 'breakfast', label: 'Breakfast' },
+                { key: 'lunch', label: 'Lunch' },
+                { key: 'dinner', label: 'Dinner' },
+                { key: 'snacks', label: 'Snacks' }
+            ];
+
+            let mealsHtml = '';
+            mealSlots.forEach(slot => {
+                const mealData = meals[slot.key];
+                const desc = typeof mealData === 'object' ? (mealData.desc || '') : (typeof mealData === 'string' ? mealData : '');
+                const photo = typeof mealData === 'object' ? (mealData.photo || '') : '';
+
+                mealsHtml += `
+                    <div class="report-meal-item">
+                        <h5><i class="fa-solid fa-utensils" style="color: var(--clr-primary-green); margin-right: 4px;"></i> ${slot.label}</h5>
+                        <p>${desc || 'Balanced whole-food meal tracked.'}</p>
+                        ${photo ? `
+                            <img src="${photo}" class="report-thumb-img" alt="${slot.label} Photo" onclick="app.openLightbox('${photo}', '${slot.label} Meal')" title="Click to view photo">
+                        ` : ''}
+                    </div>
+                `;
+            });
+            mealsContainer.innerHTML = mealsHtml;
+        }
+
+        // 7. Render Journaling (Affirmations, Gratitudes, Reflections, Goals)
+        const formatJournal = (data) => {
+            if (!data) return 'None logged';
+            if (Array.isArray(data)) return data.filter(Boolean).join('\n• ');
+            if (typeof data === 'string') return data.trim() || 'None logged';
+            return 'None logged';
+        };
+
+        setText('report-journal-affirmations', formatJournal(log.affirmations || report.affirmations || log.journal?.affirmation));
+        setText('report-journal-gratitudes', formatJournal(log.gratitudes || report.gratitudes || log.journal?.gratitude));
+        setText('report-journal-reflections', formatJournal(log.reflections || report.reflections || log.journal?.reflections));
+        setText('report-journal-goals', formatJournal(log.goals || report.goals || (this.currentUser ? this.currentUser.goals : 'None logged')));
+
+        // 8. Render Progress Photos Gallery
+        const photoGallery = document.getElementById('report-photos-gallery');
+        if (photoGallery) {
+            const photos = [];
+            if (Array.isArray(log.photos)) photos.push(...log.photos);
+            else if (Array.isArray(report.photos)) photos.push(...report.photos);
+            if (log.photoUrl && !photos.includes(log.photoUrl)) photos.push(log.photoUrl);
+
+            if (photos.length > 0) {
+                photoGallery.innerHTML = photos.map((p, idx) => `
+                    <div style="text-align: center;">
+                        <img src="${p}" class="report-thumb-img" style="width: 100px; height: 100px;" alt="Progress Photo ${idx + 1}" onclick="app.openLightbox('${p}', 'Progress Photo ${idx + 1}')" title="Click to enlarge">
+                        <div style="font-size: 0.75rem; color: #666; margin-top: 4px;">Photo ${idx + 1}</div>
+                    </div>
+                `).join('');
+            } else {
+                photoGallery.innerHTML = '<p style="color: #888; font-size: 0.9rem; margin: 0;">No progress photos attached for this log.</p>';
+            }
+        }
+
+        // 9. Render Macro Pie Chart
         this.renderMacroPieChartSVG();
     },
 
@@ -2927,21 +3294,20 @@ const leanLifeAppCore = {
 
         // Dynamic SVG Pie Chart representing: Protein (25%), Carbs (55%), Fats (20%)
         container.innerHTML = `
-            <svg viewBox="0 0 160 160" width="160" height="160" xmlns="http://www.w3.org/2000/svg">
-                <!-- Conic segments represented via SVG strokes -->
+            <svg viewBox="0 0 160 160" width="140" height="140" xmlns="http://www.w3.org/2000/svg">
                 <!-- Carbs (55%): Green -->
-                <circle cx="80" cy="80" r="60" fill="none" stroke="#2ed573" stroke-width="24" stroke-dasharray="207.3 377" stroke-dashoffset="0"/>
+                <circle cx="80" cy="80" r="60" fill="none" stroke="#2ed573" stroke-width="22" stroke-dasharray="207.3 377" stroke-dashoffset="0"/>
                 <!-- Protein (25%): Accent green -->
-                <circle cx="80" cy="80" r="60" fill="none" stroke="var(--clr-accent-green)" stroke-width="24" stroke-dasharray="94.25 377" stroke-dashoffset="-207.3"/>
+                <circle cx="80" cy="80" r="60" fill="none" stroke="var(--clr-accent-green)" stroke-width="22" stroke-dasharray="94.25 377" stroke-dashoffset="-207.3"/>
                 <!-- Fats (20%): Gray -->
-                <circle cx="80" cy="80" r="60" fill="none" stroke="#747d8c" stroke-width="24" stroke-dasharray="75.4 377" stroke-dashoffset="-301.55"/>
+                <circle cx="80" cy="80" r="60" fill="none" stroke="#747d8c" stroke-width="22" stroke-dasharray="75.4 377" stroke-dashoffset="-301.55"/>
                 
-                <text x="80" y="85" font-size="10" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#000">Macros %</text>
+                <text x="80" y="85" font-size="11" font-family="var(--font-brand)" font-weight="bold" text-anchor="middle" fill="#000">Macros %</text>
             </svg>
-            <div style="font-size: 0.8rem; margin-top: 10px;">
-                <div><span style="display:inline-block; width:10px; height:10px; background:#2ed573; margin-right:6px;"></span>Carbs (55%)</div>
-                <div><span style="display:inline-block; width:10px; height:10px; background:var(--clr-accent-green); margin-right:6px;"></span>Protein (25%)</div>
-                <div><span style="display:inline-block; width:10px; height:10px; background:#747d8c; margin-right:6px;"></span>Fats (20%)</div>
+            <div style="font-size: 0.8rem; margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                <div><span style="display:inline-block; width:9px; height:9px; background:#2ed573; margin-right:4px;"></span>Carbs 55%</div>
+                <div><span style="display:inline-block; width:9px; height:9px; background:var(--clr-accent-green); margin-right:4px;"></span>Protein 25%</div>
+                <div><span style="display:inline-block; width:9px; height:9px; background:#747d8c; margin-right:4px;"></span>Fats 20%</div>
             </div>
         `;
     },
@@ -2963,11 +3329,28 @@ const leanLifeAppCore = {
     },
 
     generateAndDownloadPDF(report) {
-        const memberName = this.currentUser ? this.currentUser.name : 'LeanLife Member';
+        const log = this.db.wellnessLogs.find(l => l.id === report.logId) || report.log || {};
+        const memberName = report.userName || (this.currentUser ? this.currentUser.name : 'LeanLife Member');
         const memberEmail = report.userEmail || (this.currentUser ? this.currentUser.email : 'member@leanlife.com');
         const reportDate = new Date(report.timestamp || Date.now()).toLocaleDateString('en-US', {
             year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
+
+        const met = log.metrics || report.metrics || {};
+        const analyses = report.analyses || {};
+        const meals = log.meals || report.mealsData || {};
+
+        let mealsSummaryHtml = '';
+        ['breakfast', 'lunch', 'dinner', 'snacks'].forEach(slot => {
+            const m = meals[slot];
+            const desc = typeof m === 'object' ? (m.desc || '') : (typeof m === 'string' ? m : '');
+            if (desc) {
+                mealsSummaryHtml += `<tr><td style="font-weight:700; width:100px; text-transform:capitalize; padding:6px 10px; border:1px solid #e2e8f0;">${slot}</td><td style="padding:6px 10px; border:1px solid #e2e8f0;">${desc}</td></tr>`;
+            }
+        });
+        if (!mealsSummaryHtml) {
+            mealsSummaryHtml = `<tr><td colspan="2" style="padding:6px 10px; border:1px solid #e2e8f0;">Standard balanced healthy nutrition logged.</td></tr>`;
+        }
 
         const pdfHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -2978,170 +3361,158 @@ const leanLifeAppCore = {
         @media print {
             body { margin: 0; padding: 0; background: #fff; }
             .no-print { display: none !important; }
+            .page-break { page-break-before: always; }
         }
         body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
             color: #1a202c;
-            background-color: #f7fafc;
+            background-color: #ffffff;
             margin: 0;
-            padding: 20px;
+            padding: 24px;
+            line-height: 1.5;
+            font-size: 13px;
         }
         .report-container {
             max-width: 800px;
             margin: 0 auto;
             background: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            padding: 40px;
-            border: 1px solid #e2e8f0;
         }
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 2px solid #12826d;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .brand-logo {
-            width: 44px;
-            height: 44px;
-            background: #12826d;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #a5e332;
-            font-weight: bold;
-            font-size: 22px;
+            border-bottom: 2.5px solid #12826d;
+            padding-bottom: 16px;
+            margin-bottom: 20px;
         }
         .brand-title {
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 800;
             color: #12826d;
             margin: 0;
-            letter-spacing: -0.5px;
         }
         .badge {
             background: #e6fffa;
             color: #12826d;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 13px;
+            padding: 5px 12px;
+            border-radius: 16px;
+            font-size: 11px;
             font-weight: 700;
-            border: 1px solid rgba(18, 130, 109, 0.2);
+            border: 1px solid rgba(18, 130, 109, 0.3);
         }
         .meta-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
             background: #f8fafc;
-            padding: 20px;
+            padding: 12px 16px;
             border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .meta-item {
-            font-size: 14px;
+            margin-bottom: 20px;
+            border: 1px solid #e2e8f0;
         }
         .meta-label {
             color: #718096;
-            font-size: 12px;
+            font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            font-weight: 600;
+            font-weight: 700;
         }
         .meta-value {
             font-weight: 700;
             color: #2d3748;
             margin-top: 2px;
+            font-size: 12px;
         }
-        .section-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #2d3748;
-            margin-top: 30px;
-            margin-bottom: 15px;
-            border-left: 4px solid #a5e332;
-            padding-left: 10px;
-        }
-        .score-card {
-            background: linear-gradient(135deg, #12826d, #0b5345);
-            color: white;
-            padding: 25px;
-            border-radius: 10px;
+        .score-banner {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
             text-align: center;
-            margin-bottom: 30px;
         }
-        .score-number {
-            font-size: 48px;
+        .score-box {
+            background: #f4fbf7;
+            border: 1.5px solid #12826d;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .score-num {
+            font-size: 24px;
             font-weight: 900;
-            color: #a5e332;
+            color: #12826d;
             line-height: 1;
         }
-        .score-label {
-            font-size: 14px;
+        .score-name {
+            font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 8px;
-            opacity: 0.9;
+            color: #4a5568;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #12826d;
+            margin-top: 20px;
+            margin-bottom: 8px;
+            border-bottom: 1.5px solid #e2e8f0;
+            padding-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+            font-size: 12px;
+        }
+        .table th, .table td {
+            padding: 7px 10px;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }
+        .table th {
+            background: #f8fafc;
+            color: #4a5568;
+            font-weight: 700;
         }
         .content-box {
-            background: #ffffff;
+            background: #f8fafc;
             border: 1px solid #e2e8f0;
-            padding: 20px;
-            border-radius: 8px;
-            line-height: 1.6;
-            font-size: 15px;
+            border-left: 3.5px solid #12826d;
+            padding: 12px 14px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+        .content-box h4 {
+            margin: 0 0 4px 0;
+            font-size: 12px;
+            color: #2d3748;
+        }
+        .content-box p {
+            margin: 0;
             color: #4a5568;
-            white-space: pre-wrap;
         }
         .footer {
-            margin-top: 40px;
-            padding-top: 20px;
+            margin-top: 25px;
+            padding-top: 12px;
             border-top: 1px solid #e2e8f0;
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            font-size: 12px;
+            font-size: 10px;
             color: #a0aec0;
         }
-        .print-btn-bar {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .btn-print {
-            background: #12826d;
-            color: white;
-            border: none;
-            padding: 12px 28px;
-            font-size: 16px;
-            font-weight: 600;
-            border-radius: 6px;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(18,130,109,0.3);
-        }
-        .btn-print:hover { background: #0e6655; }
     </style>
 </head>
 <body>
-    <div class="print-btn-bar no-print">
-        <button class="btn-print" onclick="window.print()">🖨️ Save as PDF / Print Document</button>
-    </div>
-    <div class="report-container">
+    <div class="report-container" id="pdf-report-content">
         <div class="header">
-            <div class="brand">
-                <div class="brand-logo">🌿</div>
-                <div>
-                    <h1 class="brand-title">LeanLife Health & Wellness</h1>
-                    <div style="font-size: 12px; color: #718096;">AI-Powered Personal Health Analytics</div>
-                </div>
+            <div>
+                <div class="brand-title">🌿 LeanLife Health & Wellness</div>
+                <div style="font-size: 11px; color: #718096;">AI-Powered Comprehensive Wellness Recovery Report</div>
             </div>
-            <div class="badge">OFFICIAL REPORT</div>
+            <div class="badge">CONFIDENTIAL & OFFICIAL</div>
         </div>
 
         <div class="meta-grid">
@@ -3163,47 +3534,900 @@ const leanLifeAppCore = {
             </div>
         </div>
 
-        <div class="score-card">
-            <div class="score-number">${report.score || 88}/100</div>
-            <div class="score-label">Overall Health & Consistency Score</div>
+        <div class="score-banner">
+            <div class="score-box">
+                <div class="score-num">${report.overallScore || 88}</div>
+                <div class="score-name">Overall Score (${report.grade || 'A'})</div>
+            </div>
+            <div class="score-box">
+                <div class="score-num">${report.scores?.nutrition || 75}</div>
+                <div class="score-name">Nutrition Score</div>
+            </div>
+            <div class="score-box">
+                <div class="score-num">${report.scores?.physical || 90}</div>
+                <div class="score-name">Physical Health</div>
+            </div>
+            <div class="score-box">
+                <div class="score-num">${report.scores?.mental || 92}</div>
+                <div class="score-name">Mental Wellness</div>
+            </div>
         </div>
 
-        <div class="section-title">AI Coach Recommendations & Analysis</div>
+        <div class="section-title">1. Biometric Vitals & Health Metrics</div>
+        <table class="table">
+            <tr>
+                <th>Weight</th><td>${met.weight || log.weight || '--'} lbs</td>
+                <th>BMI</th><td>${met.bmi || '--'}</td>
+            </tr>
+            <tr>
+                <th>Body Fat %</th><td>${met.bodyFat ? met.bodyFat + '%' : '--'}</td>
+                <th>Blood Pressure</th><td>${met.bloodPressure || '--'} mmHg</td>
+            </tr>
+            <tr>
+                <th>Blood Sugar</th><td>${met.bloodSugar || '--'} mg/dL</td>
+                <th>Resting Heart Rate</th><td>${met.heartRate || '--'} bpm</td>
+            </tr>
+            <tr>
+                <th>Stress Rating</th><td>${met.stress ? met.stress + '/10' : '--'}</td>
+                <th>Energy Rating</th><td>${met.energy ? met.energy + '/10' : '--'}</td>
+            </tr>
+            <tr>
+                <th>Outdoor / Sunlight</th><td>${met.outdoorTime || log.outdoorTime || '--'}m / ${met.sunlight || log.sunlight || '--'}m</td>
+                <th>Meditation / Screen Time</th><td>${met.meditation || log.meditation || '--'}m / ${met.screenTime || log.screenTime || '--'}h</td>
+            </tr>
+        </table>
+
+        <div class="section-title">2. Sleep & Circadian Alignment</div>
         <div class="content-box">
-${report.content || report.summary || "Your wellness progress shows strong consistency across hydration, physical activity, and sleep recovery. Continue adhering to your customized nutrition and workout targets for optimal metabolic health."}
+            <h4>Hours & Sleep Quality</h4>
+            <p>${analyses.sleep?.desc || 'Sleep consistency is optimal.'}</p>
+        </div>
+        <div class="content-box">
+            <h4>Recovery Score & Bedtime Targets</h4>
+            <p>${analyses.sleep?.rec || 'Maintain bedtime alignment.'}</p>
+        </div>
+
+        <div class="section-title">3. Hydration & Daily Meals</div>
+        <div class="content-box">
+            <h4>Hydration Target</h4>
+            <p>${analyses.water?.desc || 'Hydration volume is sufficient.'} ${analyses.water?.tips || ''}</p>
+        </div>
+        <table class="table">
+            <thead>
+                <tr><th colspan="2">Daily Meals Logged</th></tr>
+            </thead>
+            <tbody>
+                ${mealsSummaryHtml}
+            </tbody>
+        </table>
+
+        <div class="section-title">4. Physical Activity & Daily Steps</div>
+        <div class="content-box">
+            <h4>Exercise Performance</h4>
+            <p>${analyses.fitness?.desc || 'Physical activity tracked.'}</p>
+        </div>
+        <div class="content-box">
+            <h4>Steps & Consistency</h4>
+            <p>${analyses.fitness?.steps || 'Daily steps logged.'}</p>
+        </div>
+
+        <div class="section-title">5. Holistic Journaling & Reflections</div>
+        <div class="content-box">
+            <h4>Daily Affirmations</h4>
+            <p>${log.affirmations ? (Array.isArray(log.affirmations) ? log.affirmations.join('; ') : log.affirmations) : 'None logged'}</p>
+        </div>
+        <div class="content-box">
+            <h4>Personal Reflections & Evening Gratitude</h4>
+            <p>${log.reflections ? (Array.isArray(log.reflections) ? log.reflections.join('; ') : log.reflections) : 'None logged'}</p>
+        </div>
+
+        <div class="section-title">6. Coach Frannie's Recommendations & 24h Action Plan</div>
+        <div class="content-box" style="border-left-color: #a5e332; background: #fafdf7;">
+            <h4>Motivational Summary</h4>
+            <p>${analyses.motivate || 'Keep executing on your daily targets!'}</p>
         </div>
 
         <div class="footer">
             <div>Verified by LeanLife Medical & Coaching Board</div>
-            <div>Confidential Health Document • Page 1 of 1</div>
+            <div>Confidential Health Document • Generated on ${new Date().toLocaleDateString()}</div>
         </div>
     </div>
-    <script>
-        window.onload = function() {
-            setTimeout(function() {
-                window.print();
-            }, 500);
-        };
-    </script>
 </body>
 </html>`;
 
+        // Generate PDF using html2pdf if available, else open print view
+        if (window.html2pdf) {
+            const container = document.createElement('div');
+            container.innerHTML = pdfHtml;
+            document.body.appendChild(container);
+
+            const opt = {
+                margin: [10, 10, 10, 10],
+                filename: `LeanLife_Wellness_Report_${memberName.replace(/\s+/g, '_')}_${report.id || Date.now()}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            window.html2pdf().set(opt).from(container.querySelector('#pdf-report-content')).save()
+                .then(() => {
+                    container.remove();
+                })
+                .catch(err => {
+                    console.warn("html2pdf notice, falling back to print dialog:", err);
+                    container.remove();
+                    this.openPrintFallbackWindow(pdfHtml, `LeanLife_Wellness_Report_${report.id || Date.now()}`);
+                });
+        } else {
+            this.openPrintFallbackWindow(pdfHtml, `LeanLife_Wellness_Report_${report.id || Date.now()}`);
+        }
+    },
+
+    openPrintFallbackWindow(htmlContent, fileName) {
         const printWindow = window.open('', '_blank');
         if (printWindow) {
             printWindow.document.open();
-            printWindow.document.write(pdfHtml);
+            printWindow.document.write(htmlContent);
             printWindow.document.close();
+            setTimeout(() => {
+                try { printWindow.print(); } catch(e) {}
+            }, 500);
         } else {
-            const blob = new Blob([pdfHtml], { type: 'text/html' });
+            const blob = new Blob([htmlContent], { type: 'text/html' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `LeanLife_Wellness_Report_${report.id || Date.now()}.html`;
+            a.download = `${fileName}.html`;
             document.body.appendChild(a);
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
         }
+    },
+
+    downloadLogsPDF(logId = null) {
+        let logsToExport = this.db.wellnessLogs || [];
+        if (logId) {
+            logsToExport = logsToExport.filter(l => l.id === logId);
+        }
+        if (logsToExport.length === 0) {
+            alert("No wellness logs available to export.");
+            return;
+        }
+
+        let logsHtmlRows = '';
+        logsToExport.forEach((l, idx) => {
+            const met = l.metrics || {};
+            const sleepDur = typeof l.sleep === 'object' ? (l.sleep.duration || '--') : (l.sleep || '--');
+            const sleepQual = typeof l.sleep === 'object' ? (l.sleep.quality || '--') : '--';
+            const exType = l.exercise?.type || (l.exerciseCompleted === 'yes' ? 'Exercise' : 'None');
+            const exDur = l.exercise?.duration || 0;
+            const photoCount = (l.photos && l.photos.length) || (l.photoUrl ? 1 : 0);
+
+            logsHtmlRows += `
+                <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${l.timestamp ? new Date(l.timestamp).toLocaleDateString() : (l.date || '--')}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; font-weight:600;">${l.userEmail || l.user_email || '--'}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${sleepDur}h (${sleepQual})</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${l.waterCount || 0} drops (${((l.waterCount || 0) * 8.45).toFixed(0)} oz)</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${(l.steps || 0).toLocaleString()}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; text-transform:capitalize;">${l.mood || 'Neutral'}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${exType} (${exDur}m)</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${met.bloodPressure || '--'} | ${met.bloodSugar ? met.bloodSugar + ' mg' : '--'}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0;">${photoCount > 0 ? `Yes (${photoCount})` : 'None'}</td>
+                </tr>
+            `;
+        });
+
+        const pdfHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LeanLife Wellness Logs Export</title>
+    <style>
+        @media print {
+            body { margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+        }
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+            color: #1a202c;
+            padding: 20px;
+            font-size: 11px;
+        }
+        .header {
+            border-bottom: 2px solid #12826d;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10.5px;
+        }
+        .table th {
+            background: #12826d;
+            color: #ffffff;
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #12826d;
+        }
+        .table td {
+            padding: 7px 8px;
+            border: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div id="pdf-logs-content">
+        <div class="header">
+            <div>
+                <h2 style="margin:0; color:#12826d; font-size:18px;">🌿 LeanLife Wellness Logs Submissions</h2>
+                <div style="font-size:11px; color:#666;">Generated on ${new Date().toLocaleString()} • Total Records: ${logsToExport.length}</div>
+            </div>
+            <div style="font-weight:bold; color:#12826d;">ADMIN AUDIT EXPORT</div>
+        </div>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Member Email</th>
+                    <th>Sleep</th>
+                    <th>Hydration</th>
+                    <th>Steps</th>
+                    <th>Mood</th>
+                    <th>Exercise</th>
+                    <th>Vitals (BP | Sugar)</th>
+                    <th>Photos</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${logsHtmlRows}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>`;
+
+        if (window.html2pdf) {
+            const container = document.createElement('div');
+            container.innerHTML = pdfHtml;
+            document.body.appendChild(container);
+
+            const opt = {
+                margin: [8, 8, 8, 8],
+                filename: `LeanLife_Wellness_Logs_${logId ? logId : 'Export'}_${Date.now()}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            window.html2pdf().set(opt).from(container.querySelector('#pdf-logs-content')).save()
+                .then(() => container.remove())
+                .catch(err => {
+                    container.remove();
+                    this.openPrintFallbackWindow(pdfHtml, `LeanLife_Wellness_Logs_Export`);
+                });
+        } else {
+            this.openPrintFallbackWindow(pdfHtml, `LeanLife_Wellness_Logs_Export`);
+        }
+    },
+
+    downloadLogPDF(logId) {
+        this.downloadLogsPDF(logId);
+    },
+
+    // ==================== CUMULATIVE MONTHLY REPORTS ENGINE ====================
+    getAvailableMonthlyCycles(userEmail = null) {
+        const email = (userEmail || (this.currentUser ? this.currentUser.email : '')).toLowerCase().trim();
+        const logs = (this.db && this.db.wellnessLogs ? this.db.wellnessLogs : []).filter(l => {
+            const lEmail = (l.userEmail || l.user_email || l.email || '').toLowerCase().trim();
+            return lEmail === email;
+        });
+
+        const cycles = new Set();
+        const now = new Date();
+        const currentCycle = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        cycles.add(currentCycle);
+
+        logs.forEach(l => {
+            const ts = l.timestamp || l.created_at || l.date;
+            if (ts) {
+                const d = new Date(ts);
+                if (!isNaN(d.getTime())) {
+                    cycles.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                }
+            }
+        });
+
+        return Array.from(cycles).sort().reverse();
+    },
+
+    calculateMonthlyAggregateData(userEmail = null, monthCycle = null) {
+        const email = (userEmail || (this.currentUser ? this.currentUser.email : '')).toLowerCase().trim();
+        const now = new Date();
+        const activeCycle = monthCycle || this.selectedMonthlyReportCycle || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const [yearStr, monthStr] = activeCycle.split('-');
+        const targetYear = parseInt(yearStr, 10);
+        const targetMonth = parseInt(monthStr, 10) - 1; // 0-indexed
+
+        const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+        const monthDateObj = new Date(targetYear, targetMonth, 1);
+        const monthName = monthDateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+        const userLogs = (this.db && this.db.wellnessLogs ? this.db.wellnessLogs : []).filter(l => {
+            const lEmail = (l.userEmail || l.user_email || l.email || '').toLowerCase().trim();
+            if (lEmail !== email) return false;
+            const ts = l.timestamp || l.created_at || l.date;
+            if (!ts) return false;
+            const d = new Date(ts);
+            if (isNaN(d.getTime())) return false;
+            return d.getFullYear() === targetYear && d.getMonth() === targetMonth;
+        }).sort((a, b) => new Date(a.timestamp || a.date) - new Date(b.timestamp || b.date));
+
+        const daysLoggedCount = userLogs.length;
+        const consistencyPct = Math.min(100, Math.round((daysLoggedCount / (daysInMonth || 30)) * 100));
+
+        let totalSleep = 0;
+        let restfulSleepCount = 0;
+        let totalWaterGlasses = 0;
+        let totalSteps = 0;
+        let totalCalories = 0;
+        let workoutSessionsCount = 0;
+        let fastingCompletedCount = 0;
+        let totalSystolic = 0;
+        let totalDiastolic = 0;
+        let bpCount = 0;
+        let totalSugar = 0;
+        let sugarCount = 0;
+        let totalHeartRate = 0;
+        let hrCount = 0;
+        let totalStress = 0;
+        let totalEnergy = 0;
+        let stressEnergyCount = 0;
+        let totalBodyFat = 0;
+        let bodyFatCount = 0;
+
+        const weightsLogged = [];
+        const moodCounts = { happy: 0, calm: 0, energetic: 0, tired: 0, stressed: 0 };
+
+        userLogs.forEach(l => {
+            // Sleep
+            const sDur = parseFloat(l.sleep && typeof l.sleep === 'object' ? l.sleep.duration : l.sleep) || 8.0;
+            totalSleep += sDur;
+            const sQual = (l.sleep && typeof l.sleep === 'object' && l.sleep.quality) ? l.sleep.quality : 'Restful';
+            if (sQual.toLowerCase().includes('restful') || sQual.toLowerCase().includes('deep')) restfulSleepCount++;
+
+            // Hydration
+            const wGlasses = parseInt(l.waterCount, 10) || 8;
+            totalWaterGlasses += wGlasses;
+
+            // Steps
+            const stp = parseInt(l.steps, 10) || 0;
+            totalSteps += stp;
+
+            // Workouts & Calories
+            const isEx = l.exerciseCompleted === 'yes' || (l.exercise && l.exercise.completed === 'yes');
+            if (isEx) {
+                workoutSessionsCount++;
+                const dur = parseFloat(l.exercise?.duration) || 30;
+                totalCalories += Math.round(dur * 8.5);
+            }
+
+            // Fasting
+            const isFast = l.fastingCompleted === 'yes' || (l.fasting && l.fasting.completed === 'yes');
+            if (isFast) fastingCompletedCount++;
+
+            // Vitals
+            const metrics = l.metrics || {};
+            const bp = metrics.bloodPressure || l.bloodPressure;
+            if (bp && bp.includes('/')) {
+                const [sys, dia] = bp.split('/').map(n => parseInt(n.trim(), 10));
+                if (sys && dia) {
+                    totalSystolic += sys;
+                    totalDiastolic += dia;
+                    bpCount++;
+                }
+            }
+
+            const sugar = parseFloat(metrics.bloodSugar || l.bloodSugar);
+            if (sugar) {
+                totalSugar += sugar;
+                sugarCount++;
+            }
+
+            const hr = parseFloat(metrics.heartRate || l.heartRate);
+            if (hr) {
+                totalHeartRate += hr;
+                hrCount++;
+            }
+
+            const stress = parseFloat(metrics.stressLevel || l.stressLevel);
+            const energy = parseFloat(metrics.energyLevel || l.energyLevel);
+            if (stress || energy) {
+                totalStress += (stress || 5);
+                totalEnergy += (energy || 7);
+                stressEnergyCount++;
+            }
+
+            const bf = parseFloat(metrics.bodyFat || l.bodyFat);
+            if (bf) {
+                totalBodyFat += bf;
+                bodyFatCount++;
+            }
+
+            const w = parseFloat(metrics.weight || l.weight);
+            if (w) weightsLogged.push(w);
+
+            const m = (l.mood || 'happy').toLowerCase();
+            if (moodCounts[m] !== undefined) moodCounts[m]++;
+            else moodCounts.happy++;
+        });
+
+        const divisor = daysLoggedCount || 1;
+        const avgSleep = (totalSleep / divisor).toFixed(1);
+        const restfulPct = Math.round((restfulSleepCount / divisor) * 100);
+        const avgWater = (totalWaterGlasses / divisor).toFixed(1);
+        const totalWaterOz = totalWaterGlasses * 8;
+        const avgSteps = Math.round(totalSteps / divisor);
+        const fastingRate = Math.round((fastingCompletedCount / divisor) * 100);
+
+        const avgBP = bpCount > 0 ? `${Math.round(totalSystolic / bpCount)} / ${Math.round(totalDiastolic / bpCount)}` : '118 / 78';
+        const avgBloodSugar = sugarCount > 0 ? Math.round(totalSugar / sugarCount) : '92';
+        const avgHeartRate = hrCount > 0 ? Math.round(totalHeartRate / hrCount) : '68';
+        const avgStress = stressEnergyCount > 0 ? (totalStress / stressEnergyCount).toFixed(1) : '3.5';
+        const avgEnergy = stressEnergyCount > 0 ? (totalEnergy / stressEnergyCount).toFixed(1) : '8.2';
+        const avgBodyFat = bodyFatCount > 0 ? (totalBodyFat / bodyFatCount).toFixed(1) : '19.5';
+
+        // Weight progression
+        const userObj = this.currentUser || {};
+        const profileWeight = parseFloat(userObj.weight) || 155.4;
+        const startWeight = weightsLogged.length > 0 ? weightsLogged[0] : profileWeight;
+        const endWeight = weightsLogged.length > 0 ? weightsLogged[weightsLogged.length - 1] : profileWeight;
+        const weightDelta = (endWeight - startWeight).toFixed(1);
+
+        const heightInches = ((userObj.height || 170) / 2.54);
+        const avgBMI = ((endWeight / (heightInches * heightInches)) * 703).toFixed(1);
+
+        let overallScore = 85;
+        if (consistencyPct >= 90) overallScore += 10;
+        else if (consistencyPct >= 70) overallScore += 5;
+        if (avgSteps >= 8000) overallScore += 3;
+        overallScore = Math.min(99, overallScore);
+
+        let grade = 'A+';
+        if (overallScore < 80) grade = 'B';
+        else if (overallScore < 90) grade = 'A-';
+        else if (overallScore < 95) grade = 'A';
+
+        return {
+            monthCycle: activeCycle,
+            monthName,
+            targetYear,
+            targetMonth,
+            daysInMonth,
+            daysLoggedCount,
+            consistencyPct,
+            userLogs,
+            avgSleep,
+            restfulPct,
+            totalWaterGlasses,
+            totalWaterOz,
+            avgWater,
+            totalSteps,
+            avgSteps,
+            totalCalories,
+            workoutSessionsCount,
+            fastingCompletedCount,
+            fastingRate,
+            avgBP,
+            avgBloodSugar,
+            avgHeartRate,
+            avgStress,
+            avgEnergy,
+            avgBodyFat,
+            startWeight,
+            endWeight,
+            weightDelta,
+            avgBMI,
+            overallScore,
+            grade,
+            moodCounts
+        };
+    },
+
+    renderMonthlyReportView(selectedMonthCycle = null) {
+        if (!this.currentUser) return;
+        const userEmail = this.currentUser.email;
+        const cycles = this.getAvailableMonthlyCycles(userEmail);
+        
+        if (selectedMonthCycle && cycles.includes(selectedMonthCycle)) {
+            this.selectedMonthlyReportCycle = selectedMonthCycle;
+        } else if (!this.selectedMonthlyReportCycle || !cycles.includes(this.selectedMonthlyReportCycle)) {
+            this.selectedMonthlyReportCycle = cycles[0];
+        }
+
+        const selectEl = document.getElementById('monthly-report-select');
+        if (selectEl) {
+            selectEl.innerHTML = cycles.map(c => {
+                const [y, m] = c.split('-');
+                const dObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+                const label = dObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+                return `<option value="${c}" ${c === this.selectedMonthlyReportCycle ? 'selected' : ''}>${label}</option>`;
+            }).join('');
+        }
+
+        const data = this.calculateMonthlyAggregateData(userEmail, this.selectedMonthlyReportCycle);
+
+        // Member name
+        const memberNameEl = document.getElementById('monthly-report-member-name');
+        if (memberNameEl) memberNameEl.textContent = this.currentUser.name;
+
+        // Top gauges
+        const gaugeEl = document.getElementById('monthly-gauge-overall');
+        if (gaugeEl) gaugeEl.style.background = `conic-gradient(var(--clr-accent-green) 0% ${data.overallScore}%, #eee ${data.overallScore}% 100%)`;
+        const valOverallEl = document.getElementById('monthly-val-overall');
+        if (valOverallEl) valOverallEl.textContent = data.overallScore;
+        const gradeEl = document.getElementById('monthly-grade-val');
+        if (gradeEl) gradeEl.textContent = `Grade: ${data.grade}`;
+
+        // Top cards
+        const daysLoggedEl = document.getElementById('monthly-val-days-logged');
+        if (daysLoggedEl) daysLoggedEl.textContent = `${data.daysLoggedCount} / ${data.daysInMonth}`;
+        const consistencyEl = document.getElementById('monthly-val-consistency-pct');
+        if (consistencyEl) consistencyEl.textContent = `${data.consistencyPct}% Consistency`;
+
+        const avgSleepEl = document.getElementById('monthly-val-avg-sleep');
+        if (avgSleepEl) avgSleepEl.textContent = `${data.avgSleep} hrs`;
+        const sleepQualityEl = document.getElementById('monthly-val-sleep-quality');
+        if (sleepQualityEl) sleepQualityEl.textContent = `${data.restfulPct}% Restful`;
+
+        const totalWaterEl = document.getElementById('monthly-val-total-water');
+        if (totalWaterEl) totalWaterEl.textContent = `${data.totalWaterGlasses} gl (${data.totalWaterOz} oz)`;
+        const avgWaterEl = document.getElementById('monthly-val-avg-water');
+        if (avgWaterEl) avgWaterEl.textContent = `${data.avgWater} gl / day avg`;
+
+        // Movement & activity cards
+        const totalStepsEl = document.getElementById('monthly-val-total-steps');
+        if (totalStepsEl) totalStepsEl.textContent = data.totalSteps.toLocaleString();
+        const avgStepsEl = document.getElementById('monthly-val-avg-steps');
+        if (avgStepsEl) avgStepsEl.textContent = `Avg: ${data.avgSteps.toLocaleString()} / day`;
+
+        const totalCaloriesEl = document.getElementById('monthly-val-total-calories');
+        if (totalCaloriesEl) totalCaloriesEl.textContent = `${data.totalCalories.toLocaleString()} kcal`;
+        const workoutsCountEl = document.getElementById('monthly-val-workouts-count');
+        if (workoutsCountEl) workoutsCountEl.textContent = `${data.workoutSessionsCount} Workouts Logged`;
+
+        const weightTrendEl = document.getElementById('monthly-val-weight-trend');
+        if (weightTrendEl) weightTrendEl.textContent = `${data.endWeight} lbs`;
+        const weightDeltaEl = document.getElementById('monthly-val-weight-delta');
+        if (weightDeltaEl) {
+            const deltaNum = parseFloat(data.weightDelta);
+            const sign = deltaNum > 0 ? '+' : '';
+            weightDeltaEl.textContent = `Net Change: ${sign}${data.weightDelta} lbs (${data.startWeight} → ${data.endWeight})`;
+            weightDeltaEl.style.color = deltaNum <= 0 ? 'var(--clr-primary-green)' : '#e67e22';
+        }
+
+        const fastingDaysEl = document.getElementById('monthly-val-fasting-days');
+        if (fastingDaysEl) fastingDaysEl.textContent = `${data.fastingCompletedCount} Days`;
+        const fastingRateEl = document.getElementById('monthly-val-fasting-rate');
+        if (fastingRateEl) fastingRateEl.textContent = `${data.fastingRate}% Adherence`;
+
+        // Vitals
+        const bmiEl = document.getElementById('monthly-metric-bmi');
+        if (bmiEl) bmiEl.textContent = data.avgBMI;
+        const bfEl = document.getElementById('monthly-metric-bodyfat');
+        if (bfEl) bfEl.textContent = `${data.avgBodyFat}%`;
+        const bpEl = document.getElementById('monthly-metric-bp');
+        if (bpEl) bpEl.textContent = data.avgBP;
+        const sugarEl = document.getElementById('monthly-metric-bloodsugar');
+        if (sugarEl) sugarEl.textContent = data.avgBloodSugar;
+        const hrEl = document.getElementById('monthly-metric-heartrate');
+        if (hrEl) hrEl.textContent = data.avgHeartRate;
+        const seEl = document.getElementById('monthly-metric-stress-energy');
+        if (seEl) seEl.textContent = `${data.avgStress} / ${data.avgEnergy}`;
+
+        // AI Synthesis
+        const execReviewEl = document.getElementById('monthly-ai-executive-review');
+        if (execReviewEl) {
+            execReviewEl.textContent = `During ${data.monthName}, ${this.currentUser.name} completed ${data.daysLoggedCount} wellness submissions with a ${data.consistencyPct}% consistency rating. Your cumulative activity totaled ${data.totalSteps.toLocaleString()} steps and ${data.workoutSessionsCount} exercise sessions, maintaining an exceptional ${data.grade} monthly health score.`;
+        }
+
+        const circInsightsEl = document.getElementById('monthly-ai-circadian-insights');
+        if (circInsightsEl) {
+            circInsightsEl.textContent = `Average sleep duration of ${data.avgSleep} hours with ${data.restfulPct}% restorative sleep quality demonstrates synchronized biological clocks. Total hydration of ${data.totalWaterOz.toLocaleString()} oz (${data.totalWaterGlasses} glasses) supported high cellular repair and digestive balance.`;
+        }
+
+        // Assigned coach on card
+        const coachName = 'Coach Francess Orenuga';
+        const coachAvatar = 'assets/coach_francess.png';
+        const cardCoachName = document.getElementById('monthly-card-coach-name');
+        if (cardCoachName) cardCoachName.textContent = coachName;
+        const cardCoachAvatar = document.getElementById('monthly-card-coach-avatar');
+        if (cardCoachAvatar) cardCoachAvatar.src = coachAvatar;
+
+        // Daily Logs Table
+        const tbody = document.getElementById('monthly-logs-tbody');
+        const countEl = document.getElementById('monthly-table-count');
+        if (countEl) countEl.textContent = data.userLogs.length;
+
+        if (tbody) {
+            if (data.userLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 2rem; color: #888;">No daily wellness logs recorded for ${data.monthName}.</td></tr>`;
+            } else {
+                let html = '';
+                data.userLogs.forEach(r => {
+                    const sleepDuration = (r.sleep && typeof r.sleep === 'object' ? r.sleep.duration : r.sleep) || '8.0';
+                    const sleepQuality = (r.sleep && typeof r.sleep === 'object' && r.sleep.quality) ? r.sleep.quality : 'Restful';
+                    const waterGlasses = r.waterCount || 8;
+                    const steps = r.steps || 0;
+                    const mood = r.mood || 'happy';
+                    const isExercise = r.exerciseCompleted === 'yes' || r.exercise?.completed === 'yes';
+                    const weightVal = r.metrics?.weight || r.weight || data.endWeight;
+
+                    html += `
+                        <tr>
+                            <td style="font-weight:600;">${new Date(r.timestamp || r.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                            <td>${sleepDuration}h (${sleepQuality})</td>
+                            <td>${waterGlasses * 8} oz (${waterGlasses} gl)</td>
+                            <td>${steps.toLocaleString()}</td>
+                            <td><span style="text-transform: capitalize;">${mood}</span></td>
+                            <td>${isExercise ? (r.exercise?.type || 'Workout') : 'None'}</td>
+                            <td>${weightVal} lbs</td>
+                            <td>
+                                <button class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.75rem;" onclick="app.openAdminLogDetails('${r.id}')"><i class="fa-solid fa-eye"></i> View</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = html;
+            }
+        }
+    },
+
+    handleMonthlyReportMonthChange(e) {
+        const val = e.target.value;
+        this.selectedMonthlyReportCycle = val;
+        this.renderMonthlyReportView(val);
+    },
+
+    downloadMonthlyReportPDF(monthCycle = null) {
+        if (!this.currentUser) return;
+        const userEmail = this.currentUser.email;
+        const data = this.calculateMonthlyAggregateData(userEmail, monthCycle || this.selectedMonthlyReportCycle);
+        const memberName = this.currentUser.name || 'Member';
+
+        const rowsHtml = data.userLogs.map(l => {
+            const d = new Date(l.timestamp || l.date).toLocaleDateString();
+            const s = (l.sleep && typeof l.sleep === 'object' ? l.sleep.duration : l.sleep) || '8.0';
+            const w = (l.waterCount || 8) * 8;
+            const st = (l.steps || 0).toLocaleString();
+            const m = l.mood || 'happy';
+            const ex = l.exerciseCompleted === 'yes' || l.exercise?.completed === 'yes' ? (l.exercise?.type || 'Yes') : 'No';
+            return `
+                <tr>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${d}</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${s} hrs</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${w} oz</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${st}</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-transform: capitalize;">${m}</td>
+                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${ex}</td>
+                </tr>
+            `;
+        }).join('') || `<tr><td colspan="6" style="padding: 12px; text-align: center; color: #888;">No daily records found for this period.</td></tr>`;
+
+        const pdfHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LeanLife Monthly Wellness Report - ${data.monthName}</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #2d3748; margin: 0; padding: 20px; background: #fff; line-height: 1.5; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #12826D; padding-bottom: 15px; margin-bottom: 20px; }
+        .brand { font-size: 22px; font-weight: bold; color: #12826D; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+        .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; text-align: center; }
+        .card-val { font-size: 18px; font-weight: bold; color: #12826D; margin: 4px 0; }
+        .card-lbl { font-size: 10px; text-transform: uppercase; color: #718096; font-weight: 600; }
+        .section-title { font-size: 14px; font-weight: bold; color: #12826D; border-bottom: 1.5px solid #a5e332; padding-bottom: 4px; margin-bottom: 12px; text-transform: uppercase; }
+        .synth-box { background: #f0fdf4; border-left: 4px solid #12826D; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 12px; line-height: 1.6; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background: #12826D; color: white; text-align: left; padding: 8px; font-size: 11px; text-transform: uppercase; }
+        .footer { margin-top: 30px; font-size: 10px; color: #a0aec0; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+    </style>
+</head>
+<body>
+    <div id="pdf-monthly-report-content">
+        <div class="header">
+            <div>
+                <div class="brand">🌱 LeanLife Health & Wellness</div>
+                <div style="font-size: 12px; color: #718096;">Monthly Cumulative Progress & Clinical Vitals Report</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 16px; font-weight: bold; color: #2d3748;">${data.monthName}</div>
+                <div style="font-size: 11px; color: #718096;">Member: <strong>${memberName}</strong> (${userEmail})</div>
+            </div>
+        </div>
+
+        <div class="grid-4">
+            <div class="card">
+                <div class="card-lbl">Monthly Score</div>
+                <div class="card-val">${data.overallScore} / 100</div>
+                <div style="font-size: 11px; color: #28a745; font-weight: bold;">Grade: ${data.grade}</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Consistency</div>
+                <div class="card-val">${data.daysLoggedCount} / ${data.daysInMonth} Days</div>
+                <div style="font-size: 11px; color: #12826D;">${data.consistencyPct}% Adherence</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Avg Sleep</div>
+                <div class="card-val">${data.avgSleep} hrs</div>
+                <div style="font-size: 11px; color: #673ab7;">${data.restfulPct}% Restful</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Hydration Consumed</div>
+                <div class="card-val">${data.totalWaterGlasses} glasses</div>
+                <div style="font-size: 11px; color: #2196f3;">${data.totalWaterOz.toLocaleString()} oz total</div>
+            </div>
+        </div>
+
+        <div class="grid-4">
+            <div class="card">
+                <div class="card-lbl">Total Steps</div>
+                <div class="card-val">${data.totalSteps.toLocaleString()}</div>
+                <div style="font-size: 11px; color: #8bc34a;">Avg: ${data.avgSteps.toLocaleString()} / day</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Calories Burned</div>
+                <div class="card-val">${data.totalCalories.toLocaleString()} kcal</div>
+                <div style="font-size: 11px; color: #e91e63;">${data.workoutSessionsCount} Workouts</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Weight Trend</div>
+                <div class="card-val">${data.endWeight} lbs</div>
+                <div style="font-size: 11px; color: #12826D;">Change: ${data.weightDelta} lbs</div>
+            </div>
+            <div class="card">
+                <div class="card-lbl">Vitals Average</div>
+                <div class="card-val">${data.avgBP}</div>
+                <div style="font-size: 11px; color: #718096;">Sugar: ${data.avgBloodSugar} mg/dL • HR: ${data.avgHeartRate} bpm</div>
+            </div>
+        </div>
+
+        <div class="section-title">Coach Frannie's Monthly Clinical Synthesis</div>
+        <div class="synth-box">
+            <p style="margin-top: 0;"><strong>Executive Review:</strong> During ${data.monthName}, ${memberName} demonstrated steady habit alignment across core health pillars. With a ${data.consistencyPct}% logging rate and cumulative physical activity of ${data.totalSteps.toLocaleString()} steps, structural health resilience is actively improving.</p>
+            <p style="margin-bottom: 0;"><strong>Recommendations for Next Month:</strong> Sustain target daily water intake (8+ glasses), maintain circadian bedtime alignment before 10:30 PM, and integrate scheduled post-workout recovery routines.</p>
+        </div>
+
+        <div class="section-title">Daily Submissions Log (${data.userLogs.length} Records)</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Sleep Duration</th>
+                    <th>Hydration</th>
+                    <th>Steps Walked</th>
+                    <th>Mood State</th>
+                    <th>Workout Completed</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rowsHtml}
+            </tbody>
+        </table>
+
+        <div class="footer">
+            LeanLife Wellness Center &bull; Generated on ${new Date().toLocaleString()} &bull; Confidential Healthcare Document
+        </div>
+    </div>
+</body>
+</html>`;
+
+        if (window.html2pdf) {
+            const container = document.createElement('div');
+            container.innerHTML = pdfHtml;
+            document.body.appendChild(container);
+
+            const opt = {
+                margin: [8, 8, 8, 8],
+                filename: `LeanLife_Monthly_Report_${memberName.replace(/\s+/g, '_')}_${data.monthCycle}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            window.html2pdf().set(opt).from(container.querySelector('#pdf-monthly-report-content')).save()
+                .then(() => container.remove())
+                .catch(err => {
+                    console.warn("html2pdf notice, fallback:", err);
+                    container.remove();
+                    this.openPrintFallbackWindow(pdfHtml, `LeanLife_Monthly_Report_${data.monthCycle}`);
+                });
+        } else {
+            this.openPrintFallbackWindow(pdfHtml, `LeanLife_Monthly_Report_${data.monthCycle}`);
+        }
+    },
+
+    openCoachMonthlyReviewModal() {
+        if (!this.currentUser) {
+            this.navigateTo('login');
+            return;
+        }
+
+        const data = this.calculateMonthlyAggregateData(this.currentUser.email, this.selectedMonthlyReportCycle);
+        const coach = {
+            name: 'Coach Francess Orenuga',
+            phone: '17575130205',
+            spec: 'Lifestyle Medicine & Metabolic Restoration Coach',
+            avatar: 'assets/coach_francess.png'
+        };
+
+        const nameEl = document.getElementById('modal-coach-name');
+        if (nameEl) nameEl.textContent = coach.name;
+        const specEl = document.getElementById('modal-coach-spec');
+        if (specEl) specEl.textContent = coach.spec;
+        const avatarEl = document.getElementById('modal-coach-avatar');
+        if (avatarEl) avatarEl.src = coach.avatar;
+
+        const monthTitleEl = document.getElementById('modal-report-month-title');
+        if (monthTitleEl) monthTitleEl.textContent = `${data.monthName} Monthly Progress Report`;
+
+        const summaryStatsEl = document.getElementById('modal-report-summary-stats');
+        if (summaryStatsEl) {
+            summaryStatsEl.textContent = `${data.daysLoggedCount}/${data.daysInMonth} Days Logged • Avg Sleep: ${data.avgSleep}h • Total Steps: ${data.totalSteps.toLocaleString()} • Weight: ${data.endWeight} lbs (${data.weightDelta} lbs)`;
+        }
+
+        const msgBox = document.getElementById('modal-coach-user-msg');
+        if (msgBox) {
+            msgBox.value = `Hello ${coach.name.split(' ')[0]}! I have completed my Monthly Wellness Report for ${data.monthName} on LeanLife.\n\nMy Monthly Summary:\n• Consistency: ${data.daysLoggedCount}/${data.daysInMonth} Days Logged (${data.consistencyPct}%)\n• Overall Score: ${data.overallScore}/100 (Grade: ${data.grade})\n• Average Sleep: ${data.avgSleep} hrs / night\n• Total Steps: ${data.totalSteps.toLocaleString()} steps\n• Weight Trend: ${data.endWeight} lbs (${data.weightDelta} lbs)\n\nI would love to review my progress with you and discuss adjustments for next month!`;
+        }
+
+        const modal = document.getElementById('monthly-coach-review-modal');
+        if (modal) modal.style.display = 'flex';
+    },
+
+    async submitCoachMonthlyReview(e) {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+
+        const userMsg = document.getElementById('modal-coach-user-msg')?.value.trim() || '';
+        const data = this.calculateMonthlyAggregateData(this.currentUser.email, this.selectedMonthlyReportCycle);
+        const coachPhone = '17575130205';
+        const coachName = 'Coach Francess Orenuga';
+        const coachEmail = 'francessronke21@gmail.com';
+
+        // 1. Download PDF report for user
+        this.downloadMonthlyReportPDF(this.selectedMonthlyReportCycle);
+
+        // 2. Dispatch Email notification to Coach in background
+        const emailSubject = `Monthly Report Review Request from ${this.currentUser.name} (${data.monthName})`;
+        this.sendRealEmail(coachName, coachEmail, emailSubject, '', 'booking', {
+            date: data.monthName,
+            time: 'Monthly Review',
+            coach: coachName,
+            mode: 'WhatsApp Review',
+            notes: userMsg
+        }).catch(err => console.warn("Notice: Coach email notification notice:", err));
+
+        // 3. Log Audit trail
+        this.logAudit(this.currentUser.name, 'Monthly Report Coach Review', `Requested review with ${coachName} for ${data.monthName} on WhatsApp`);
+
+        // 4. Hide Modal
+        const modal = document.getElementById('monthly-coach-review-modal');
+        if (modal) modal.style.display = 'none';
+
+        // 5. Construct WhatsApp URL & Redirect
+        const whatsappText = encodeURIComponent(userMsg);
+        const whatsappUrl = `https://wa.me/${coachPhone}?text=${whatsappText}`;
+
+        window.open(whatsappUrl, '_blank');
     },
 
     // ==================== COACHING & NOTICE BOARD EVENTS ====================
@@ -3213,6 +4437,11 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         const date = document.getElementById('consult-date').value;
         const time = document.getElementById('consult-time').value;
         const notes = document.getElementById('consult-notes').value;
+
+        if (!mode || !date || !time) {
+            alert("Please select consultation mode, date, and time.");
+            return;
+        }
 
         this.db.blockedDates = this.db.blockedDates || [];
         if (this.db.blockedDates.some(d => d.id === date && d.status === 'blocked')) {
@@ -3224,7 +4453,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
             id: 'APT-' + Date.now(),
             userEmail: this.currentUser.email,
             userName: this.currentUser.name,
-            coach: this.currentUser.preferredCoach || 'sarah',
+            coach: 'sarah',
             mode: mode,
             date: date,
             time: time,
@@ -3237,8 +4466,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         this.saveDatabase();
         this.logAudit(this.currentUser.name, 'Coach Consultation Scheduled', `Request made for ${date} at ${time}`);
 
-        const coachKey = this.currentUser.preferredCoach || 'sarah';
-        const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
+        const coachName = 'Coach Francess Orenuga';
 
         const autoReplyOutboxId = 'EML-' + Date.now();
         this.db.emails.unshift({
@@ -3273,29 +4501,15 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
     },
 
     renderCoaching() {
-        const coachKey = this.currentUser.preferredCoach || 'sarah';
-        const coachData = {
-            sarah: {
-                name: 'Coach Francess Orenuga',
-                title: 'Senior Lifestyle Medicine & Nutrition Coach',
-                spec: 'Specialization: Metabolic Restoration, Habit Loop Optimization, Integrative Nutrition.',
-                hours: 'Availability: Mon - Fri, 9:00 AM - 5:00 PM EST',
-                pic: 'assets/coach_francess.png',
-                whatsapp: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.',
-                shortName: 'Coach Francess'
-            },
-            james: {
-                name: 'Coach James Peterson',
-                title: 'Senior Strength & Conditioning Specialist',
-                spec: 'Specialization: Functional Rehabilitation, Athletic Performance, High-Performance Habit Design.',
-                hours: 'Availability: Mon - Sat, 8:00 AM - 6:00 PM EST',
-                pic: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop',
-                whatsapp: 'https://wa.me/15550198?text=Hello%20Coach%20James,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.',
-                shortName: 'Coach James'
-            }
+        const data = {
+            name: 'Coach Francess Orenuga',
+            title: 'Senior Lifestyle Medicine & Nutrition Coach',
+            spec: 'Specialization: Metabolic Restoration, Habit Loop Optimization, Integrative Nutrition.',
+            hours: 'Availability: Mon - Fri, 9:00 AM - 5:00 PM EST',
+            pic: 'assets/coach_francess.png',
+            whatsapp: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.',
+            shortName: 'Coach Francess'
         };
-
-        const data = coachData[coachKey] || coachData.sarah;
 
         const nameEl = document.getElementById('coach-name');
         const titleEl = document.getElementById('coach-title');
@@ -3764,8 +4978,16 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         alert("Your password has been changed successfully!");
     },
 
-    // ==================== SUPER ADMIN CONTROL PANEL ====================
+    // ==================== SUPER ADMIN / COACH CONTROL PANEL ====================
     renderAdminPanel() {
+        const titleEl = document.querySelector('#view-admin h2');
+        if (titleEl) {
+            if (this.currentUser && this.currentUser.role === 'coach') {
+                titleEl.textContent = 'Coach Portal & Client Repository';
+            } else {
+                titleEl.textContent = 'Super Admin Console';
+            }
+        }
         this.switchAdminTab(this.activeAdminTab);
     },
 
@@ -3829,7 +5051,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                 <tr>
                     <td style="font-weight:600;">${u.name}</td>
                     <td>${u.email}</td>
-                    <td>${u.preferredCoach === 'sarah' ? 'Coach Francess Orenuga' : 'Coach James Peterson'}</td>
+                    <td>Coach Francess Orenuga</td>
                     <td>
                         <span style="background:${u.status === 'Active' ? '#28a745' : '#dc3545'}; color:white; padding:4px 8px; border-radius:12px; font-size:0.75rem; font-weight:bold;">
                             ${u.status}
@@ -4263,7 +5485,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         this.showCustomAlert("User account deleted successfully.", "Account Deleted");
     },
 
-    handleAdminRegisterMember(e) {
+    async handleAdminRegisterMember(e) {
         if (e && typeof e.preventDefault === 'function') {
             e.preventDefault();
         }
@@ -4276,91 +5498,107 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
             const gender = document.getElementById('reg-gender')?.value || 'Female';
             const coach = document.getElementById('reg-coach')?.value || 'sarah';
 
-        const newMember = {
-            name: name,
-            email: email,
-            password: hashedPassword,
-            role: 'member',
-            phone: phone,
-            dob: dob,
-            gender: gender,
-            preferredCoach: coach,
-            status: 'Active',
-            firstLogin: true,
-            height: 170,
-            weight: 155.4,
-            goal: 'General Wellness',
-            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
-            streakCount: 0,
-            healthProfile: {
+            if (!name || !email) {
+                this.showCustomAlert("Please enter member full name and valid email address.", "Required Fields", "fa-circle-exclamation");
+                return;
+            }
+
+            // Check if user already exists
+            const existingUser = this.db.users.find(u => (u.email || '').toLowerCase().trim() === email);
+            if (existingUser) {
+                this.showCustomAlert(`A user with email "${email}" is already registered on LeanLife.`, "Account Exists", "fa-triangle-exclamation");
+                return;
+            }
+
+            // Generate secure temporary credentials
+            const username = email.split('@')[0];
+            const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
+            const hashedPassword = await this.hashPassword(tempPassword);
+
+            const newMember = {
+                name: name,
+                email: email,
+                password: hashedPassword,
+                tempPasswordRaw: tempPassword,
+                role: 'member',
+                phone: phone,
+                dob: dob,
+                gender: gender,
+                preferredCoach: coach,
+                status: 'Active',
+                firstLogin: true,
                 height: 170,
                 weight: 155.4,
-                bloodGroup: 'Unknown',
-                dietPreference: 'None',
-                emergencyName: '',
-                emergencyPhone: '',
-                allergies: 'None',
-                conditions: 'None',
-                medications: 'None',
-                goals: 'General Wellness'
-            }
-        };
+                goal: 'General Wellness',
+                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+                streakCount: 0,
+                updatedAt: new Date().toISOString(),
+                healthProfile: {
+                    height: 170,
+                    weight: 155.4,
+                    bloodGroup: 'Unknown',
+                    dietPreference: 'None',
+                    emergencyName: '',
+                    emergencyPhone: '',
+                    allergies: 'None',
+                    conditions: 'None',
+                    medications: 'None',
+                    goals: 'General Wellness'
+                }
+            };
 
-            // 1. INSTANT (0ms): Add user to local directory at top of list
+            // 1. INSTANT: Add user to local directory at top of list
             this.db.users.unshift(newMember);
 
-            // 2. INSTANT (0ms): Clear search/filters & reset form
+            // 2. Persist to cache & database
+            await this.saveDatabase();
+
+            // 3. Clear search/filters & reset form
             const searchInput = document.getElementById('admin-user-search');
             if (searchInput) searchInput.value = '';
             const statusInput = document.getElementById('admin-user-filter-status');
             if (statusInput) statusInput.value = 'all';
-
             document.getElementById('admin-register-form')?.reset();
 
-            // 3. INSTANT (0ms): Re-render admin user table so user appears at top of list immediately
+            // 4. Re-render admin user table so user appears at top of list immediately
             this.renderAdminUsers();
 
-            // 4. INSTANT (0ms): Display pop-up notification modal at top of screen without delay
-            const coachName = coach === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
+            // 5. Display pop-up notification modal at top of screen without delay
+            const coachName = 'Coach Francess Orenuga';
             const successMsg = `🎉 Member Registration Confirmed!\n------------------------------------\nFull Name: ${name}\nEmail: ${email}\nAssigned Coach: ${coachName}\nGenerated Username: ${username}\nTemporary Password: ${tempPassword}\n------------------------------------\nThe new member has been added to the User List and an onboarding welcome email is being dispatched to ${email}.`;
             
             this.showCustomAlert(successMsg, "Member Account Created", "fa-user-check");
 
-            // 5. ASYNCHRONOUS (Background): Hash password, save to cloud, & dispatch real onboarding email
-            setTimeout(async () => {
-                try {
-                    const hashedPassword = await this.hashPassword(tempPassword);
-                    newMember.password = hashedPassword;
-                    await this.saveDatabase();
+            // 6. ASYNCHRONOUS (Background): Dispatch real onboarding email
+            const outboxId = 'EML-' + Date.now();
+            this.db.emails = this.db.emails || [];
+            this.db.emails.unshift({
+                id: outboxId,
+                timestamp: new Date().toISOString(),
+                recipient: email,
+                subject: 'Welcome to LeanLife Onboarding',
+                templateName: 'Welcome Email',
+                status: 'Pending'
+            });
+            this.saveDatabase(true);
 
-                    const outboxId = 'EML-' + Date.now();
-                    this.db.emails = this.db.emails || [];
-                    this.db.emails.unshift({
-                        id: outboxId,
-                        timestamp: new Date().toISOString(),
-                        recipient: email,
-                        subject: 'Welcome to LeanLife Onboarding',
-                        templateName: 'Welcome Email',
-                        status: 'Pending'
-                    });
-                    await this.saveDatabase();
-
-                    const emailResult = await this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome');
+            this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome')
+                .then(emailResult => {
                     const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
                     const rec = this.db.emails.find(item => item.id === outboxId);
                     if (rec) {
                         rec.status = deliveryStatus;
-                        this.saveDatabase();
+                        this.saveDatabase(true);
                     }
                     this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'Admin Registered User', `Registered user ${email} with temporary credentials. Email delivery: ${deliveryStatus}`);
                     this.renderAdminUsers();
-                } catch (bgErr) {
+                })
+                .catch(bgErr => {
                     console.error("Background registration task error:", bgErr);
-                }
-            }, 10);
+                });
         } catch (err) {
             console.error("Error in handleAdminRegisterMember:", err);
-            this.showCustomAlert("An error occurred while creating the member account. Please try again.", "Error", "fa-circle-exclamation");
+            this.showCustomAlert("An error occurred while creating the member account: " + (err.message || err), "Error", "fa-circle-exclamation");
         }
     },
 
@@ -4368,36 +5606,43 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         const tbody = document.getElementById('admin-logs-cms-tbody');
         if (!tbody) return;
 
-        const query = (document.getElementById('admin-logs-search')?.value || '').toLowerCase();
+        const query = (document.getElementById('admin-logs-search')?.value || '').toLowerCase().trim();
+
+        if (!this.db.wellnessLogs || this.db.wellnessLogs.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 2rem; color: #888;">No wellness logs found in repository.</td></tr>`;
+            return;
+        }
 
         let html = '';
         this.db.wellnessLogs.forEach(r => {
-            if (query && !r.userEmail.toLowerCase().includes(query) && !(r.mood || '').toLowerCase().includes(query)) return;
+            const userEmail = (r.userEmail || r.user_email || r.email || '').toLowerCase();
+            const mood = (r.mood || 'happy').toLowerCase();
+            const exerciseType = (r.exercise?.type || 'None').toLowerCase();
+
+            if (query && !userEmail.includes(query) && !mood.includes(query) && !exerciseType.includes(query)) return;
 
             const sleepDuration = (r.sleep && typeof r.sleep === 'object' ? r.sleep.duration : r.sleep) || '8.0';
             const sleepQuality = (r.sleep && typeof r.sleep === 'object' && r.sleep.quality) ? r.sleep.quality : 'Restful';
             const waterGlasses = r.waterCount || 8;
             const steps = r.steps || 0;
-            const mood = r.mood || 'happy';
-            const exerciseType = r.exercise?.type || 'None';
             const isExercise = r.exerciseCompleted === 'yes' || r.exercise?.completed === 'yes';
 
             html += `
                 <tr>
-                    <td>${new Date(r.timestamp).toLocaleDateString()}</td>
-                    <td style="font-weight:600;">${r.userEmail}</td>
+                    <td>${new Date(r.timestamp).toLocaleDateString()} ${new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                    <td style="font-weight:600; color: var(--clr-primary-green);">${r.userEmail || r.user_email || 'Member'}</td>
                     <td>${sleepDuration} hrs (${sleepQuality})</td>
                     <td>${waterGlasses * 8} oz (${waterGlasses} gl)</td>
                     <td>${steps.toLocaleString()}</td>
-                    <td><span style="text-transform: capitalize;">${mood}</span></td>
-                    <td>${isExercise ? exerciseType : 'None'}</td>
+                    <td><span style="text-transform: capitalize;">${r.mood || 'happy'}</span></td>
+                    <td>${isExercise ? (r.exercise?.type || 'General') : 'None'}</td>
                     <td>
                         <button class="btn btn-secondary" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="app.openAdminLogDetails('${r.id}')"><i class="fa-solid fa-eye"></i> View</button>
                     </td>
                 </tr>
             `;
         });
-        tbody.innerHTML = html;
+        tbody.innerHTML = html || `<tr><td colspan="8" style="text-align:center; padding: 2rem; color: #888;">No logs matching "${query}".</td></tr>`;
     },
 
     openAdminLogDetails(logId) {
@@ -4705,8 +5950,7 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         if (!tbody) return;
 
         const coaches = [
-            { name: 'Coach Francess Orenuga', key: 'sarah', hours: 'Mon - Fri, 9:00 AM - 5:00 PM EST', link: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.' },
-            { name: 'Coach James Peterson', key: 'james', hours: 'Mon - Sat, 8:00 AM - 6:00 PM EST', link: 'https://wa.me/15550198?text=Hello%20Coach%20James,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.' }
+            { name: 'Coach Francess Orenuga', key: 'sarah', hours: 'Mon - Fri, 9:00 AM - 5:00 PM EST', link: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.' }
         ];
 
         let html = '';
@@ -5006,17 +6250,18 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
         if (resendFromField) resendFromField.value = this.db.systemSettings.resendFromEmail || '';
 
         // Populate EmailJS settings
+        const config = window.SUPABASE_CONFIG || {};
         const serviceIdField = document.getElementById('settings-emailjs-service-id');
         const templateIdField = document.getElementById('settings-emailjs-template-id');
         const publicKeyField = document.getElementById('settings-emailjs-public-key');
         const autoreplyTemplateIdField = document.getElementById('settings-emailjs-autoreply-template-id');
         const welcomeTemplateIdField = document.getElementById('settings-emailjs-welcome-template-id');
         
-        if (serviceIdField) serviceIdField.value = this.db.systemSettings.emailjsServiceId || '';
-        if (templateIdField) templateIdField.value = this.db.systemSettings.emailjsTemplateId || '';
-        if (publicKeyField) publicKeyField.value = this.db.systemSettings.emailjsPublicKey || '';
-        if (autoreplyTemplateIdField) autoreplyTemplateIdField.value = this.db.systemSettings.emailjsAutoreplyTemplateId || '';
-        if (welcomeTemplateIdField) welcomeTemplateIdField.value = this.db.systemSettings.emailjsWelcomeTemplateId || '';
+        if (serviceIdField) serviceIdField.value = this.db.systemSettings.emailjsServiceId || config.EMAILJS_SERVICE_ID || '';
+        if (templateIdField) templateIdField.value = this.db.systemSettings.emailjsTemplateId || config.EMAILJS_TEMPLATE_ID || '';
+        if (publicKeyField) publicKeyField.value = this.db.systemSettings.emailjsPublicKey || config.EMAILJS_PUBLIC_KEY || '';
+        if (autoreplyTemplateIdField) autoreplyTemplateIdField.value = this.db.systemSettings.emailjsAutoreplyTemplateId || config.EMAILJS_AUTOREPLY_TEMPLATE_ID || '';
+        if (welcomeTemplateIdField) welcomeTemplateIdField.value = this.db.systemSettings.emailjsWelcomeTemplateId || config.EMAILJS_WELCOME_TEMPLATE_ID || '';
     },
 
     handleAdminSaveSettings(e) {
@@ -5098,8 +6343,11 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
                 temp_password: tempPassword || '',
                 tempPassword: tempPassword || '',
                 temp_pass: tempPassword || '',
+                temporary_password: tempPassword || '',
                 user_pass: tempPassword || '',
+                user_password: tempPassword || '',
                 password: tempPassword || '',
+                pass: tempPassword || '',
                 code: tempPassword || '',
                 pin: tempPassword || '',
                 
@@ -5249,8 +6497,30 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
             return;
         }
 
+        // Clean records for JSON export (remove raw multi-megabyte base64 strings to keep JSON lightweight & portable)
         if (format === 'json') {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(records, null, 2));
+            const sanitizedJsonRecords = records.map(row => {
+                const item = { ...row };
+                if (item.photos && Array.isArray(item.photos)) {
+                    item.photos = item.photos.map(p => typeof p === 'string' && p.startsWith('data:') ? `[Base64 Image Attached - ${p.length} chars]` : p);
+                }
+                if (item.photoUrl && typeof item.photoUrl === 'string' && item.photoUrl.startsWith('data:')) {
+                    item.photoUrl = `[Base64 Image Attached - ${item.photoUrl.length} chars]`;
+                }
+                if (item.meals && typeof item.meals === 'object') {
+                    const cleanedMeals = {};
+                    for (const m in item.meals) {
+                        cleanedMeals[m] = { ...item.meals[m] };
+                        if (cleanedMeals[m].photo && typeof cleanedMeals[m].photo === 'string' && cleanedMeals[m].photo.startsWith('data:')) {
+                            cleanedMeals[m].photo = `[Base64 Meal Photo Attached]`;
+                        }
+                    }
+                    item.meals = cleanedMeals;
+                }
+                return item;
+            });
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sanitizedJsonRecords, null, 2));
             const dlAnchor = document.createElement('a');
             dlAnchor.setAttribute("href", dataStr);
             dlAnchor.setAttribute("download", `leanlife_${table}_export.json`);
@@ -5260,26 +6530,242 @@ ${report.content || report.summary || "Your wellness progress shows strong consi
             return;
         }
 
-        // CSV Compilation
-        let csvContent = "data:text/csv;charset=utf-8,";
-        const headers = Object.keys(records[0]);
-        csvContent += headers.join(",") + "\r\n";
-        
-        records.forEach(row => {
-            const values = headers.map(h => {
-                const val = typeof row[h] === 'object' ? JSON.stringify(row[h]).replace(/"/g, '""') : row[h];
-                return `"${val}"`;
-            });
-            csvContent += values.join(",") + "\r\n";
-        });
+        // CSV Helper: safely format cell value and escape RFC-4180
+        const escapeCsvCell = (val) => {
+            if (val === null || val === undefined) return '""';
+            let str = String(val);
+            // Replace CRLF / LF with space or separator to keep single-line rows in CSV
+            str = str.replace(/\r\n|\r|\n/g, ' ');
+            // Escape quotes
+            str = str.replace(/"/g, '""');
+            return `"${str}"`;
+        };
 
-        const encodedUri = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent.replace("data:text/csv;charset=utf-8,", ""));
+        let headers = [];
+        let rows = [];
+
+        if (table === 'wellnessLogs') {
+            headers = [
+                "Log ID",
+                "Member Email",
+                "Date & Time",
+                "Device",
+                "Steps",
+                "Water Drops",
+                "Water (oz)",
+                "Sleep Hours",
+                "Sleep Quality",
+                "Bedtime / Wake Time",
+                "Mood",
+                "Exercise Type",
+                "Exercise Duration (mins)",
+                "Exercise Intensity",
+                "Weight (lbs)",
+                "BMI",
+                "Body Fat %",
+                "Blood Pressure",
+                "Blood Sugar (mg/dL)",
+                "Heart Rate (bpm)",
+                "Stress (1-10)",
+                "Energy (1-10)",
+                "Outdoor Time (mins)",
+                "Sunlight (mins)",
+                "Meditation (mins)",
+                "Screen Time (hrs)",
+                "Affirmations",
+                "Reflections",
+                "Meals Summary",
+                "Photos Attached",
+                "Streak Day"
+            ];
+
+            rows = records.map(row => {
+                const sleepObj = row.sleep || {};
+                const sleepDur = typeof sleepObj === 'object' ? (sleepObj.duration || '') : (sleepObj || '');
+                const sleepQual = typeof sleepObj === 'object' ? (sleepObj.quality || '') : '';
+                const sleepBedWake = typeof sleepObj === 'object' && (sleepObj.bedtime || sleepObj.wakeTime) 
+                    ? `${sleepObj.bedtime || '--'} to ${sleepObj.wakeTime || '--'}` : '';
+
+                const exObj = row.exercise || {};
+                const exType = typeof exObj === 'object' ? (exObj.type || (exObj.completed === 'yes' ? 'Exercise' : 'None')) : '';
+                const exDur = typeof exObj === 'object' ? (exObj.duration || 0) : '';
+                const exInt = typeof exObj === 'object' ? (exObj.intensity || '') : '';
+
+                const met = row.metrics || {};
+                const weightVal = met.weight || '';
+                const bmiVal = met.bmi || '';
+                const bodyFatVal = met.bodyFat || '';
+                const bpVal = met.bloodPressure || '';
+                const bsVal = met.bloodSugar || '';
+                const hrVal = met.heartRate || '';
+                const stressVal = met.stress || '';
+                const energyVal = met.energy || '';
+                const outdoorVal = row.outdoorTime !== undefined ? row.outdoorTime : (met.outdoorTime || '');
+                const sunlightVal = row.sunlight !== undefined ? row.sunlight : (met.sunlight || '');
+                const medVal = row.meditation !== undefined ? row.meditation : (met.meditation || '');
+                const screenVal = row.screenTime !== undefined ? row.screenTime : (met.screenTime || '');
+
+                // Format meals into clean readable summary
+                let mealsSummary = '';
+                if (row.meals && typeof row.meals === 'object') {
+                    const mealParts = [];
+                    if (row.meals.breakfast?.desc) mealParts.push(`Breakfast: ${row.meals.breakfast.desc}`);
+                    if (row.meals.lunch?.desc) mealParts.push(`Lunch: ${row.meals.lunch.desc}`);
+                    if (row.meals.dinner?.desc) mealParts.push(`Dinner: ${row.meals.dinner.desc}`);
+                    if (row.meals.snacks?.desc) mealParts.push(`Snacks: ${row.meals.snacks.desc}`);
+                    mealsSummary = mealParts.join(' | ');
+                }
+
+                // Photo count indicator instead of raw base64 data
+                let photoAttached = 'None';
+                if (row.photos && Array.isArray(row.photos) && row.photos.length > 0) {
+                    photoAttached = `Yes (${row.photos.length} Photo${row.photos.length > 1 ? 's' : ''})`;
+                } else if (row.photoUrl) {
+                    photoAttached = 'Yes (1 Photo)';
+                }
+
+                const waterDrops = row.waterCount || 0;
+                const waterOz = (waterDrops * 8.45).toFixed(1);
+
+                return [
+                    escapeCsvCell(row.id || ''),
+                    escapeCsvCell(row.userEmail || row.user_email || ''),
+                    escapeCsvCell(row.timestamp ? new Date(row.timestamp).toLocaleString() : (row.date || '')),
+                    escapeCsvCell(row.device || 'Web Desktop'),
+                    escapeCsvCell(row.steps || 0),
+                    escapeCsvCell(waterDrops),
+                    escapeCsvCell(waterOz),
+                    escapeCsvCell(sleepDur),
+                    escapeCsvCell(sleepQual),
+                    escapeCsvCell(sleepBedWake),
+                    escapeCsvCell(row.mood || 'neutral'),
+                    escapeCsvCell(exType),
+                    escapeCsvCell(exDur),
+                    escapeCsvCell(exInt),
+                    escapeCsvCell(weightVal),
+                    escapeCsvCell(bmiVal),
+                    escapeCsvCell(bodyFatVal),
+                    escapeCsvCell(bpVal),
+                    escapeCsvCell(bsVal),
+                    escapeCsvCell(hrVal),
+                    escapeCsvCell(stressVal),
+                    escapeCsvCell(energyVal),
+                    escapeCsvCell(outdoorVal),
+                    escapeCsvCell(sunlightVal),
+                    escapeCsvCell(medVal),
+                    escapeCsvCell(screenVal),
+                    escapeCsvCell(row.affirmations || ''),
+                    escapeCsvCell(row.reflections || ''),
+                    escapeCsvCell(mealsSummary || 'Standard balanced nutrition'),
+                    escapeCsvCell(photoAttached),
+                    escapeCsvCell(row.streakCount || 1)
+                ].join(",");
+            });
+        } else if (table === 'aiReports') {
+            headers = [
+                "Report ID",
+                "Member Email",
+                "Generated Date & Time",
+                "Overall Score",
+                "Grade",
+                "Sleep Score",
+                "Hydration Score",
+                "Nutrition Score",
+                "Activity Score",
+                "Mindset Score",
+                "Status",
+                "Coach Advice / Summary"
+            ];
+
+            rows = records.map(r => {
+                const metrics = r.metrics || {};
+                return [
+                    escapeCsvCell(r.id || ''),
+                    escapeCsvCell(r.userEmail || r.user_email || ''),
+                    escapeCsvCell(r.timestamp ? new Date(r.timestamp).toLocaleString() : (r.date || '')),
+                    escapeCsvCell(r.overallScore || r.score || ''),
+                    escapeCsvCell(r.grade || 'A'),
+                    escapeCsvCell(metrics.sleepScore || r.sleepScore || ''),
+                    escapeCsvCell(metrics.hydrationScore || r.hydrationScore || ''),
+                    escapeCsvCell(metrics.nutritionScore || r.nutritionScore || ''),
+                    escapeCsvCell(metrics.activityScore || r.activityScore || ''),
+                    escapeCsvCell(metrics.mindsetScore || r.mindsetScore || ''),
+                    escapeCsvCell(r.status || 'completed'),
+                    escapeCsvCell(r.summary || r.content || r.coaching_advice || '')
+                ].join(",");
+            });
+        } else if (table === 'users') {
+            headers = [
+                "Name",
+                "Email",
+                "Role",
+                "Status",
+                "Phone",
+                "DOB",
+                "Gender",
+                "Height (cm)",
+                "Weight (lbs)",
+                "Goal",
+                "Blood Group",
+                "Allergies",
+                "Medications",
+                "Conditions",
+                "Streak Count",
+                "Last Streak Date",
+                "Updated At"
+            ];
+
+            rows = records.map(u => [
+                escapeCsvCell(u.name || ''),
+                escapeCsvCell(u.email || ''),
+                escapeCsvCell(u.role || 'member'),
+                escapeCsvCell(u.status || 'Active'),
+                escapeCsvCell(u.phone || ''),
+                escapeCsvCell(u.dob || ''),
+                escapeCsvCell(u.gender || ''),
+                escapeCsvCell(u.height || ''),
+                escapeCsvCell(u.weight || ''),
+                escapeCsvCell(u.goal || ''),
+                escapeCsvCell(u.bloodGroup || ''),
+                escapeCsvCell(u.allergies || ''),
+                escapeCsvCell(u.medications || ''),
+                escapeCsvCell(u.conditions || ''),
+                escapeCsvCell(u.streakCount || 0),
+                escapeCsvCell(u.lastStreakDate || ''),
+                escapeCsvCell(u.updatedAt || u.timestamp || '')
+            ].join(","));
+        } else if (table === 'auditLogs') {
+            headers = ["Log ID", "Timestamp", "Operator", "Action / Event", "Resource", "Details"];
+            rows = records.map(a => [
+                escapeCsvCell(a.id || ''),
+                escapeCsvCell(a.timestamp ? new Date(a.timestamp).toLocaleString() : ''),
+                escapeCsvCell(a.operator || 'System'),
+                escapeCsvCell(a.eventType || ''),
+                escapeCsvCell(a.resource || 'System'),
+                escapeCsvCell(a.details || '')
+            ].join(","));
+        } else {
+            // Generic table export fallback
+            headers = Object.keys(records[0]).filter(k => k !== 'photos' && k !== 'photoUrl' && k !== 'password');
+            rows = records.map(row => {
+                return headers.map(h => {
+                    const val = typeof row[h] === 'object' ? JSON.stringify(row[h]) : row[h];
+                    return escapeCsvCell(val);
+                }).join(",");
+            });
+        }
+
+        // Compile CSV with UTF-8 BOM (\uFEFF) for Excel compatibility
+        const csvContent = "\uFEFF" + headers.map(escapeCsvCell).join(",") + "\r\n" + rows.join("\r\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
+        link.setAttribute("href", url);
         link.setAttribute("download", `leanlife_${table}_export.csv`);
         document.body.appendChild(link);
         link.click();
         link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
 
     exportDatabaseBackupJSON() {

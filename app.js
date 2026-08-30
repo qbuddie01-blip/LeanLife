@@ -545,25 +545,38 @@ const leanLifeAppCore = {
             await this.loadDatabase();
             await this.seedInitialData();
 
-            // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga
+            // Database Migration: Update Dr. Sarah Jenkins to Coach Francess Orenuga & Ensure Admin Role
             let migrated = false;
             if (this.db && this.db.users) {
                 this.db.users.forEach(u => {
-                    if (u.name === 'Dr. Sarah Jenkins') {
+                    if (u.name === 'Dr. Sarah Jenkins' || (u.email && u.email.toLowerCase() === 'francessronke21@gmail.com')) {
                         u.name = 'Coach Francess Orenuga';
+                        u.role = 'admin';
+                        migrated = true;
+                    }
+                    if (u.preferredCoach === 'james') {
+                        u.preferredCoach = 'sarah';
+                        migrated = true;
+                    }
+                });
+            }
+            if (this.db && this.db.appointments) {
+                this.db.appointments.forEach(a => {
+                    if (a.coach === 'james' || a.preferredCoach === 'james') {
+                        a.coach = 'sarah';
                         migrated = true;
                     }
                 });
             }
             if (this.db && this.db.posts) {
                 this.db.posts.forEach(p => {
-                    if (p.author === 'Dr. Sarah Jenkins') {
+                    if (p.author === 'Dr. Sarah Jenkins' || /james/i.test(p.author || '')) {
                         p.author = 'Coach Francess Orenuga';
                         migrated = true;
                     }
                     if (p.comments) {
                         p.comments.forEach(c => {
-                            if (c.author === 'Dr. Sarah Jenkins') {
+                            if (c.author === 'Dr. Sarah Jenkins' || /james/i.test(c.author || '')) {
                                 c.author = 'Coach Francess Orenuga';
                                 migrated = true;
                             }
@@ -1114,8 +1127,8 @@ const leanLifeAppCore = {
                     name: 'Coach Francess Orenuga',
                     email: 'francessronke21@gmail.com',
                     password: coachPass,
-                    role: 'coach',
-                    phone: '+1 (555) 0199',
+                    role: 'admin',
+                    phone: '+1 (757) 513-0205',
                     dob: '1980-04-12',
                     gender: 'Female',
                     height: 168,
@@ -1240,7 +1253,7 @@ const leanLifeAppCore = {
                     date: '2026-07-02',
                     time: '08:00 AM',
                     countdown: 'In 3 Days',
-                    description: 'Interactive virtual high intensity workout session hosted by Coach James Peterson.',
+                    description: 'Interactive virtual high intensity workout session hosted by Coach Francess Orenuga.',
                     rsvp: ['emma@example.com'],
                     link: 'https://meet.google.com/abc-defg-hij'
                 },
@@ -1686,6 +1699,24 @@ const leanLifeAppCore = {
                     status: 'Active',
                     avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop',
                     firstLogin: false
+                };
+                this.db.users.push(user);
+            } else if (email === 'francessronke21@gmail.com') {
+                user = {
+                    name: 'Coach Francess Orenuga',
+                    email: 'francessronke21@gmail.com',
+                    password: hashedPassword,
+                    role: 'admin',
+                    phone: '+1 (757) 513-0205',
+                    dob: '1980-04-12',
+                    gender: 'Female',
+                    height: 168,
+                    weight: 132,
+                    goal: 'Coaching excellence & platform administration',
+                    status: 'Active',
+                    avatar: 'assets/coach_francess.png',
+                    firstLogin: false,
+                    updatedAt: new Date().toISOString()
                 };
                 this.db.users.push(user);
             } else if (email === 'emma@example.com') {
@@ -4113,9 +4144,8 @@ const leanLifeAppCore = {
         }
 
         // Assigned coach on card
-        const coachKey = this.currentUser.preferredCoach || 'sarah';
-        const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
-        const coachAvatar = coachKey === 'james' ? 'assets/coach_james.png' : 'assets/coach_francess.png';
+        const coachName = 'Coach Francess Orenuga';
+        const coachAvatar = 'assets/coach_francess.png';
         const cardCoachName = document.getElementById('monthly-card-coach-name');
         if (cardCoachName) cardCoachName.textContent = coachName;
         const cardCoachAvatar = document.getElementById('monthly-card-coach-avatar');
@@ -4333,22 +4363,12 @@ const leanLifeAppCore = {
         }
 
         const data = this.calculateMonthlyAggregateData(this.currentUser.email, this.selectedMonthlyReportCycle);
-        const coachKey = this.currentUser.preferredCoach || 'sarah';
-        const coachData = {
-            sarah: {
-                name: 'Coach Francess Orenuga',
-                phone: '17575130205',
-                spec: 'Lifestyle Medicine & Metabolic Restoration Coach',
-                avatar: 'assets/coach_francess.png'
-            },
-            james: {
-                name: 'Coach James Peterson',
-                phone: '15550198',
-                spec: 'Senior Strength & Conditioning Specialist',
-                avatar: 'assets/coach_james.png'
-            }
+        const coach = {
+            name: 'Coach Francess Orenuga',
+            phone: '17575130205',
+            spec: 'Lifestyle Medicine & Metabolic Restoration Coach',
+            avatar: 'assets/coach_francess.png'
         };
-        const coach = coachData[coachKey] || coachData.sarah;
 
         const nameEl = document.getElementById('modal-coach-name');
         if (nameEl) nameEl.textContent = coach.name;
@@ -4379,10 +4399,9 @@ const leanLifeAppCore = {
 
         const userMsg = document.getElementById('modal-coach-user-msg')?.value.trim() || '';
         const data = this.calculateMonthlyAggregateData(this.currentUser.email, this.selectedMonthlyReportCycle);
-        const coachKey = this.currentUser.preferredCoach || 'sarah';
-        const coachPhone = coachKey === 'james' ? '15550198' : '17575130205';
-        const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
-        const coachEmail = coachKey === 'james' ? 'james@leanlife.com' : 'francessronke21@gmail.com';
+        const coachPhone = '17575130205';
+        const coachName = 'Coach Francess Orenuga';
+        const coachEmail = 'francessronke21@gmail.com';
 
         // 1. Download PDF report for user
         this.downloadMonthlyReportPDF(this.selectedMonthlyReportCycle);
@@ -4434,7 +4453,7 @@ const leanLifeAppCore = {
             id: 'APT-' + Date.now(),
             userEmail: this.currentUser.email,
             userName: this.currentUser.name,
-            coach: this.currentUser.preferredCoach || 'sarah',
+            coach: 'sarah',
             mode: mode,
             date: date,
             time: time,
@@ -4447,8 +4466,7 @@ const leanLifeAppCore = {
         this.saveDatabase();
         this.logAudit(this.currentUser.name, 'Coach Consultation Scheduled', `Request made for ${date} at ${time}`);
 
-        const coachKey = this.currentUser.preferredCoach || 'sarah';
-        const coachName = coachKey === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
+        const coachName = 'Coach Francess Orenuga';
 
         const autoReplyOutboxId = 'EML-' + Date.now();
         this.db.emails.unshift({
@@ -4483,29 +4501,15 @@ const leanLifeAppCore = {
     },
 
     renderCoaching() {
-        const coachKey = this.currentUser.preferredCoach || 'sarah';
-        const coachData = {
-            sarah: {
-                name: 'Coach Francess Orenuga',
-                title: 'Senior Lifestyle Medicine & Nutrition Coach',
-                spec: 'Specialization: Metabolic Restoration, Habit Loop Optimization, Integrative Nutrition.',
-                hours: 'Availability: Mon - Fri, 9:00 AM - 5:00 PM EST',
-                pic: 'assets/coach_francess.png',
-                whatsapp: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.',
-                shortName: 'Coach Francess'
-            },
-            james: {
-                name: 'Coach James Peterson',
-                title: 'Senior Strength & Conditioning Specialist',
-                spec: 'Specialization: Functional Rehabilitation, Athletic Performance, High-Performance Habit Design.',
-                hours: 'Availability: Mon - Sat, 8:00 AM - 6:00 PM EST',
-                pic: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop',
-                whatsapp: 'https://wa.me/15550198?text=Hello%20Coach%20James,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.',
-                shortName: 'Coach James'
-            }
+        const data = {
+            name: 'Coach Francess Orenuga',
+            title: 'Senior Lifestyle Medicine & Nutrition Coach',
+            spec: 'Specialization: Metabolic Restoration, Habit Loop Optimization, Integrative Nutrition.',
+            hours: 'Availability: Mon - Fri, 9:00 AM - 5:00 PM EST',
+            pic: 'assets/coach_francess.png',
+            whatsapp: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.',
+            shortName: 'Coach Francess'
         };
-
-        const data = coachData[coachKey] || coachData.sarah;
 
         const nameEl = document.getElementById('coach-name');
         const titleEl = document.getElementById('coach-title');
@@ -5047,7 +5051,7 @@ const leanLifeAppCore = {
                 <tr>
                     <td style="font-weight:600;">${u.name}</td>
                     <td>${u.email}</td>
-                    <td>${u.preferredCoach === 'sarah' ? 'Coach Francess Orenuga' : 'Coach James Peterson'}</td>
+                    <td>Coach Francess Orenuga</td>
                     <td>
                         <span style="background:${u.status === 'Active' ? '#28a745' : '#dc3545'}; color:white; padding:4px 8px; border-radius:12px; font-size:0.75rem; font-weight:bold;">
                             ${u.status}
@@ -5560,7 +5564,7 @@ const leanLifeAppCore = {
             this.renderAdminUsers();
 
             // 5. Display pop-up notification modal at top of screen without delay
-            const coachName = coach === 'james' ? 'Coach James Peterson' : 'Coach Francess Orenuga';
+            const coachName = 'Coach Francess Orenuga';
             const successMsg = `🎉 Member Registration Confirmed!\n------------------------------------\nFull Name: ${name}\nEmail: ${email}\nAssigned Coach: ${coachName}\nGenerated Username: ${username}\nTemporary Password: ${tempPassword}\n------------------------------------\nThe new member has been added to the User List and an onboarding welcome email is being dispatched to ${email}.`;
             
             this.showCustomAlert(successMsg, "Member Account Created", "fa-user-check");
@@ -5946,8 +5950,7 @@ const leanLifeAppCore = {
         if (!tbody) return;
 
         const coaches = [
-            { name: 'Coach Francess Orenuga', key: 'sarah', hours: 'Mon - Fri, 9:00 AM - 5:00 PM EST', link: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.' },
-            { name: 'Coach James Peterson', key: 'james', hours: 'Mon - Sat, 8:00 AM - 6:00 PM EST', link: 'https://wa.me/15550198?text=Hello%20Coach%20James,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.' }
+            { name: 'Coach Francess Orenuga', key: 'sarah', hours: 'Mon - Fri, 9:00 AM - 5:00 PM EST', link: 'https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20I%20am%20a%20member%20of%20LeanLife%20and%20would%20love%20to%20discuss%20my%20wellness%20plan.' }
         ];
 
         let html = '';
