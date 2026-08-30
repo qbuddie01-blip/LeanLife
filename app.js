@@ -1865,35 +1865,46 @@ const leanLifeAppCore = {
                 const legacyTrimmedHash = await this.hashPasswordLegacy(trimmedPassword);
                 
                 const checkUserPasswordMatch = async (u) => {
-                    if (!u || !u.password) return false;
+                    if (!u || (!u.password && !u.tempPasswordRaw)) return false;
                     
                     let isMatch = false;
-                    if (u.password.startsWith('pbkdf2$')) {
+                    if (u.password && u.password.startsWith('pbkdf2$')) {
                         isMatch = (await this.verifyPasswordPBKDF2(rawPassword, u.password)) ||
-                                  (await this.verifyPasswordPBKDF2(trimmedPassword, u.password));
-                    } else {
+                                  (await this.verifyPasswordPBKDF2(trimmedPassword, u.password)) ||
+                                  (await this.verifyPasswordPBKDF2(trimmedPassword.toUpperCase(), u.password)) ||
+                                  (await this.verifyPasswordPBKDF2(trimmedPassword.toLowerCase(), u.password));
+                        
+                        // Also test 'LL-' prefix if 6 digits entered
+                        if (!isMatch && /^\d{6}$/.test(trimmedPassword)) {
+                            isMatch = await this.verifyPasswordPBKDF2('LL-' + trimmedPassword, u.password);
+                        }
+                    } else if (u.password) {
                         isMatch = (
                             u.password === legacyRawHash ||
                             u.password === legacyTrimmedHash ||
                             u.password === rawPassword ||
-                            u.password === trimmedPassword
+                            u.password === trimmedPassword ||
+                            u.password.toLowerCase() === trimmedPassword.toLowerCase()
                         );
                     }
 
                     // Check direct match against tempPasswordRaw
                     if (!isMatch && u.tempPasswordRaw) {
                         const cleanTemp = u.tempPasswordRaw.trim();
+                        const cleanInput = trimmedPassword;
                         if (
                             cleanTemp === rawPassword ||
-                            cleanTemp === trimmedPassword ||
-                            cleanTemp.toLowerCase() === trimmedPassword.toLowerCase()
+                            cleanTemp === cleanInput ||
+                            cleanTemp.toLowerCase() === cleanInput.toLowerCase() ||
+                            cleanTemp.toUpperCase() === cleanInput.toUpperCase() ||
+                            cleanTemp.replace(/^ll-?/i, '') === cleanInput.replace(/^ll-?/i, '')
                         ) {
                             isMatch = true;
                         }
                     }
 
                     // Transparently upgrade legacy hashes to PBKDF2 upon successful match
-                    if (isMatch && !u.password.startsWith('pbkdf2$')) {
+                    if (isMatch && u.password && !u.password.startsWith('pbkdf2$')) {
                         try {
                             u.password = await this.hashPasswordPBKDF2(rawPassword);
                             u.updatedAt = new Date().toISOString();
