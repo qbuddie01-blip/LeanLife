@@ -1833,7 +1833,7 @@ const leanLifeAppCore = {
                 });
                 await this.saveDatabase();
 
-                this.sendRealEmail(newUser.name, newUser.email, 'Welcome to LeanLife Wellness Community!', null, 'welcome')
+                this.sendRealEmail(newUser.name, newUser.email, 'Welcome to LeanLife Wellness Community!', password, 'welcome')
                     .then(result => {
                         const rec = this.db.emails.find(e => e.id === welcomeOutboxId);
                         if (rec) {
@@ -5707,8 +5707,11 @@ const leanLifeAppCore = {
                 temp_password: tempPassword || '',
                 tempPassword: tempPassword || '',
                 temp_pass: tempPassword || '',
+                temporary_password: tempPassword || '',
                 user_pass: tempPassword || '',
+                user_password: tempPassword || '',
                 password: tempPassword || '',
+                pass: tempPassword || '',
                 code: tempPassword || '',
                 pin: tempPassword || '',
                 
