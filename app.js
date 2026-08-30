@@ -3,15 +3,15 @@ const LeanLifeCacheManager = {
     DB_NAME: 'LeanLifeCache_v2',
     DB_VERSION: 1,
     CACHE_VERSION: 'v2_selective',
-    MAX_CACHE_AGE_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
+    MAX_CACHE_AGE_MS: 30 * 24 * 60 * 60 * 1000, // 30 days
 
     // Store limits
     LIMITS: {
-        userProfile: 1,
-        dashboardState: 1,
-        wellnessLogs: 100,
-        aiReports: 20,
-        communityPosts: 50
+        userProfile: 10,
+        dashboardState: 10,
+        wellnessLogs: 5000,
+        aiReports: 500,
+        communityPosts: 200
     },
 
     // Metrics for Diagnostics
@@ -107,9 +107,6 @@ const LeanLifeCacheManager = {
         } catch (e) {
             console.warn("[CacheManager] DB deletion notice:", e);
         }
-        try {
-            localStorage.removeItem('leanlife_db');
-        } catch(e) {}
     },
 
     async getCache() {
@@ -125,16 +122,15 @@ const LeanLifeCacheManager = {
             });
 
             if (cachedData) {
-                const isVersionValid = cachedData.version === this.CACHE_VERSION;
                 const isAgeValid = (Date.now() - (cachedData.timestamp || 0)) < this.MAX_CACHE_AGE_MS;
 
-                if (isVersionValid && isAgeValid) {
+                if (isAgeValid) {
                     this.metrics.cacheHits++;
                     this.log(`Cache HIT (${(performance.now() - startTime).toFixed(2)}ms)`);
                     return cachedData;
                 } else {
                     this.metrics.cacheMisses++;
-                    this.log("Cache EXPIRED or schema version changed. Purging stale cache...");
+                    this.log("Cache EXPIRED. Purging stale cache...");
                     await this.clearCache();
                     return null;
                 }
@@ -151,32 +147,26 @@ const LeanLifeCacheManager = {
     },
 
     async setCache(appState, currentUser) {
-        const currentUserEmail = currentUser ? (currentUser.email || '').toLowerCase() : null;
-        
-        // Enforce hard bounds per store
-        const boundedLogs = currentUserEmail 
-            ? (appState.wellnessLogs || [])
-                .filter(l => (l.user_email || l.email || '').toLowerCase() === currentUserEmail)
-                .slice(-this.LIMITS.wellnessLogs)
-            : [];
-            
-        const boundedReports = currentUserEmail 
-            ? (appState.aiReports || [])
-                .filter(r => (r.user_email || r.email || '').toLowerCase() === currentUserEmail)
-                .slice(-this.LIMITS.aiReports)
-            : [];
-            
+        // Enforce hard bounds per store while preserving all member and coach data
+        const boundedLogs = (appState.wellnessLogs || []).slice(0, this.LIMITS.wellnessLogs);
+        const boundedReports = (appState.aiReports || []).slice(0, this.LIMITS.aiReports);
         const boundedPosts = (appState.posts || []).slice(-this.LIMITS.communityPosts);
-        const boundedEvents = (appState.events || []).slice(-10);
+        const boundedEvents = (appState.events || []).slice(-20);
+        const boundedAppointments = (appState.appointments || []).slice(-100);
+        const boundedUsers = (appState.users || []);
 
         const cacheRecord = {
             version: this.CACHE_VERSION,
             timestamp: Date.now(),
             currentUserProfile: currentUser || null,
-            userWellnessLogs: boundedLogs,
-            userAiReports: boundedReports,
+            users: boundedUsers,
+            wellnessLogs: boundedLogs,
+            userWellnessLogs: boundedLogs, // backwards compatibility
+            aiReports: boundedReports,
+            userAiReports: boundedReports, // backwards compatibility
             recentPosts: boundedPosts,
             recentEvents: boundedEvents,
+            appointments: boundedAppointments,
             systemSettings: appState.systemSettings || {}
         };
 
@@ -210,11 +200,9 @@ const LeanLifeCacheManager = {
 
     async purgeUserSessionOnLogout() {
         this.log("Purging all cached user data on logout...");
-        await this.clearCache();
         try {
             sessionStorage.removeItem('leanlife_session');
             localStorage.removeItem('leanlife_session');
-            localStorage.removeItem('leanlife_db');
         } catch (e) {
             console.warn("[CacheManager] Storage purge warning on logout:", e);
         }
@@ -803,16 +791,37 @@ const leanLifeAppCore = {
 
     // Save selective cache through LeanLifeCacheManager and sync full state to Supabase Cloud
     async saveDatabase(background = false) {
-        // 1. Ensure legacy leanlife_db key is NEVER stored in localStorage and purge if present
+        // 1. Immediately persist full application state to IndexedDB Cache
         try {
-            if (localStorage.getItem('leanlife_db')) {
-                localStorage.removeItem('leanlife_db');
-            }
-        } catch (e) {
-            console.warn("[App] Notice: LocalStorage access restricted or unavailable:", e);
+            await LeanLifeCacheManager.setCache(this.db, this.currentUser);
+        } catch (cacheErr) {
+            console.warn("[App] IndexedDB Cache save notice:", cacheErr);
         }
 
-        // Supabase Cloud Sync with Safe Merging (Prevents overwriting submissions from other devices)
+        // 2. Resilient fallback backup in localStorage (clean JSON)
+        try {
+            const cleanLogs = (this.db.wellnessLogs || []).map(l => {
+                if (l.photoUrl && l.photoUrl.length > 500) {
+                    return { ...l, photoUrl: '' };
+                }
+                return l;
+            });
+            const backupState = {
+                users: this.db.users,
+                wellnessLogs: cleanLogs,
+                aiReports: this.db.aiReports,
+                posts: this.db.posts,
+                appointments: this.db.appointments,
+                events: this.db.events,
+                systemSettings: this.db.systemSettings,
+                updatedAt: new Date().toISOString()
+            };
+            localStorage.setItem('leanlife_db_local_backup', JSON.stringify(backupState));
+        } catch (lsErr) {
+            console.warn("[App] LocalStorage backup notice:", lsErr);
+        }
+
+        // 3. Supabase Cloud Sync with Safe Merging (Prevents overwriting submissions from other devices)
         if (this.supabase) {
             const syncPromise = (async () => {
                 const syncStart = performance.now();
@@ -872,34 +881,53 @@ const leanLifeAppCore = {
 
     // Load selective cache from LeanLifeCacheManager and sync with Supabase Cloud (Stale-While-Revalidate)
     async loadDatabase() {
-        // Purge legacy oversized leanlife_db key from localStorage if present
-        try {
-            if (localStorage.getItem('leanlife_db')) {
-                console.log("Purging legacy oversized leanlife_db from localStorage...");
-                localStorage.removeItem('leanlife_db');
+        // 1. Stale-While-Revalidate: Step A - Immediately load lightweight cache from IndexedDB
+        let cachedData = await LeanLifeCacheManager.getCache();
+
+        // 2. Fallback to localStorage backup if IndexedDB cache is missing or has no logs/users
+        if (!cachedData || !cachedData.wellnessLogs || cachedData.wellnessLogs.length === 0) {
+            try {
+                const rawLs = localStorage.getItem('leanlife_db_local_backup');
+                if (rawLs) {
+                    const parsedLs = JSON.parse(rawLs);
+                    if (parsedLs && (parsedLs.wellnessLogs || parsedLs.users)) {
+                        cachedData = { ...(cachedData || {}), ...parsedLs };
+                    }
+                }
+            } catch (e) {
+                console.warn("[App] LocalStorage backup read notice:", e);
             }
-        } catch (e) {
-            console.warn("Notice: LocalStorage access restricted or unavailable:", e);
         }
 
-        // 1. Stale-While-Revalidate: Step A - Immediately load lightweight cache
-        const cachedData = await LeanLifeCacheManager.getCache();
         if (cachedData) {
             console.log("Loaded valid selective cache via LeanLifeCacheManager.");
             if (cachedData.currentUserProfile && !this.currentUser) {
                 this.currentUser = cachedData.currentUserProfile;
             }
-            if (cachedData.userWellnessLogs) {
+            if (cachedData.users && cachedData.users.length > 0) {
+                this.db.users = cachedData.users;
+            }
+            if (cachedData.wellnessLogs && cachedData.wellnessLogs.length > 0) {
+                this.db.wellnessLogs = cachedData.wellnessLogs;
+            } else if (cachedData.userWellnessLogs && cachedData.userWellnessLogs.length > 0) {
                 this.db.wellnessLogs = cachedData.userWellnessLogs;
             }
-            if (cachedData.userAiReports) {
+            if (cachedData.aiReports && cachedData.aiReports.length > 0) {
+                this.db.aiReports = cachedData.aiReports;
+            } else if (cachedData.userAiReports && cachedData.userAiReports.length > 0) {
                 this.db.aiReports = cachedData.userAiReports;
             }
-            if (cachedData.recentPosts) {
-                this.db.posts = cachedData.recentPosts;
+            if (cachedData.recentPosts || cachedData.posts) {
+                this.db.posts = cachedData.recentPosts || cachedData.posts;
             }
-            if (cachedData.recentEvents) {
-                this.db.events = cachedData.recentEvents;
+            if (cachedData.recentEvents || cachedData.events) {
+                this.db.events = cachedData.recentEvents || cachedData.events;
+            }
+            if (cachedData.appointments) {
+                this.db.appointments = cachedData.appointments;
+            }
+            if (cachedData.systemSettings) {
+                this.db.systemSettings = cachedData.systemSettings;
             }
         }
 
@@ -1420,9 +1448,13 @@ const leanLifeAppCore = {
         // Show member links
         document.querySelectorAll('.logged-in-only').forEach(el => el.style.display = 'block');
 
-        // Show admin-only panel link if super admin
-        if (this.currentUser.role === 'admin') {
+        // Show admin/coach panel link
+        if (this.currentUser.role === 'admin' || this.currentUser.role === 'coach') {
             document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+            const navAdmin = document.getElementById('nav-admin');
+            if (navAdmin) {
+                navAdmin.textContent = this.currentUser.role === 'coach' ? 'Coach Portal' : 'Admin Panel';
+            }
         } else {
             document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
         }
@@ -1990,7 +2022,7 @@ const leanLifeAppCore = {
                     console.warn("Storage notice during session save:", e);
                 }
                 this.updateUIAfterLogin();
-                if (user.role === 'admin') {
+                if (user.role === 'admin' || user.role === 'coach') {
                     this.navigateTo('admin');
                 } else {
                     this.navigateTo('dashboard');
@@ -4309,8 +4341,16 @@ const leanLifeAppCore = {
         alert("Your password has been changed successfully!");
     },
 
-    // ==================== SUPER ADMIN CONTROL PANEL ====================
+    // ==================== SUPER ADMIN / COACH CONTROL PANEL ====================
     renderAdminPanel() {
+        const titleEl = document.querySelector('#view-admin h2');
+        if (titleEl) {
+            if (this.currentUser && this.currentUser.role === 'coach') {
+                titleEl.textContent = 'Coach Portal & Client Repository';
+            } else {
+                titleEl.textContent = 'Super Admin Console';
+            }
+        }
         this.switchAdminTab(this.activeAdminTab);
     },
 
@@ -4913,36 +4953,43 @@ const leanLifeAppCore = {
         const tbody = document.getElementById('admin-logs-cms-tbody');
         if (!tbody) return;
 
-        const query = (document.getElementById('admin-logs-search')?.value || '').toLowerCase();
+        const query = (document.getElementById('admin-logs-search')?.value || '').toLowerCase().trim();
+
+        if (!this.db.wellnessLogs || this.db.wellnessLogs.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 2rem; color: #888;">No wellness logs found in repository.</td></tr>`;
+            return;
+        }
 
         let html = '';
         this.db.wellnessLogs.forEach(r => {
-            if (query && !r.userEmail.toLowerCase().includes(query) && !(r.mood || '').toLowerCase().includes(query)) return;
+            const userEmail = (r.userEmail || r.user_email || r.email || '').toLowerCase();
+            const mood = (r.mood || 'happy').toLowerCase();
+            const exerciseType = (r.exercise?.type || 'None').toLowerCase();
+
+            if (query && !userEmail.includes(query) && !mood.includes(query) && !exerciseType.includes(query)) return;
 
             const sleepDuration = (r.sleep && typeof r.sleep === 'object' ? r.sleep.duration : r.sleep) || '8.0';
             const sleepQuality = (r.sleep && typeof r.sleep === 'object' && r.sleep.quality) ? r.sleep.quality : 'Restful';
             const waterGlasses = r.waterCount || 8;
             const steps = r.steps || 0;
-            const mood = r.mood || 'happy';
-            const exerciseType = r.exercise?.type || 'None';
             const isExercise = r.exerciseCompleted === 'yes' || r.exercise?.completed === 'yes';
 
             html += `
                 <tr>
-                    <td>${new Date(r.timestamp).toLocaleDateString()}</td>
-                    <td style="font-weight:600;">${r.userEmail}</td>
+                    <td>${new Date(r.timestamp).toLocaleDateString()} ${new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                    <td style="font-weight:600; color: var(--clr-primary-green);">${r.userEmail || r.user_email || 'Member'}</td>
                     <td>${sleepDuration} hrs (${sleepQuality})</td>
                     <td>${waterGlasses * 8} oz (${waterGlasses} gl)</td>
                     <td>${steps.toLocaleString()}</td>
-                    <td><span style="text-transform: capitalize;">${mood}</span></td>
-                    <td>${isExercise ? exerciseType : 'None'}</td>
+                    <td><span style="text-transform: capitalize;">${r.mood || 'happy'}</span></td>
+                    <td>${isExercise ? (r.exercise?.type || 'General') : 'None'}</td>
                     <td>
                         <button class="btn btn-secondary" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="app.openAdminLogDetails('${r.id}')"><i class="fa-solid fa-eye"></i> View</button>
                     </td>
                 </tr>
             `;
         });
-        tbody.innerHTML = html;
+        tbody.innerHTML = html || `<tr><td colspan="8" style="text-align:center; padding: 2rem; color: #888;">No logs matching "${query}".</td></tr>`;
     },
 
     openAdminLogDetails(logId) {
