@@ -3720,6 +3720,16 @@ const leanLifeAppCore = {
         // Generate PDF using html2pdf if available, else open print view
         if (window.html2pdf) {
             const container = document.createElement('div');
+            container.id = 'pdf-render-report-temp';
+            container.style.position = 'fixed';
+            container.style.top = '0';
+            container.style.left = '0';
+            container.style.width = '1050px';
+            container.style.backgroundColor = '#ffffff';
+            container.style.color = '#1a202c';
+            container.style.zIndex = '-9999';
+            container.style.opacity = '1';
+            container.style.pointerEvents = 'none';
             container.innerHTML = pdfHtml;
             document.body.appendChild(container);
 
@@ -3727,12 +3737,20 @@ const leanLifeAppCore = {
                 margin: [10, 10, 10, 10],
                 filename: `LeanLife_Wellness_Report_${memberName.replace(/\s+/g, '_')}_${report.id || Date.now()}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true,
+                    scrollY: 0,
+                    scrollX: 0,
+                    windowWidth: 1050,
+                    backgroundColor: '#ffffff'
+                },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+                pagebreak: { mode: ['css', 'legacy'] }
             };
 
-            window.html2pdf().set(opt).from(container.querySelector('#pdf-report-content')).save()
+            const targetElement = container.querySelector('#pdf-report-content') || container;
+            window.html2pdf().set(opt).from(targetElement).save()
                 .then(() => {
                     container.remove();
                 })
@@ -3788,16 +3806,16 @@ const leanLifeAppCore = {
             const photoCount = (l.photos && l.photos.length) || (l.photoUrl ? 1 : 0);
 
             logsHtmlRows += `
-                <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-                    <td style="padding:8px; border:1px solid #e2e8f0;">${l.timestamp ? new Date(l.timestamp).toLocaleDateString() : (l.date || '--')}</td>
-                    <td style="padding:8px; border:1px solid #e2e8f0; font-weight:600;">${l.userEmail || l.user_email || '--'}</td>
-                    <td style="padding:8px; border:1px solid #e2e8f0;">${sleepDur}h (${sleepQual})</td>
-                    <td style="padding:8px; border:1px solid #e2e8f0;">${l.waterCount || 0} drops (${((l.waterCount || 0) * 8.45).toFixed(0)} oz)</td>
-                    <td style="padding:8px; border:1px solid #e2e8f0;">${(l.steps || 0).toLocaleString()}</td>
-                    <td style="padding:8px; border:1px solid #e2e8f0; text-transform:capitalize;">${l.mood || 'Neutral'}</td>
-                    <td style="padding:8px; border:1px solid #e2e8f0;">${exType} (${exDur}m)</td>
-                    <td style="padding:8px; border:1px solid #e2e8f0;">${met.bloodPressure || '--'} | ${met.bloodSugar ? met.bloodSugar + ' mg' : '--'}</td>
-                    <td style="padding:8px; border:1px solid #e2e8f0;">${photoCount > 0 ? `Yes (${photoCount})` : 'None'}</td>
+                <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; page-break-inside: avoid; -webkit-column-break-inside: avoid;">
+                    <td style="padding:8px; border:1px solid #e2e8f0; color:#1a202c;">${l.timestamp ? new Date(l.timestamp).toLocaleDateString() : (l.date || '--')}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; font-weight:600; color:#1a202c;">${l.userEmail || l.user_email || '--'}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; color:#1a202c;">${sleepDur}h (${sleepQual})</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; color:#1a202c;">${l.waterCount || 0} drops (${((l.waterCount || 0) * 8.45).toFixed(0)} oz)</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; color:#1a202c;">${(l.steps || 0).toLocaleString()}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; text-transform:capitalize; color:#1a202c;">${l.mood || 'Neutral'}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; color:#1a202c;">${exType} (${exDur}m)</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; color:#1a202c;">${met.bloodPressure || '--'} | ${met.bloodSugar ? met.bloodSugar + ' mg' : '--'}</td>
+                    <td style="padding:8px; border:1px solid #e2e8f0; color:#1a202c;">${photoCount > 0 ? `Yes (${photoCount})` : 'None'}</td>
                 </tr>
             `;
         });
@@ -3809,12 +3827,13 @@ const leanLifeAppCore = {
     <title>LeanLife Wellness Logs Export</title>
     <style>
         @media print {
-            body { margin: 0; padding: 0; }
+            body { margin: 0; padding: 0; background: #ffffff !important; color: #1a202c !important; }
             .no-print { display: none !important; }
         }
         body {
             font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
             color: #1a202c;
+            background: #ffffff;
             padding: 20px;
             font-size: 11px;
         }
@@ -3830,41 +3849,45 @@ const leanLifeAppCore = {
             width: 100%;
             border-collapse: collapse;
             font-size: 10.5px;
+            background: #ffffff;
+            color: #1a202c;
         }
         .table th {
-            background: #12826d;
-            color: #ffffff;
+            background: #12826d !important;
+            color: #ffffff !important;
             padding: 8px;
             text-align: left;
             border: 1px solid #12826d;
+            font-weight: bold;
         }
         .table td {
             padding: 7px 8px;
             border: 1px solid #e2e8f0;
+            color: #1a202c;
         }
     </style>
 </head>
-<body>
-    <div id="pdf-logs-content">
-        <div class="header">
+<body style="background:#ffffff; color:#1a202c;">
+    <div id="pdf-logs-content" style="background:#ffffff; color:#1a202c; padding:20px; font-family:'Segoe UI', -apple-system, sans-serif;">
+        <div class="header" style="border-bottom:2px solid #12826d; padding-bottom:12px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
             <div>
                 <h2 style="margin:0; color:#12826d; font-size:18px;">🌿 LeanLife Wellness Logs Submissions</h2>
                 <div style="font-size:11px; color:#666;">Generated on ${new Date().toLocaleString()} • Total Records: ${logsToExport.length}</div>
             </div>
             <div style="font-weight:bold; color:#12826d;">ADMIN AUDIT EXPORT</div>
         </div>
-        <table class="table">
+        <table class="table" style="width:100%; border-collapse:collapse; font-size:10.5px; background:#ffffff; color:#1a202c;">
             <thead>
                 <tr>
-                    <th>Date</th>
-                    <th>Member Email</th>
-                    <th>Sleep</th>
-                    <th>Hydration</th>
-                    <th>Steps</th>
-                    <th>Mood</th>
-                    <th>Exercise</th>
-                    <th>Vitals (BP | Sugar)</th>
-                    <th>Photos</th>
+                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Date</th>
+                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Member Email</th>
+                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Sleep</th>
+                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Hydration</th>
+                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Steps</th>
+                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Mood</th>
+                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Exercise</th>
+                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Vitals (BP | Sugar)</th>
+                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Photos</th>
                 </tr>
             </thead>
             <tbody>
@@ -3877,6 +3900,16 @@ const leanLifeAppCore = {
 
         if (window.html2pdf) {
             const container = document.createElement('div');
+            container.id = 'pdf-render-logs-temp';
+            container.style.position = 'fixed';
+            container.style.top = '0';
+            container.style.left = '0';
+            container.style.width = '1050px';
+            container.style.backgroundColor = '#ffffff';
+            container.style.color = '#1a202c';
+            container.style.zIndex = '-9999';
+            container.style.opacity = '1';
+            container.style.pointerEvents = 'none';
             container.innerHTML = pdfHtml;
             document.body.appendChild(container);
 
@@ -3884,12 +3917,20 @@ const leanLifeAppCore = {
                 margin: [8, 8, 8, 8],
                 filename: `LeanLife_Wellness_Logs_${logId ? logId : 'Export'}_${Date.now()}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true,
+                    scrollY: 0,
+                    scrollX: 0,
+                    windowWidth: 1050,
+                    backgroundColor: '#ffffff'
+                },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+                pagebreak: { mode: ['css', 'legacy'] }
             };
 
-            window.html2pdf().set(opt).from(container.querySelector('#pdf-logs-content')).save()
+            const targetElement = container.querySelector('#pdf-logs-content') || container;
+            window.html2pdf().set(opt).from(targetElement).save()
                 .then(() => container.remove())
                 .catch(err => {
                     container.remove();
@@ -4414,6 +4455,16 @@ const leanLifeAppCore = {
 
         if (window.html2pdf) {
             const container = document.createElement('div');
+            container.id = 'pdf-render-monthly-temp';
+            container.style.position = 'fixed';
+            container.style.top = '0';
+            container.style.left = '0';
+            container.style.width = '1050px';
+            container.style.backgroundColor = '#ffffff';
+            container.style.color = '#1a202c';
+            container.style.zIndex = '-9999';
+            container.style.opacity = '1';
+            container.style.pointerEvents = 'none';
             container.innerHTML = pdfHtml;
             document.body.appendChild(container);
 
@@ -4421,12 +4472,20 @@ const leanLifeAppCore = {
                 margin: [8, 8, 8, 8],
                 filename: `LeanLife_Monthly_Report_${memberName.replace(/\s+/g, '_')}_${data.monthCycle}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true,
+                    scrollY: 0,
+                    scrollX: 0,
+                    windowWidth: 1050,
+                    backgroundColor: '#ffffff'
+                },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+                pagebreak: { mode: ['css', 'legacy'] }
             };
 
-            window.html2pdf().set(opt).from(container.querySelector('#pdf-monthly-report-content')).save()
+            const targetElement = container.querySelector('#pdf-monthly-report-content') || container;
+            window.html2pdf().set(opt).from(targetElement).save()
                 .then(() => container.remove())
                 .catch(err => {
                     console.warn("html2pdf notice, fallback:", err);
@@ -4438,6 +4497,51 @@ const leanLifeAppCore = {
         }
     },
 
+    // Canonical Coach Resolution Helper
+    getAssignedCoach(user = null) {
+        const u = user || this.currentUser;
+        return {
+            key: 'sarah',
+            name: 'Coach Francess Orenuga',
+            shortName: 'Coach Frannie',
+            email: 'francessronke21@gmail.com',
+            phone: '17575130205',
+            formattedPhone: '+1 (757) 513-0205',
+            spec: 'Lifestyle Medicine & Metabolic Restoration Coach',
+            avatar: 'assets/coach_francess.png'
+        };
+    },
+
+    // Canonical Coach WhatsApp URL Generator
+    getCoachWhatsAppUrl(coachOrUser = null, monthlyReportContext = null) {
+        let coach = null;
+        if (coachOrUser && coachOrUser.phone) {
+            coach = coachOrUser;
+        } else {
+            coach = this.getAssignedCoach(coachOrUser);
+        }
+        const cleanPhone = String(coach.phone || '17575130205').replace(/[^\d]/g, '');
+        
+        let messageText = '';
+        if (typeof monthlyReportContext === 'string' && monthlyReportContext.trim() !== '') {
+            messageText = monthlyReportContext.trim();
+        } else if (monthlyReportContext && typeof monthlyReportContext === 'object') {
+            const data = monthlyReportContext;
+            const coachGreeting = coach.shortName || coach.name.split(' ')[0] || 'Coach';
+            messageText = `Hello ${coachGreeting}! I have completed my Monthly Wellness Report for ${data.monthName || 'this month'} on LeanLife.\n\nMy Monthly Summary:\n• Consistency: ${data.daysLoggedCount || 0}/${data.daysInMonth || 30} Days Logged (${data.consistencyPct || 0}%)\n• Overall Score: ${data.overallScore || 0}/100 (Grade: ${data.grade || 'A'})\n• Average Sleep: ${data.avgSleep || 0} hrs / night\n• Total Steps: ${(data.totalSteps || 0).toLocaleString()} steps\n• Weight Trend: ${data.endWeight || '--'} lbs (${data.weightDelta || '0'} lbs)\n\nI would love to review my progress with you and discuss adjustments for next month!`;
+        } else {
+            const coachGreeting = coach.shortName || coach.name.split(' ')[0] || 'Coach';
+            messageText = `Hello ${coachGreeting}, I am a member of LeanLife and would love to discuss my wellness plan.`;
+        }
+
+        const encodedText = encodeURIComponent(messageText);
+        return `https://wa.me/${cleanPhone}?text=${encodedText}`;
+    },
+
+    openMonthlyCoachReview() {
+        this.openCoachMonthlyReviewModal();
+    },
+
     openCoachMonthlyReviewModal() {
         if (!this.currentUser) {
             this.navigateTo('login');
@@ -4445,12 +4549,7 @@ const leanLifeAppCore = {
         }
 
         const data = this.calculateMonthlyAggregateData(this.currentUser.email, this.selectedMonthlyReportCycle);
-        const coach = {
-            name: 'Coach Francess Orenuga',
-            phone: '17575130205',
-            spec: 'Lifestyle Medicine & Metabolic Restoration Coach',
-            avatar: 'assets/coach_francess.png'
-        };
+        const coach = this.getAssignedCoach(this.currentUser);
 
         const nameEl = document.getElementById('modal-coach-name');
         if (nameEl) nameEl.textContent = coach.name;
@@ -4469,7 +4568,8 @@ const leanLifeAppCore = {
 
         const msgBox = document.getElementById('modal-coach-user-msg');
         if (msgBox) {
-            msgBox.value = `Hello ${coach.name.split(' ')[0]}! I have completed my Monthly Wellness Report for ${data.monthName} on LeanLife.\n\nMy Monthly Summary:\n• Consistency: ${data.daysLoggedCount}/${data.daysInMonth} Days Logged (${data.consistencyPct}%)\n• Overall Score: ${data.overallScore}/100 (Grade: ${data.grade})\n• Average Sleep: ${data.avgSleep} hrs / night\n• Total Steps: ${data.totalSteps.toLocaleString()} steps\n• Weight Trend: ${data.endWeight} lbs (${data.weightDelta} lbs)\n\nI would love to review my progress with you and discuss adjustments for next month!`;
+            const coachGreeting = coach.shortName || coach.name.split(' ')[0] || 'Coach';
+            msgBox.value = `Hello ${coachGreeting}! I have completed my Monthly Wellness Report for ${data.monthName} on LeanLife.\n\nMy Monthly Summary:\n• Consistency: ${data.daysLoggedCount}/${data.daysInMonth} Days Logged (${data.consistencyPct}%)\n• Overall Score: ${data.overallScore}/100 (Grade: ${data.grade})\n• Average Sleep: ${data.avgSleep} hrs / night\n• Total Steps: ${data.totalSteps.toLocaleString()} steps\n• Weight Trend: ${data.endWeight} lbs (${data.weightDelta} lbs)\n\nI would love to review my progress with you and discuss adjustments for next month!`;
         }
 
         const modal = document.getElementById('monthly-coach-review-modal');
@@ -4481,34 +4581,30 @@ const leanLifeAppCore = {
 
         const userMsg = document.getElementById('modal-coach-user-msg')?.value.trim() || '';
         const data = this.calculateMonthlyAggregateData(this.currentUser.email, this.selectedMonthlyReportCycle);
-        const coachPhone = '17575130205';
-        const coachName = 'Coach Francess Orenuga';
-        const coachEmail = 'francessronke21@gmail.com';
+        const coach = this.getAssignedCoach(this.currentUser);
 
         // 1. Download PDF report for user
         this.downloadMonthlyReportPDF(this.selectedMonthlyReportCycle);
 
         // 2. Dispatch Email notification to Coach in background
         const emailSubject = `Monthly Report Review Request from ${this.currentUser.name} (${data.monthName})`;
-        this.sendRealEmail(coachName, coachEmail, emailSubject, '', 'booking', {
+        this.sendRealEmail(coach.name, coach.email, emailSubject, '', 'booking', {
             date: data.monthName,
             time: 'Monthly Review',
-            coach: coachName,
+            coach: coach.name,
             mode: 'WhatsApp Review',
             notes: userMsg
         }).catch(err => console.warn("Notice: Coach email notification notice:", err));
 
         // 3. Log Audit trail
-        this.logAudit(this.currentUser.name, 'Monthly Report Coach Review', `Requested review with ${coachName} for ${data.monthName} on WhatsApp`);
+        this.logAudit(this.currentUser.name, 'Monthly Report Coach Review', `Requested review with ${coach.name} for ${data.monthName} on WhatsApp`);
 
         // 4. Hide Modal
         const modal = document.getElementById('monthly-coach-review-modal');
         if (modal) modal.style.display = 'none';
 
-        // 5. Construct WhatsApp URL & Redirect
-        const whatsappText = encodeURIComponent(userMsg);
-        const whatsappUrl = `https://wa.me/${coachPhone}?text=${whatsappText}`;
-
+        // 5. Construct WhatsApp URL via canonical generator & Redirect
+        const whatsappUrl = this.getCoachWhatsAppUrl(coach, userMsg);
         window.open(whatsappUrl, '_blank');
     },
 

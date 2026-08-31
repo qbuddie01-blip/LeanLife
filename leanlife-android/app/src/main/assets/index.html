@@ -2135,7 +2135,7 @@
                         </select>
                     </div>
                     <button class="btn btn-outline" style="padding: 0.6rem 1rem;" onclick="app.downloadMonthlyReportPDF()"><i class="fa-solid fa-file-pdf"></i> Download PDF</button>
-                    <button class="btn btn-primary" style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border: none; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.35); padding: 0.6rem 1.2rem;" onclick="app.openCoachMonthlyReviewModal()">
+                    <button class="btn btn-primary" style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border: none; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.35); padding: 0.6rem 1.2rem;" onclick="app.openMonthlyCoachReview()">
                         <i class="fa-brands fa-whatsapp" style="font-size: 1.1rem;"></i> Want review monthly report with coach?
                     </button>
                 </div>
@@ -2300,7 +2300,7 @@
                             </div>
                         </div>
                         <p style="font-size: 0.88rem; color: #444; margin-bottom: 1rem;">Ready to discuss your monthly achievements and personalize next month's targets? Review this report directly with your coach.</p>
-                        <button class="btn btn-primary" style="width: 100%; justify-content: center; background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border: none; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.35);" onclick="app.openCoachMonthlyReviewModal()">
+                        <button class="btn btn-primary" style="width: 100%; justify-content: center; background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border: none; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.35);" onclick="app.openMonthlyCoachReview()">
                             <i class="fa-brands fa-whatsapp"></i> Want review monthly report with coach?
                         </button>
                     </div>
@@ -2383,10 +2383,10 @@
                             3. You will be redirected immediately to your Coach's WhatsApp chat with your pre-filled inquiry.
                         </div>
 
-                        <div style="display: flex; gap: 0.8rem; justify-content: flex-end;">
+                        <div style="display: flex; gap: 0.8rem; justify-content: flex-end; align-items: center;">
                             <button type="button" class="btn btn-outline" onclick="document.getElementById('monthly-coach-review-modal').style.display = 'none'">Cancel</button>
-                            <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border: none; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.35);">
-                                <i class="fa-brands fa-whatsapp"></i> Send to Coach & Open WhatsApp
+                            <button type="submit" id="btn-monthly-coach-review" class="btn btn-primary" style="background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); border: none; font-weight: 700; letter-spacing: 0.5px; font-size: 0.95rem; padding: 0.75rem 1.5rem; box-shadow: 0 4px 14px rgba(37, 211, 102, 0.4); display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-brands fa-whatsapp" style="font-size: 1.2rem;"></i> REVIEW WITH COACH
                             </button>
                         </div>
                     </form>
