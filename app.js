@@ -1204,6 +1204,11 @@ const leanLifeAppCore = {
         
         if (cloudDb.systemSettings) {
             this.db.systemSettings = { ...this.db.systemSettings, ...cloudDb.systemSettings };
+            this.db.systemSettings.emailjsServiceId = this.db.systemSettings.emailjsServiceId || 'service_60jfsbe';
+            this.db.systemSettings.emailjsTemplateId = this.db.systemSettings.emailjsTemplateId || 'template_gyjh3gp';
+            this.db.systemSettings.emailjsWelcomeTemplateId = this.db.systemSettings.emailjsWelcomeTemplateId || 'template_gyjh3gp';
+            this.db.systemSettings.emailjsAutoreplyTemplateId = this.db.systemSettings.emailjsAutoreplyTemplateId || 'template_fzzf45u';
+            this.db.systemSettings.emailjsPublicKey = this.db.systemSettings.emailjsPublicKey || '1KO_vRCldTUVxoqtM';
         }
         
         this.db.automationFailures = cloudDb.automationFailures !== undefined ? cloudDb.automationFailures : this.db.automationFailures;
