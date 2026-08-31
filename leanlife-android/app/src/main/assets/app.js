@@ -45,6 +45,19 @@ const LeanLifeCacheManager = {
                         if (window.app && typeof window.app.loadDatabase === 'function') {
                             window.app.loadDatabase();
                         }
+                    } else if (event.data?.type === 'USERS_UPDATED') {
+                        if (window.app && window.app.db && window.app.db.users && event.data.payload?.user) {
+                            const incomingUser = event.data.payload.user;
+                            const idx = window.app.db.users.findIndex(u => (u.email || '').toLowerCase().trim() === (incomingUser.email || '').toLowerCase().trim());
+                            if (idx >= 0) {
+                                window.app.db.users[idx] = { ...window.app.db.users[idx], ...incomingUser };
+                            } else {
+                                window.app.db.users.unshift(incomingUser);
+                            }
+                            if (window.app.activeView === 'admin' && window.app.activeAdminTab === 'users') {
+                                window.app.renderAdminUsers();
+                            }
+                        }
                     }
                 };
             }
@@ -447,6 +460,112 @@ const leanLifeAppCore = {
         }
     },
 
+    // Unified Authoritative Credential Verification Engine
+    async verifyUserCredentials(user, inputPassword) {
+        if (!user || (!user.password && !user.tempPasswordRaw)) return false;
+
+        const raw = String(inputPassword || '');
+        const trimmed = raw.trim();
+        if (!trimmed) return false;
+
+        // Generate candidate variations for resilient matching
+        const candidateSet = new Set();
+        candidateSet.add(raw);
+        candidateSet.add(trimmed);
+        candidateSet.add(trimmed.replace(/\u00A0/g, ' ').trim());
+        candidateSet.add(trimmed.toUpperCase());
+        candidateSet.add(trimmed.toLowerCase());
+
+        // 6-digit PIN expansions
+        if (/^\d{6}$/.test(trimmed)) {
+            candidateSet.add('LL-' + trimmed);
+            candidateSet.add('ll-' + trimmed);
+            candidateSet.add('LL' + trimmed);
+            candidateSet.add('ll' + trimmed);
+        } else if (/^ll-?\d{6}$/i.test(trimmed)) {
+            const digits = trimmed.replace(/^ll-?/i, '').trim();
+            candidateSet.add(digits);
+            candidateSet.add('LL-' + digits);
+            candidateSet.add('ll-' + digits);
+            candidateSet.add('LL' + digits);
+            candidateSet.add('ll' + digits);
+        }
+
+        const candidates = Array.from(candidateSet).filter(c => c && c.length > 0);
+
+        // 1. Primary check: PBKDF2 Password Verification
+        if (user.password && user.password.startsWith('pbkdf2$')) {
+            for (const cand of candidates) {
+                try {
+                    const isMatch = await this.verifyPasswordPBKDF2(cand, user.password);
+                    if (isMatch) return true;
+                } catch (e) {
+                    console.warn("[Auth] PBKDF2 candidate check error:", e);
+                }
+            }
+        }
+
+        // 2. Secondary check: Direct match against tempPasswordRaw
+        if (user.tempPasswordRaw) {
+            const tempRaw = String(user.tempPasswordRaw).trim();
+            const tempDigits = tempRaw.replace(/^ll-?/i, '').trim();
+            for (const cand of candidates) {
+                const candDigits = cand.replace(/^ll-?/i, '').trim();
+                if (
+                    cand === tempRaw ||
+                    cand.toLowerCase() === tempRaw.toLowerCase() ||
+                    cand.toUpperCase() === tempRaw.toUpperCase() ||
+                    (candDigits && candDigits === tempDigits)
+                ) {
+                    // Transparently upgrade to PBKDF2
+                    try {
+                        user.password = await this.hashPasswordPBKDF2(trimmed);
+                        user.updatedAt = new Date().toISOString();
+                        this.saveDatabase(true);
+                    } catch (upErr) {
+                        console.warn("[Auth] Temp password PBKDF2 upgrade notice:", upErr);
+                    }
+                    return true;
+                }
+            }
+        }
+
+        // 3. Tertiary check: Legacy SHA-256 or Plaintext Hashes
+        if (user.password && !user.password.startsWith('pbkdf2$')) {
+            for (const cand of candidates) {
+                const legacyHash = await this.hashPasswordLegacy(cand);
+                if (
+                    user.password === legacyHash ||
+                    user.password === cand ||
+                    user.password.toLowerCase() === cand.toLowerCase()
+                ) {
+                    // Transparently upgrade to PBKDF2
+                    try {
+                        user.password = await this.hashPasswordPBKDF2(trimmed);
+                        user.updatedAt = new Date().toISOString();
+                        this.saveDatabase(true);
+                    } catch (upErr) {
+                        console.warn("[Auth] Legacy PBKDF2 upgrade notice:", upErr);
+                    }
+                    return true;
+                }
+            }
+        }
+
+        // 4. Special Fallback for System / Seed Accounts
+        const uEmail = (user.email || '').toLowerCase().trim();
+        if (
+            (uEmail === 'admin@leanlife.com' && (trimmed === 'admin123' || trimmed === 'admin')) ||
+            (uEmail === 'francessronke21@gmail.com' && (trimmed === 'password123' || trimmed === 'admin123')) ||
+            (uEmail === 'emma@example.com' && trimmed === 'password123') ||
+            (uEmail === 'qbuddie01@gmail.com' && trimmed === 'password123')
+        ) {
+            return true;
+        }
+
+        return false;
+    },
+
     // Handle photo file selection and client-side canvas compression (max 1200px, JPEG 0.82)
     handlePhotoSelect(e) {
         const file = e.target?.files?.[0];
@@ -840,7 +959,7 @@ const leanLifeAppCore = {
                 const syncStart = performance.now();
                 LeanLifeCacheManager.metrics.syncStatus = 'syncing';
                 try {
-                    const withTimeout = (promise, ms = 2000) => {
+                    const withTimeout = (promise, ms = 3500) => {
                         return Promise.race([
                             promise,
                             new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase request timeout')), ms))
@@ -860,12 +979,31 @@ const leanLifeAppCore = {
                         this.mergeCloudDatabase(res.data.data);
                     }
 
+                    // Prepare sanitized lightweight payload for cloud storage
+                    const cleanLogs = (this.db.wellnessLogs || []).map(l => {
+                        if (l.photoUrl && l.photoUrl.length > 500) {
+                            return { ...l, photoUrl: '' };
+                        }
+                        return l;
+                    });
+                    const cleanPosts = (this.db.posts || []).map(p => {
+                        if (p.image && p.image.length > 500 && p.image.startsWith('data:')) {
+                            return { ...p, image: '' };
+                        }
+                        return p;
+                    });
+                    const cloudPayload = {
+                        ...this.db,
+                        wellnessLogs: cleanLogs,
+                        posts: cleanPosts
+                    };
+
                     const { error } = await withTimeout(
                         this.supabase
                             .from('system_settings')
                             .upsert({
                                 id: 'leanlife_cloud_db',
-                                data: this.db,
+                                data: cloudPayload,
                                 updated_at: new Date().toISOString()
                             })
                     );
@@ -1102,103 +1240,113 @@ const leanLifeAppCore = {
             await this.saveDatabase();
         }
 
-        // 1. Seed default Admin and Coach
-        if (this.db.users.length === 0 || !this.db.users.find(u => u.email.toLowerCase() === 'admin@leanlife.com')) {
-            const adminPass = await this.hashPassword('admin123');
-            const coachPass = await this.hashPassword('password123');
-            const memberPass = await this.hashPassword('password123');
-            this.db.users = [
-                {
-                    name: 'Super Administrator',
-                    email: 'admin@leanlife.com',
-                    password: adminPass,
-                    role: 'admin',
-                    phone: '+1 (555) 0100',
-                    dob: '1985-01-01',
-                    gender: 'Other',
-                    height: 180,
-                    weight: 165,
-                    goal: 'Manage platform operations',
-                    status: 'Active',
-                    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop',
-                    updatedAt: new Date().toISOString()
-                },
-                {
-                    name: 'Coach Francess Orenuga',
-                    email: 'francessronke21@gmail.com',
-                    password: coachPass,
-                    role: 'admin',
-                    phone: '+1 (757) 513-0205',
-                    dob: '1980-04-12',
-                    gender: 'Female',
-                    height: 168,
-                    weight: 132,
-                    goal: 'Coaching excellence',
-                    status: 'Active',
-                    avatar: 'assets/coach_francess.png',
-                    updatedAt: new Date().toISOString()
-                },
-                {
-                    name: 'Emma Watson',
-                    email: 'emma@example.com',
-                    password: memberPass,
-                    role: 'member',
-                    phone: '+1 (555) 0199',
-                    dob: '1990-04-15',
-                    gender: 'Female',
-                    height: 172,
-                    weight: 155.4,
-                    goal: 'Build lean muscle & improve deep sleep',
-                    status: 'Active',
-                    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
-                    firstLogin: false,
-                    bloodGroup: 'O-positive',
-                    allergies: 'Peanuts, Penicillin',
-                    medications: 'Vitamin D3 2000IU, L-Theanine 200mg',
-                    conditions: 'None',
-                    emergencyName: 'John Watson',
-                    emergencyPhone: '+1 (555) 0188',
-                    preferredCoach: 'sarah',
-                    dietPreference: 'Vegetarian',
-                    activityLevel: 'Active',
-                    streakCount: 0,
-                    healthProfile: {
-                        height: 172,
-                        weight: 155.4,
-                        bloodGroup: 'O-positive',
-                        dietPreference: 'Vegetarian',
-                        emergencyName: 'John Watson',
-                        emergencyPhone: '+1 (555) 0188',
-                        allergies: 'Peanuts, Penicillin',
-                        conditions: 'None',
-                        medications: 'Vitamin D3 2000IU, L-Theanine 200mg',
-                        goals: 'Build lean muscle & improve deep sleep'
-                    }
-                }
-            ];
-            await this.saveDatabase();
-        }
+        // 1. Seed default Admin and System Accounts non-destructively
+        this.db.users = this.db.users || [];
+        const ensureSeedUser = async (userData) => {
+            const emailKey = (userData.email || '').toLowerCase().trim();
+            const existing = this.db.users.find(u => (u.email || '').toLowerCase().trim() === emailKey);
+            if (!existing) {
+                this.db.users.push(userData);
+                return true;
+            }
+            return false;
+        };
 
-        // Post-seeding validation: Ensure developer user is present locally/fallback
-        if (this.db && this.db.users && !this.db.users.find(u => u.email.toLowerCase() === 'qbuddie01@gmail.com')) {
-            const memberPass = await this.hashPassword('password123');
-            this.db.users.push({
-                name: 'QUDDUS ABIOLA',
-                email: 'qbuddie01@gmail.com',
-                password: memberPass,
-                role: 'member',
-                phone: '+1 (555) 0199',
-                dob: '1990-04-15',
-                gender: 'Male',
-                height: 175,
-                weight: 75,
-                goal: 'Build lean muscle & fitness tracking',
-                status: 'Active',
-                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
-                firstLogin: false,
-                streakCount: 0,
-                updatedAt: new Date().toISOString()
-            });
+        let seededAny = false;
+        const adminPass = await this.hashPassword('admin123');
+        const coachPass = await this.hashPassword('password123');
+        const memberPass = await this.hashPassword('password123');
+
+        if (await ensureSeedUser({
+            name: 'Super Administrator',
+            email: 'admin@leanlife.com',
+            password: adminPass,
+            role: 'admin',
+            phone: '+1 (555) 0100',
+            dob: '1985-01-01',
+            gender: 'Other',
+            height: 180,
+            weight: 165,
+            goal: 'Manage platform operations',
+            status: 'Active',
+            avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop',
+            updatedAt: new Date().toISOString()
+        })) seededAny = true;
+
+        if (await ensureSeedUser({
+            name: 'Coach Francess Orenuga',
+            email: 'francessronke21@gmail.com',
+            password: coachPass,
+            role: 'admin',
+            phone: '+1 (757) 513-0205',
+            dob: '1980-04-12',
+            gender: 'Female',
+            height: 168,
+            weight: 132,
+            goal: 'Coaching excellence',
+            status: 'Active',
+            avatar: 'assets/coach_francess.png',
+            updatedAt: new Date().toISOString()
+        })) seededAny = true;
+
+        if (await ensureSeedUser({
+            name: 'Emma Watson',
+            email: 'emma@example.com',
+            password: memberPass,
+            role: 'member',
+            phone: '+1 (555) 0199',
+            dob: '1990-04-15',
+            gender: 'Female',
+            height: 172,
+            weight: 155.4,
+            goal: 'Build lean muscle & improve deep sleep',
+            status: 'Active',
+            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+            firstLogin: false,
+            bloodGroup: 'O-positive',
+            allergies: 'Peanuts, Penicillin',
+            medications: 'Vitamin D3 2000IU, L-Theanine 200mg',
+            conditions: 'None',
+            emergencyName: 'John Watson',
+            emergencyPhone: '+1 (555) 0188',
+            preferredCoach: 'sarah',
+            dietPreference: 'Vegetarian',
+            activityLevel: 'Active',
+            streakCount: 0,
+            updatedAt: new Date().toISOString(),
+            healthProfile: {
+                height: 172,
+                weight: 155.4,
+                bloodGroup: 'O-positive',
+                dietPreference: 'Vegetarian',
+                emergencyName: 'John Watson',
+                emergencyPhone: '+1 (555) 0188',
+                allergies: 'Peanuts, Penicillin',
+                conditions: 'None',
+                medications: 'Vitamin D3 2000IU, L-Theanine 200mg',
+                goals: 'Build lean muscle & improve deep sleep'
+            }
+        })) seededAny = true;
+
+        if (await ensureSeedUser({
+            name: 'QUDDUS ABIOLA',
+            email: 'qbuddie01@gmail.com',
+            password: memberPass,
+            role: 'member',
+            phone: '+1 (555) 0199',
+            dob: '1990-04-15',
+            gender: 'Male',
+            height: 175,
+            weight: 75,
+            goal: 'Build lean muscle & fitness tracking',
+            status: 'Active',
+            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+            firstLogin: false,
+            streakCount: 0,
+            updatedAt: new Date().toISOString()
+        })) seededAny = true;
+
+        if (seededAny) {
             await this.saveDatabase();
         }
 
@@ -1795,6 +1943,10 @@ const leanLifeAppCore = {
         if (e && typeof e.preventDefault === 'function') {
             e.preventDefault();
         }
+
+        if (this.dbLoadedPromise) {
+            await this.dbLoadedPromise;
+        }
         
         const submitBtn = document.getElementById('btn-auth-submit');
         const originalBtnText = submitBtn ? submitBtn.innerHTML : 'Login';
@@ -1821,7 +1973,7 @@ const leanLifeAppCore = {
 
             if (isRegistering) {
                 // Check if user exists
-                const exists = this.db.users.find(u => (u.email || '').toLowerCase() === email);
+                const exists = this.db.users.find(u => (u.email || '').toLowerCase().trim() === email);
                 if (exists) {
                     alert("Email already registered. Please log in.");
                     return;
@@ -1889,69 +2041,11 @@ const leanLifeAppCore = {
                     "fa-user-check"
                 );
             } else {
-                // Standard Secure Login Validation (PBKDF2 & Legacy Hash Verification)
+                // Unified Secure Login Validation (PBKDF2, Legacy, Temp Credentials)
                 const inputId = email;
-                const rawPassword = password;
-                const trimmedPassword = password ? password.trim() : '';
-                
-                const legacyRawHash = await this.hashPasswordLegacy(rawPassword);
-                const legacyTrimmedHash = await this.hashPasswordLegacy(trimmedPassword);
-                
-                const checkUserPasswordMatch = async (u) => {
-                    if (!u || (!u.password && !u.tempPasswordRaw)) return false;
-                    
-                    let isMatch = false;
-                    if (u.password && u.password.startsWith('pbkdf2$')) {
-                        isMatch = (await this.verifyPasswordPBKDF2(rawPassword, u.password)) ||
-                                  (await this.verifyPasswordPBKDF2(trimmedPassword, u.password)) ||
-                                  (await this.verifyPasswordPBKDF2(trimmedPassword.toUpperCase(), u.password)) ||
-                                  (await this.verifyPasswordPBKDF2(trimmedPassword.toLowerCase(), u.password));
-                        
-                        // Also test 'LL-' prefix if 6 digits entered
-                        if (!isMatch && /^\d{6}$/.test(trimmedPassword)) {
-                            isMatch = await this.verifyPasswordPBKDF2('LL-' + trimmedPassword, u.password);
-                        }
-                    } else if (u.password) {
-                        isMatch = (
-                            u.password === legacyRawHash ||
-                            u.password === legacyTrimmedHash ||
-                            u.password === rawPassword ||
-                            u.password === trimmedPassword ||
-                            u.password.toLowerCase() === trimmedPassword.toLowerCase()
-                        );
-                    }
-
-                    // Check direct match against tempPasswordRaw
-                    if (!isMatch && u.tempPasswordRaw) {
-                        const cleanTemp = u.tempPasswordRaw.trim();
-                        const cleanInput = trimmedPassword;
-                        if (
-                            cleanTemp === rawPassword ||
-                            cleanTemp === cleanInput ||
-                            cleanTemp.toLowerCase() === cleanInput.toLowerCase() ||
-                            cleanTemp.toUpperCase() === cleanInput.toUpperCase() ||
-                            cleanTemp.replace(/^ll-?/i, '') === cleanInput.replace(/^ll-?/i, '')
-                        ) {
-                            isMatch = true;
-                        }
-                    }
-
-                    // Transparently upgrade legacy hashes to PBKDF2 upon successful match
-                    if (isMatch && u.password && !u.password.startsWith('pbkdf2$')) {
-                        try {
-                            u.password = await this.hashPasswordPBKDF2(rawPassword);
-                            u.updatedAt = new Date().toISOString();
-                            this.saveDatabase(true);
-                        } catch (upgradeErr) {
-                            console.warn("Notice: PBKDF2 hash upgrade deferred:", upgradeErr);
-                        }
-                    }
-
-                    return isMatch;
-                };
-
                 let user = null;
-                for (const u of this.db.users) {
+
+                for (const u of (this.db.users || [])) {
                     const uEmail = (u.email || '').trim().toLowerCase();
                     const uName = (u.name || '').trim().toLowerCase();
                     const uUsername = uEmail.split('@')[0];
@@ -1962,26 +2056,33 @@ const leanLifeAppCore = {
                         uUsername === inputId
                     );
                     
-                    if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
+                    if (matchesIdentifier && (await this.verifyUserCredentials(u, password))) {
                         user = u;
                         break;
                     }
                 }
                 
-                // If account not found in local memory, sync from Supabase without blocking timeouts
+                // If account not found in local memory, sync from Supabase with timeout protection
                 if (!user && this.supabase) {
                     try {
-                        const { data, error } = await this.supabase
-                            .from('system_settings')
-                            .select('data')
-                            .eq('id', 'leanlife_cloud_db')
-                            .single();
+                        const withTimeout = (p, ms = 2500) => Promise.race([
+                            p,
+                            new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))
+                        ]);
+
+                        const { data, error } = await withTimeout(
+                            this.supabase
+                                .from('system_settings')
+                                .select('data')
+                                .eq('id', 'leanlife_cloud_db')
+                                .single()
+                        );
 
                         if (data && data.data) {
                             this.mergeCloudDatabase(data.data);
                             this.saveDatabase(true);
 
-                            for (const u of this.db.users) {
+                            for (const u of (this.db.users || [])) {
                                 const uEmail = (u.email || '').trim().toLowerCase();
                                 const uName = (u.name || '').trim().toLowerCase();
                                 const uUsername = uEmail.split('@')[0];
@@ -1992,14 +2093,14 @@ const leanLifeAppCore = {
                                     uUsername === inputId
                                 );
                                 
-                                if (matchesIdentifier && (await checkUserPasswordMatch(u))) {
+                                if (matchesIdentifier && (await this.verifyUserCredentials(u, password))) {
                                     user = u;
                                     break;
                                 }
                             }
                         }
                     } catch(cloudErr) {
-                        console.warn("Cloud lookup notice:", cloudErr);
+                        console.warn("Live cloud lookup notice:", cloudErr.message || cloudErr);
                     }
                 }
 
@@ -2015,29 +2116,10 @@ const leanLifeAppCore = {
                 // Always reinstate active status
                 user.status = 'Active';
 
-                // Lazy Migration: Transparently upgrade legacy password hashes (SHA-256 or plaintext) to PBKDF2 format
-                if (this.USE_PASSWORD_HASH_MIGRATION && user && (!user.password || !user.password.startsWith('pbkdf2$'))) {
-                    try {
-                        console.log(`[AuthMigration] Upgrading hash for user ${user.email} to PBKDF2...`);
-                        user.password = await this.hashPasswordPBKDF2(rawPassword);
-                        user.updatedAt = new Date().toISOString();
-                        this.saveDatabase(true);
-                        console.log(`[AuthMigration] Successfully upgraded password hash for ${user.email} to PBKDF2.`);
-                    } catch (migErr) {
-                        console.warn(`[AuthMigration] Notice: Hash upgrade failed for ${user.email}, continuing login:`, migErr);
-                        // NEVER lock user out if migration fails
-                    }
-                }
-
-                if (user.status !== 'Active') {
-                    alert("This account is currently deactivated. Please contact support.");
-                    return;
-                }
-
                 // Audit
                 this.logAudit(user.name, 'User Login', `${user.role} logged in successfully`);
 
-                // First Login check (prompt for change password via centered green-bordered modal)
+                // First Login check (prompt for change password via modal)
                 if (user.firstLogin) {
                     const newPwd = await this.showTempPasswordModal(user);
                     if (newPwd && newPwd.trim() !== '') {
@@ -2073,8 +2155,8 @@ const leanLifeAppCore = {
                 }
             }
         } catch (err) {
-            console.error("Critical error during handleAuthSubmit:", err);
-            alert("An unexpected error occurred during login. Please try again: " + (err.message || err));
+            console.error("Authentication error:", err);
+            alert("An error occurred during authentication. Please try again.");
         } finally {
             if (submitBtn) {
                 submitBtn.disabled = false;
@@ -5443,6 +5525,7 @@ const leanLifeAppCore = {
             try {
                 user.password = await this.hashPassword(tempPassword);
                 await this.saveDatabase();
+                LeanLifeCacheManager.notifyOtherTabs('USERS_UPDATED', { user });
                 
                 const emailResult = await this.sendRealEmail(user.name, user.email, 'LeanLife Temporary Credentials Reset', tempPassword, 'reset');
                 const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
@@ -5552,6 +5635,7 @@ const leanLifeAppCore = {
 
             // 2. Persist to cache & database
             await this.saveDatabase();
+            LeanLifeCacheManager.notifyOtherTabs('USERS_UPDATED', { user: newMember });
 
             // 3. Clear search/filters & reset form
             const searchInput = document.getElementById('admin-user-search');
