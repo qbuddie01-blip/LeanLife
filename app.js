@@ -1096,11 +1096,15 @@ const leanLifeAppCore = {
         this.db.blockedDates = this.db.blockedDates || [];
         this.db.automationFailures = this.db.automationFailures !== undefined ? this.db.automationFailures : 0;
         this.db.automationRetries = this.db.automationRetries !== undefined ? this.db.automationRetries : 0;
-        this.db.systemSettings = this.db.systemSettings || {
-            primaryHue: 168,
-            accentHue: 80,
-            persona: 'encouraging'
-        };
+        this.db.systemSettings = this.db.systemSettings || {};
+        this.db.systemSettings.primaryHue = this.db.systemSettings.primaryHue || 168;
+        this.db.systemSettings.accentHue = this.db.systemSettings.accentHue || 80;
+        this.db.systemSettings.persona = this.db.systemSettings.persona || 'encouraging';
+        this.db.systemSettings.emailjsServiceId = this.db.systemSettings.emailjsServiceId || 'service_60jfsbe';
+        this.db.systemSettings.emailjsTemplateId = this.db.systemSettings.emailjsTemplateId || 'template_gyjh3gp';
+        this.db.systemSettings.emailjsWelcomeTemplateId = this.db.systemSettings.emailjsWelcomeTemplateId || 'template_gyjh3gp';
+        this.db.systemSettings.emailjsAutoreplyTemplateId = this.db.systemSettings.emailjsAutoreplyTemplateId || 'template_fzzf45u';
+        this.db.systemSettings.emailjsPublicKey = this.db.systemSettings.emailjsPublicKey || '1KO_vRCldTUVxoqtM';
 
         // Supabase Cloud Load Sync
         await this.syncCloudData();
@@ -6467,6 +6471,7 @@ const leanLifeAppCore = {
 
     handleAdminSaveEmailSettings(e) {
         e.preventDefault();
+        const config = window.SUPABASE_CONFIG || {};
         const resendApiKey = document.getElementById('settings-resend-api-key')?.value.trim() || '';
         const resendFromEmail = document.getElementById('settings-resend-from-email')?.value.trim() || '';
         const serviceId = document.getElementById('settings-emailjs-service-id')?.value.trim() || '';
@@ -6478,11 +6483,11 @@ const leanLifeAppCore = {
         this.db.systemSettings = this.db.systemSettings || {};
         this.db.systemSettings.resendApiKey = resendApiKey;
         this.db.systemSettings.resendFromEmail = resendFromEmail;
-        this.db.systemSettings.emailjsServiceId = serviceId;
-        this.db.systemSettings.emailjsTemplateId = templateId;
-        this.db.systemSettings.emailjsPublicKey = publicKey;
-        this.db.systemSettings.emailjsAutoreplyTemplateId = autoreplyTemplateId;
-        this.db.systemSettings.emailjsWelcomeTemplateId = welcomeTemplateId;
+        this.db.systemSettings.emailjsServiceId = serviceId || config.EMAILJS_SERVICE_ID || 'service_60jfsbe';
+        this.db.systemSettings.emailjsTemplateId = templateId || config.EMAILJS_TEMPLATE_ID || 'template_gyjh3gp';
+        this.db.systemSettings.emailjsPublicKey = publicKey || config.EMAILJS_PUBLIC_KEY || '1KO_vRCldTUVxoqtM';
+        this.db.systemSettings.emailjsAutoreplyTemplateId = autoreplyTemplateId || config.EMAILJS_AUTOREPLY_TEMPLATE_ID || 'template_fzzf45u';
+        this.db.systemSettings.emailjsWelcomeTemplateId = welcomeTemplateId || config.EMAILJS_WELCOME_TEMPLATE_ID || 'template_gyjh3gp';
 
         this.saveDatabase();
         this.logAudit(this.currentUser.name, 'Email settings updated', `Resend Integration: ${resendApiKey ? 'Active' : 'Unconfigured'}, EmailJS: ${serviceId ? 'Active' : 'Disabled'}`);
@@ -6493,25 +6498,39 @@ const leanLifeAppCore = {
         const config = window.SUPABASE_CONFIG || {};
 
         // 1. Primary Email Provider: EmailJS
-        const serviceId = (this.db.systemSettings && this.db.systemSettings.emailjsServiceId) || config.EMAILJS_SERVICE_ID;
-        let templateId = (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId) || config.EMAILJS_TEMPLATE_ID;
-        if (templateType === 'welcome') {
-            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) || config.EMAILJS_WELCOME_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
-        } else if (templateType === 'autoreply' || templateType === 'booking') {
-            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) || config.EMAILJS_AUTOREPLY_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
+        const serviceId = (this.db.systemSettings && this.db.systemSettings.emailjsServiceId) || config.EMAILJS_SERVICE_ID || 'service_60jfsbe';
+        const publicKey = (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey) || config.EMAILJS_PUBLIC_KEY || '1KO_vRCldTUVxoqtM';
+        
+        let templateId = '';
+        if (templateType === 'autoreply' || templateType === 'booking') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsAutoreplyTemplateId) || 
+                         config.EMAILJS_AUTOREPLY_TEMPLATE_ID || 
+                         'template_fzzf45u';
+        } else if (templateType === 'welcome') {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) || 
+                         config.EMAILJS_WELCOME_TEMPLATE_ID || 
+                         'template_gyjh3gp';
         } else if (templateType === 'reset') {
-            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsResetTemplateId) || config.EMAILJS_RESET_TEMPLATE_ID || config.EMAILJS_TEMPLATE_ID;
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsResetTemplateId) || 
+                         config.EMAILJS_RESET_TEMPLATE_ID || 
+                         (this.db.systemSettings && this.db.systemSettings.emailjsWelcomeTemplateId) ||
+                         config.EMAILJS_WELCOME_TEMPLATE_ID || 
+                         'template_gyjh3gp';
+        } else {
+            templateId = (this.db.systemSettings && this.db.systemSettings.emailjsTemplateId) || 
+                         config.EMAILJS_TEMPLATE_ID || 
+                         'template_gyjh3gp';
         }
-        const publicKey = (this.db.systemSettings && this.db.systemSettings.emailjsPublicKey) || config.EMAILJS_PUBLIC_KEY;
 
         if (serviceId && templateId && publicKey) {
-            console.log(`Sending real email (${templateType || 'general'}) to: ${recipientEmail} via EmailJS...`);
+            console.log(`Sending real email (${templateType || 'general'} -> ${templateId}) to: ${recipientEmail} via EmailJS...`);
             const templateParams = {
                 // Recipient Names
                 to_name: recipientName,
                 name: recipientName,
                 user_name: recipientName,
                 recipient_name: recipientName,
+                client_name: recipientName,
                 
                 // Recipient Emails
                 to_email: recipientEmail,
@@ -6534,24 +6553,28 @@ const leanLifeAppCore = {
                 // Subject & Body Text
                 subject: subject || 'LeanLife Notification',
                 message: subject || 'LeanLife Notification',
-                notes: subject || '',
-                details: subject || '',
+                notes: extraData.notes || subject || '',
+                details: extraData.notes || subject || '',
                 
                 // Booking & Consultation Parameters
                 booking_date: extraData.date || new Date().toLocaleDateString(),
                 booking_time: extraData.time || '10:00 AM',
-                coach_name: extraData.coach || 'Coach Francess Orenuga',
+                appointment_date: extraData.date || new Date().toLocaleDateString(),
+                appointment_time: extraData.time || '10:00 AM',
                 date: extraData.date || new Date().toLocaleDateString(),
                 time: extraData.time || '10:00 AM',
+                coach_name: extraData.coach || 'Coach Francess Orenuga',
                 coach: extraData.coach || 'Coach Francess Orenuga',
+                coachName: extraData.coach || 'Coach Francess Orenuga',
                 mode: extraData.mode || 'In-Person',
+                consultation_mode: extraData.mode || 'In-Person',
                 service: extraData.service || 'Wellness Consultation'
             };
 
             // 1A. Try Browser SDK first if loaded
             if (window.emailjs && typeof window.emailjs.send === 'function') {
                 try {
-                    console.log("Dispatching via EmailJS Browser SDK...");
+                    console.log(`Dispatching via EmailJS Browser SDK (Template: ${templateId})...`);
                     const sdkResult = await window.emailjs.send(serviceId, templateId, templateParams, publicKey);
                     if (sdkResult && (sdkResult.status === 200 || sdkResult.text === 'OK')) {
                         console.log(`Real email successfully dispatched to ${recipientEmail} via EmailJS Browser SDK!`);
