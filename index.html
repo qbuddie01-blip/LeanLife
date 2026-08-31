@@ -2450,6 +2450,63 @@
         </div>
     </div>
 
+    <!-- ADMIN MEMBER CREDENTIALS ACTION MODAL (ONE-CLICK COPY & WHATSAPP SHARING) -->
+    <div id="admin-credentials-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100vw; height: 100vh; align-items: center; justify-content: center; z-index: 999999; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); padding: 20px;">
+        <div class="glass-card" style="max-width: 520px; width: 100%; border: 3px solid var(--clr-teal-green); border-radius: 18px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45); background: #ffffff; padding: 2.2rem; position: relative;">
+            <button type="button" onclick="app.closeCredentialsModal()" style="position: absolute; top: 18px; right: 18px; background: none; border: none; font-size: 1.5rem; color: #888; cursor: pointer; line-height: 1;">&times;</button>
+            <div style="text-align: center; margin-bottom: 1.2rem;">
+                <div style="width: 58px; height: 58px; background: rgba(18, 130, 109, 0.12); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.8rem auto; color: var(--clr-teal-green); font-size: 1.8rem; border: 2px solid var(--clr-teal-green);">
+                    <i class="fa-solid fa-user-check" id="cred-modal-icon"></i>
+                </div>
+                <h3 id="cred-modal-title" style="font-family: var(--font-brand); color: var(--clr-teal-green); font-size: 1.35rem; margin-bottom: 0.3rem; font-weight: 700;">Member Account Ready</h3>
+                <p id="cred-modal-subtitle" style="font-size: 0.88rem; color: #555; margin: 0;">Login credentials successfully generated for client onboarding.</p>
+            </div>
+
+            <!-- Credentials Box -->
+            <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 1.2rem; margin-bottom: 1.2rem;">
+                <div style="margin-bottom: 0.8rem; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.85rem; color: #64748b; font-weight: 600;">Member Name:</span>
+                    <strong id="cred-modal-name" style="color: #1e293b; font-size: 0.95rem;">-</strong>
+                </div>
+                <div style="margin-bottom: 0.8rem; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.85rem; color: #64748b; font-weight: 600;">Login Email:</span>
+                    <strong id="cred-modal-email" style="color: #1e293b; font-size: 0.95rem;">-</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #ecfdf5; border: 1px dashed #10b981; padding: 0.75rem 1rem; border-radius: 8px;">
+                    <div>
+                        <span style="font-size: 0.75rem; color: #047857; text-transform: uppercase; font-weight: 700; display: block; letter-spacing: 0.5px;">Temporary Password</span>
+                        <span id="cred-modal-password" style="font-size: 1.3rem; font-weight: 800; color: var(--clr-teal-green); letter-spacing: 1.5px; font-family: monospace;">LL-XXXXXX</span>
+                    </div>
+                    <button type="button" onclick="app.copySinglePassword()" class="btn btn-outline" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; border-color: #10b981; color: #047857; background: #ffffff;">
+                        <i class="fa-solid fa-copy"></i> Copy Pin
+                    </button>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 1.2rem;">
+                <button type="button" onclick="app.copyFullCredentialsMessage()" class="btn btn-primary" style="justify-content: center; padding: 0.75rem; font-size: 0.95rem; font-weight: 700;">
+                    <i class="fa-solid fa-clipboard-check" style="font-size: 1.1rem;"></i> 📋 Copy Full Welcome Message
+                </button>
+                <button type="button" onclick="app.shareCredentialsViaWhatsApp()" class="btn" style="justify-content: center; padding: 0.75rem; font-size: 0.95rem; font-weight: 700; background: #25D366; color: #ffffff; border: none; border-radius: 8px;">
+                    <i class="fa-brands fa-whatsapp" style="font-size: 1.2rem;"></i> 💬 Send Credentials via WhatsApp
+                </button>
+            </div>
+
+            <!-- Advisory notice for Yahoo/Outlook -->
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.75rem 0.9rem; font-size: 0.8rem; color: #92400e; line-height: 1.4;">
+                <i class="fa-solid fa-circle-info" style="color: #d97706; margin-right: 4px;"></i>
+                <strong>Email Delivery Notice:</strong> An onboarding email was dispatched to the member. If the client uses <strong>Yahoo Mail</strong> or <strong>Outlook</strong>, please ask them to check their <strong>Spam / Junk folder</strong> or share the login details directly via WhatsApp above.
+            </div>
+
+            <div style="margin-top: 1.2rem; text-align: center;">
+                <button type="button" onclick="app.closeCredentialsModal()" class="btn btn-outline" style="width: 100%; justify-content: center; padding: 0.65rem; font-size: 0.9rem; color: #475569;">
+                    Done
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- CUSTOM LIGHT-GREEN BORDERED POPUP MODAL (PERMANENT TOP SCREEN FIXED OVERLAY) -->
     <div id="custom-alert-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100vw; height: 100vh; align-items: flex-start; justify-content: center; z-index: 999999; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); padding-top: 30px;">
         <div class="glass-card custom-alert-card" style="max-width: 480px; width: 90%; text-align: center; border: 3px solid var(--clr-teal-green); border-radius: 16px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), 0 0 25px rgba(18, 130, 109, 0.3); background: #ffffff; padding: 2rem; position: relative; margin-top: 15px;">
@@ -2468,8 +2525,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
     <script>
-        window.SUPABASE_CONFIG = {
+        window.SUPABASE_CONFIG = window.SUPABASE_CONFIG || {
             URL: 'https://vqvbxhzxtwjhieihvoah.supabase.co',
             KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdmJ4aHp4dHdqaGllaWh2b2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDU1NDAsImV4cCI6MjA5ODk4MTU0MH0.40ItPbKKZihVJ6IgC2BMU_cGO4pOzQFD-6-QkxEuZTk',
             EMAILJS_SERVICE_ID: 'service_60jfsbe',

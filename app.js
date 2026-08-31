@@ -5251,8 +5251,9 @@ const leanLifeAppCore = {
                             <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
                                 <button class="btn btn-primary" style="padding:0.25rem 0.6rem; font-size:0.75rem;" onclick="app.viewClientWellnessLogs('${u.email}')" title="View Full Wellness Logs & Daily Submissions"><i class="fa-solid fa-notes-medical"></i> Wellness Logs</button>
                                 <button class="btn btn-secondary" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="app.openAdminHealthProfile('${u.email}')"><i class="fa-solid fa-file-medical"></i> Profile</button>
+                                <button class="btn btn-outline" style="padding:0.25rem 0.5rem; font-size:0.75rem; color:var(--clr-primary-green); border-color:rgba(18,130,109,0.35); font-weight:600;" onclick="app.viewMemberCredentials('${u.email}')" title="View, Copy, and WhatsApp Login Credentials"><i class="fa-solid fa-key"></i> Login Info</button>
                                 <button class="btn btn-outline" style="padding:0.25rem 0.5rem; font-size:0.75rem; color:var(--clr-text-dark); border-color:rgba(0,0,0,0.15);" onclick="app.toggleUserStatus('${u.email}')">${u.status === 'Active' ? 'Suspend' : 'Activate'}</button>
-                                <button class="btn btn-outline" style="padding:0.25rem 0.5rem; font-size:0.75rem; color:#d9534f; border-color:rgba(217, 83, 79, 0.2);" onclick="app.adminResetPassword('${u.email}')"><i class="fa-solid fa-key"></i> Reset</button>
+                                <button class="btn btn-outline" style="padding:0.25rem 0.5rem; font-size:0.75rem; color:#d9534f; border-color:rgba(217, 83, 79, 0.2);" onclick="app.adminResetPassword('${u.email}')"><i class="fa-solid fa-rotate-right"></i> Reset</button>
                                 <button class="btn btn-danger" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="app.deleteUser('${u.email}')"><i class="fa-solid fa-trash-can"></i> Delete</button>
                             </div>
                         `}
@@ -5613,17 +5614,14 @@ const leanLifeAppCore = {
         const user = this.db.users.find(u => (u.email || '').toLowerCase().trim() === (email || '').toLowerCase().trim());
         if (!user) return;
         
-        const tempPassword = 'RESET' + Math.floor(1000 + Math.random() * 9000);
+        const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
         user.tempPasswordRaw = tempPassword;
         user.firstLogin = true;
         user.updatedAt = new Date().toISOString();
         
-        // 1. INSTANT (0ms): Re-render admin users table & display top-screen popup modal
+        // 1. INSTANT (0ms): Re-render admin users table & display Action Center Modal
         this.renderAdminUsers();
-
-        const resetMsg = `🔑 Member Password Reset Confirmed!\n------------------------------------\nMember Name: ${user.name}\nEmail: ${user.email}\nNew Temporary Password: ${tempPassword}\n------------------------------------\nPassword reset email is being dispatched to ${user.email}. You may also share this temporary password directly with the member.`;
-        
-        this.showCustomAlert(resetMsg, "Password Reset Dispatched", "fa-key");
+        this.openCredentialsModal(user, tempPassword, 'reset');
 
         // 2. ASYNCHRONOUS (Background): Hash password, save database, & dispatch real email
         setTimeout(async () => {
@@ -5680,7 +5678,7 @@ const leanLifeAppCore = {
 
         try {
             const name = (document.getElementById('reg-name')?.value || '').trim();
-            const email = (document.getElementById('reg-email')?.value || '').trim().toLowerCase();
+            const email = (document.getElementById('reg-email')?.value || '').trim().replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').toLowerCase();
             const phone = (document.getElementById('reg-phone')?.value || '').trim();
             const dob = document.getElementById('reg-dob')?.value || '1995-01-01';
             const gender = document.getElementById('reg-gender')?.value || 'Female';
@@ -5698,7 +5696,7 @@ const leanLifeAppCore = {
                 return;
             }
 
-            // Generate secure temporary credentials
+            // Generate secure temporary credentials (LL-XXXXXX)
             const username = email.split('@')[0];
             const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
             const hashedPassword = await this.hashPassword(tempPassword);
@@ -5752,11 +5750,8 @@ const leanLifeAppCore = {
             // 4. Re-render admin user table so user appears at top of list immediately
             this.renderAdminUsers();
 
-            // 5. Display pop-up notification modal at top of screen without delay
-            const coachName = 'Coach Francess Orenuga';
-            const successMsg = `🎉 Member Registration Confirmed!\n------------------------------------\nFull Name: ${name}\nEmail: ${email}\nAssigned Coach: ${coachName}\nGenerated Username: ${username}\nTemporary Password: ${tempPassword}\n------------------------------------\nThe new member has been added to the User List and an onboarding welcome email is being dispatched to ${email}.`;
-            
-            this.showCustomAlert(successMsg, "Member Account Created", "fa-user-check");
+            // 5. Display dedicated Credentials Action Center modal (Copy & WhatsApp ready)
+            this.openCredentialsModal(newMember, tempPassword, 'created');
 
             // 6. ASYNCHRONOUS (Background): Dispatch real onboarding email
             const outboxId = 'EML-' + Date.now();
@@ -6427,6 +6422,100 @@ const leanLifeAppCore = {
         }
     },
 
+    openCredentialsModal(user, tempPassword, mode = 'created') {
+        const modal = document.getElementById('admin-credentials-modal');
+        if (!modal) return;
+
+        this.activeModalCredentials = {
+            name: user.name || 'Member',
+            email: user.email,
+            phone: user.phone || '',
+            tempPassword: tempPassword
+        };
+
+        const titleEl = document.getElementById('cred-modal-title');
+        const subtitleEl = document.getElementById('cred-modal-subtitle');
+        const iconEl = document.getElementById('cred-modal-icon');
+        const nameEl = document.getElementById('cred-modal-name');
+        const emailEl = document.getElementById('cred-modal-email');
+        const passEl = document.getElementById('cred-modal-password');
+
+        if (titleEl) {
+            titleEl.textContent = mode === 'reset' ? '🔑 Password Reset Generated' : (mode === 'view' ? '🔑 Member Login Credentials' : '🎉 Member Account Registered');
+        }
+        if (subtitleEl) {
+            subtitleEl.textContent = mode === 'reset' 
+                ? 'Temporary access credentials generated. Share directly with member or via WhatsApp.' 
+                : (mode === 'view' ? 'Active member login credentials. Share directly with member or via WhatsApp.' : 'New client onboarding credentials generated. Share directly or via WhatsApp.');
+        }
+        if (iconEl) {
+            iconEl.className = mode === 'reset' ? 'fa-solid fa-key' : 'fa-solid fa-user-check';
+        }
+        if (nameEl) nameEl.textContent = user.name || 'Member';
+        if (emailEl) emailEl.textContent = user.email;
+        if (passEl) passEl.textContent = tempPassword;
+
+        modal.style.display = 'flex';
+        window.scrollTo({ top: 0, behavior: 'instant' });
+    },
+
+    viewMemberCredentials(email) {
+        const user = this.db.users.find(u => (u.email || '').toLowerCase().trim() === (email || '').toLowerCase().trim());
+        if (!user) {
+            alert("User record not found.");
+            return;
+        }
+
+        const tempPassword = user.tempPasswordRaw || 'LL-849204';
+        this.openCredentialsModal(user, tempPassword, 'view');
+    },
+
+    copySinglePassword() {
+        if (!this.activeModalCredentials || !this.activeModalCredentials.tempPassword) return;
+        const pass = this.activeModalCredentials.tempPassword;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(pass).then(() => {
+                alert(`Temporary password (${pass}) copied to clipboard!`);
+            }).catch(() => {
+                prompt("Copy Temporary Password:", pass);
+            });
+        } else {
+            prompt("Copy Temporary Password:", pass);
+        }
+    },
+
+    copyFullCredentialsMessage() {
+        if (!this.activeModalCredentials) return;
+        const c = this.activeModalCredentials;
+        const msg = `Hello ${c.name}! Welcome to the LeanLife Wellness Community.\n\nCoach Francess has set up your wellness portal account:\n\n• Portal Link: https://leanlife-community.app/\n• Login Email: ${c.email}\n• Temporary Password: ${c.tempPassword}\n\nPlease log in and update your password when prompted. We are thrilled to partner with you on your metabolic and wellness journey!`;
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(msg).then(() => {
+                alert("Complete welcome message and login credentials copied to clipboard!");
+            }).catch(() => {
+                prompt("Copy Full Welcome Message:", msg);
+            });
+        } else {
+            prompt("Copy Full Welcome Message:", msg);
+        }
+    },
+
+    shareCredentialsViaWhatsApp() {
+        if (!this.activeModalCredentials) return;
+        const c = this.activeModalCredentials;
+        const msg = `Hello ${c.name}! Welcome to the LeanLife Wellness Community.\n\nCoach Francess has set up your wellness portal account:\n\n• Portal Link: https://leanlife-community.app/\n• Login Email: ${c.email}\n• Temporary Password: ${c.tempPassword}\n\nPlease log in and update your password when prompted. We are thrilled to partner with you on your metabolic and wellness journey!`;
+        
+        const cleanPhone = (c.phone || '').replace(/[^\d]/g, '');
+        const encodedText = encodeURIComponent(msg);
+        const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodedText}` : `https://wa.me/?text=${encodedText}`;
+        window.open(waUrl, '_blank');
+    },
+
+    closeCredentialsModal() {
+        const modal = document.getElementById('admin-credentials-modal');
+        if (modal) modal.style.display = 'none';
+    },
+
     renderAdminSettingsCMS() {
         document.getElementById('settings-persona').value = this.db.systemSettings.persona || 'encouraging';
         document.getElementById('settings-primary-hue').value = this.db.systemSettings.primaryHue || 168;
@@ -6542,6 +6631,11 @@ const leanLifeAppCore = {
                 email: recipientEmail,
                 user_email: recipientEmail,
                 recipient_email: recipientEmail,
+                reply_to: 'francessronke21@gmail.com',
+                from_name: 'Coach Francess Orenuga - LeanLife',
+                coach_email: 'francessronke21@gmail.com',
+                portal_url: 'https://leanlife-community.app/',
+                login_url: 'https://leanlife-community.app/',
                 
                 // Passwords & Credentials
                 temp_password: tempPassword || '',
@@ -6557,6 +6651,7 @@ const leanLifeAppCore = {
                 
                 // Subject & Body Text
                 subject: subject || 'LeanLife Notification',
+                email_subject: subject || 'LeanLife Notification',
                 message: subject || 'LeanLife Notification',
                 notes: extraData.notes || subject || '',
                 details: extraData.notes || subject || '',
