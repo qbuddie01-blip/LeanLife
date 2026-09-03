@@ -3443,310 +3443,155 @@ const leanLifeAppCore = {
             mealsSummaryHtml = `<tr><td colspan="2" style="padding:6px 10px; border:1px solid #e2e8f0;">Standard balanced healthy nutrition logged.</td></tr>`;
         }
 
-        const pdfHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>LeanLife Wellness Report - ${memberName}</title>
+        const pdfHtml = `
+<div id="pdf-report-content" style="width: 750px; max-width: 750px; margin: 0; padding: 14px; background: #ffffff; color: #1a202c; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; box-sizing: border-box; font-size: 11.5px; line-height: 1.4;">
     <style>
-        * { box-sizing: border-box; }
-        @media print {
-            body { margin: 0; padding: 0; background: #fff; width: 780px; }
-            .no-print { display: none !important; }
-            .page-break { page-break-before: always; }
-        }
-        body {
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
-            color: #1a202c;
-            background-color: #ffffff;
-            margin: 0 auto;
-            padding: 16px;
-            line-height: 1.4;
-            font-size: 12px;
-            width: 780px;
-            max-width: 780px;
-        }
-        .report-container {
-            width: 100%;
-            max-width: 780px;
-            margin: 0 auto;
-            background: #ffffff;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2.5px solid #12826d;
-            padding-bottom: 12px;
-            margin-bottom: 16px;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .brand-title {
-            font-size: 20px;
-            font-weight: 800;
-            color: #12826d;
-            margin: 0;
-        }
-        .badge {
-            background: #e6fffa;
-            color: #12826d;
-            padding: 4px 10px;
-            border-radius: 14px;
-            font-size: 10px;
-            font-weight: 700;
-            border: 1px solid rgba(18, 130, 109, 0.3);
-        }
-        .meta-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            background: #f8fafc;
-            padding: 10px 14px;
-            border-radius: 6px;
-            margin-bottom: 16px;
-            border: 1px solid #e2e8f0;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .meta-label {
-            color: #718096;
-            font-size: 9px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 700;
-        }
-        .meta-value {
-            font-weight: 700;
-            color: #2d3748;
-            margin-top: 2px;
-            font-size: 11px;
-            word-break: break-word;
-        }
-        .score-banner {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 16px;
-            text-align: center;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .score-box {
-            background: #f4fbf7;
-            border: 1.5px solid #12826d;
-            padding: 10px;
-            border-radius: 6px;
-        }
-        .score-num {
-            font-size: 22px;
-            font-weight: 900;
-            color: #12826d;
-            line-height: 1;
-        }
-        .score-name {
-            font-size: 9.5px;
-            text-transform: uppercase;
-            color: #4a5568;
-            font-weight: 700;
-            margin-top: 4px;
-        }
-        .section-title {
-            font-size: 13px;
-            font-weight: 700;
-            color: #12826d;
-            margin-top: 14px;
-            margin-bottom: 6px;
-            border-bottom: 1.5px solid #e2e8f0;
-            padding-bottom: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 14px;
-            font-size: 11px;
-            table-layout: fixed;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .table th, .table td {
-            padding: 6px 8px;
-            border: 1px solid #e2e8f0;
-            text-align: left;
-            word-break: break-word;
-        }
-        .table th {
-            background: #f8fafc;
-            color: #4a5568;
-            font-weight: 700;
-        }
-        .content-box {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-left: 3.5px solid #12826d;
-            padding: 10px 12px;
-            border-radius: 4px;
-            margin-bottom: 10px;
-            line-height: 1.4;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .content-box h4 {
-            margin: 0 0 4px 0;
-            font-size: 11.5px;
-            color: #2d3748;
-        }
-        .content-box p {
-            margin: 0;
-            color: #4a5568;
-            font-size: 11px;
-        }
-        .footer {
-            margin-top: 20px;
-            padding-top: 10px;
-            border-top: 1px solid #e2e8f0;
-            display: flex;
-            justify-content: space-between;
-            font-size: 9.5px;
-            color: #a0aec0;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
+        #pdf-report-content * { box-sizing: border-box; }
+        #pdf-report-content .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2.5px solid #12826d; padding-bottom: 10px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-report-content .brand-title { font-size: 19px; font-weight: 800; color: #12826d; margin: 0; }
+        #pdf-report-content .badge { background: #e6fffa; color: #12826d; padding: 4px 10px; border-radius: 14px; font-size: 10px; font-weight: 700; border: 1px solid rgba(18, 130, 109, 0.3); }
+        #pdf-report-content .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: #f8fafc; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #e2e8f0; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-report-content .meta-label { color: #718096; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+        #pdf-report-content .meta-value { font-weight: 700; color: #2d3748; margin-top: 2px; font-size: 10.5px; word-break: break-word; }
+        #pdf-report-content .score-banner { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; text-align: center; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-report-content .score-box { background: #f4fbf7; border: 1.5px solid #12826d; padding: 8px; border-radius: 6px; }
+        #pdf-report-content .score-num { font-size: 20px; font-weight: 900; color: #12826d; line-height: 1; }
+        #pdf-report-content .score-name { font-size: 9px; text-transform: uppercase; color: #4a5568; font-weight: 700; margin-top: 3px; }
+        #pdf-report-content .section-title { font-size: 12px; font-weight: 700; color: #12826d; margin-top: 12px; margin-bottom: 6px; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-report-content .table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10.5px; table-layout: fixed; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-report-content .table th, #pdf-report-content .table td { padding: 5px 7px; border: 1px solid #e2e8f0; text-align: left; word-break: break-word; }
+        #pdf-report-content .table th { background: #f8fafc; color: #4a5568; font-weight: 700; }
+        #pdf-report-content .content-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3.5px solid #12826d; padding: 8px 10px; border-radius: 4px; margin-bottom: 8px; line-height: 1.4; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-report-content .content-box h4 { margin: 0 0 3px 0; font-size: 11px; color: #2d3748; }
+        #pdf-report-content .content-box p { margin: 0; color: #4a5568; font-size: 10.5px; }
+        #pdf-report-content .footer { margin-top: 16px; padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 9px; color: #a0aec0; page-break-inside: avoid; break-inside: avoid; }
     </style>
-</head>
-<body>
-    <div class="report-container" id="pdf-report-content">
-        <div class="header">
-            <div>
-                <div class="brand-title">🌿 LeanLife Health & Wellness</div>
-                <div style="font-size: 11px; color: #718096;">AI-Powered Comprehensive Wellness Recovery Report</div>
-            </div>
-            <div class="badge">CONFIDENTIAL & OFFICIAL</div>
+    
+    <div class="header">
+        <div>
+            <div class="brand-title">🌿 LeanLife Health & Wellness</div>
+            <div style="font-size: 10.5px; color: #718096;">AI-Powered Comprehensive Wellness Recovery Report</div>
         </div>
+        <div class="badge">CONFIDENTIAL & OFFICIAL</div>
+    </div>
 
-        <div class="meta-grid">
-            <div class="meta-item">
-                <div class="meta-label">Member Name</div>
-                <div class="meta-value">${memberName}</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Email Address</div>
-                <div class="meta-value">${memberEmail}</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Report ID</div>
-                <div class="meta-value">${report.id || 'RPT-AI-OFFICIAL'}</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Generated Date</div>
-                <div class="meta-value">${reportDate}</div>
-            </div>
+    <div class="meta-grid">
+        <div class="meta-item">
+            <div class="meta-label">Member Name</div>
+            <div class="meta-value">${memberName}</div>
         </div>
-
-        <div class="score-banner">
-            <div class="score-box">
-                <div class="score-num">${report.overallScore || 88}</div>
-                <div class="score-name">Overall Score (${report.grade || 'A'})</div>
-            </div>
-            <div class="score-box">
-                <div class="score-num">${report.scores?.nutrition || 75}</div>
-                <div class="score-name">Nutrition Score</div>
-            </div>
-            <div class="score-box">
-                <div class="score-num">${report.scores?.physical || 90}</div>
-                <div class="score-name">Physical Health</div>
-            </div>
-            <div class="score-box">
-                <div class="score-num">${report.scores?.mental || 92}</div>
-                <div class="score-name">Mental Wellness</div>
-            </div>
+        <div class="meta-item">
+            <div class="meta-label">Email Address</div>
+            <div class="meta-value">${memberEmail}</div>
         </div>
-
-        <div class="section-title">1. Biometric Vitals & Health Metrics</div>
-        <table class="table">
-            <tr>
-                <th style="width:20%;">Weight</th><td style="width:30%;">${met.weight || log.weight || '--'} lbs</td>
-                <th style="width:20%;">BMI</th><td style="width:30%;">${met.bmi || '--'}</td>
-            </tr>
-            <tr>
-                <th>Body Fat %</th><td>${met.bodyFat ? met.bodyFat + '%' : '--'}</td>
-                <th>Blood Pressure</th><td>${met.bloodPressure || '--'} mmHg</td>
-            </tr>
-            <tr>
-                <th>Blood Sugar</th><td>${met.bloodSugar || '--'} mg/dL</td>
-                <th>Resting Heart Rate</th><td>${met.heartRate || '--'} bpm</td>
-            </tr>
-            <tr>
-                <th>Stress Rating</th><td>${met.stress ? met.stress + '/10' : '--'}</td>
-                <th>Energy Rating</th><td>${met.energy ? met.energy + '/10' : '--'}</td>
-            </tr>
-            <tr>
-                <th>Outdoor / Sun</th><td>${met.outdoorTime || log.outdoorTime || '--'}m / ${met.sunlight || log.sunlight || '--'}m</td>
-                <th>Meditation / Screen</th><td>${met.meditation || log.meditation || '--'}m / ${met.screenTime || log.screenTime || '--'}h</td>
-            </tr>
-        </table>
-
-        <div class="section-title">2. Sleep & Circadian Alignment</div>
-        <div class="content-box">
-            <h4>Hours & Sleep Quality</h4>
-            <p>${analyses.sleep?.desc || 'Sleep consistency is optimal.'}</p>
+        <div class="meta-item">
+            <div class="meta-label">Report ID</div>
+            <div class="meta-value">${report.id || 'RPT-AI-OFFICIAL'}</div>
         </div>
-        <div class="content-box">
-            <h4>Recovery Score & Bedtime Targets</h4>
-            <p>${analyses.sleep?.rec || 'Maintain bedtime alignment.'}</p>
-        </div>
-
-        <div class="section-title">3. Hydration & Daily Meals</div>
-        <div class="content-box">
-            <h4>Hydration Target</h4>
-            <p>${analyses.water?.desc || 'Hydration volume is sufficient.'} ${analyses.water?.tips || ''}</p>
-        </div>
-        <table class="table">
-            <thead>
-                <tr><th colspan="2">Daily Meals Logged</th></tr>
-            </thead>
-            <tbody>
-                ${mealsSummaryHtml}
-            </tbody>
-        </table>
-
-        <div class="section-title">4. Physical Activity & Daily Steps</div>
-        <div class="content-box">
-            <h4>Exercise Performance</h4>
-            <p>${analyses.fitness?.desc || 'Physical activity tracked.'}</p>
-        </div>
-        <div class="content-box">
-            <h4>Steps & Consistency</h4>
-            <p>${analyses.fitness?.steps || 'Daily steps logged.'}</p>
-        </div>
-
-        <div class="section-title">5. Holistic Journaling & Reflections</div>
-        <div class="content-box">
-            <h4>Daily Affirmations</h4>
-            <p>${log.affirmations ? (Array.isArray(log.affirmations) ? log.affirmations.join('; ') : log.affirmations) : 'None logged'}</p>
-        </div>
-        <div class="content-box">
-            <h4>Personal Reflections & Evening Gratitude</h4>
-            <p>${log.reflections ? (Array.isArray(log.reflections) ? log.reflections.join('; ') : log.reflections) : 'None logged'}</p>
-        </div>
-
-        <div class="section-title">6. Coach Frannie's Recommendations & 24h Action Plan</div>
-        <div class="content-box" style="border-left-color: #a5e332; background: #fafdf7;">
-            <h4>Motivational Summary</h4>
-            <p>${analyses.motivate || 'Keep executing on your daily targets!'}</p>
-        </div>
-
-        <div class="footer">
-            <div>Verified by LeanLife Medical & Coaching Board</div>
-            <div>Confidential Health Document • Generated on ${new Date().toLocaleDateString()}</div>
+        <div class="meta-item">
+            <div class="meta-label">Generated Date</div>
+            <div class="meta-value">${reportDate}</div>
         </div>
     </div>
-</body>
-</html>`;
+
+    <div class="score-banner">
+        <div class="score-box">
+            <div class="score-num">${report.overallScore || 88}</div>
+            <div class="score-name">Overall Score (${report.grade || 'A'})</div>
+        </div>
+        <div class="score-box">
+            <div class="score-num">${report.scores?.nutrition || 75}</div>
+            <div class="score-name">Nutrition Score</div>
+        </div>
+        <div class="score-box">
+            <div class="score-num">${report.scores?.physical || 90}</div>
+            <div class="score-name">Physical Health</div>
+        </div>
+        <div class="score-box">
+            <div class="score-num">${report.scores?.mental || 92}</div>
+            <div class="score-name">Mental Wellness</div>
+        </div>
+    </div>
+
+    <div class="section-title">1. Biometric Vitals & Health Metrics</div>
+    <table class="table">
+        <tr>
+            <th style="width:20%;">Weight</th><td style="width:30%;">${met.weight || log.weight || '--'} lbs</td>
+            <th style="width:20%;">BMI</th><td style="width:30%;">${met.bmi || '--'}</td>
+        </tr>
+        <tr>
+            <th>Body Fat %</th><td>${met.bodyFat ? met.bodyFat + '%' : '--'}</td>
+            <th>Blood Pressure</th><td>${met.bloodPressure || '--'} mmHg</td>
+        </tr>
+        <tr>
+            <th>Blood Sugar</th><td>${met.bloodSugar || '--'} mg/dL</td>
+            <th>Resting Heart Rate</th><td>${met.heartRate || '--'} bpm</td>
+        </tr>
+        <tr>
+            <th>Stress Rating</th><td>${met.stress ? met.stress + '/10' : '--'}</td>
+            <th>Energy Rating</th><td>${met.energy ? met.energy + '/10' : '--'}</td>
+        </tr>
+        <tr>
+            <th>Outdoor / Sun</th><td>${met.outdoorTime || log.outdoorTime || '--'}m / ${met.sunlight || log.sunlight || '--'}m</td>
+            <th>Meditation / Screen</th><td>${met.meditation || log.meditation || '--'}m / ${met.screenTime || log.screenTime || '--'}h</td>
+        </tr>
+    </table>
+
+    <div class="section-title">2. Sleep & Circadian Alignment</div>
+    <div class="content-box">
+        <h4>Hours & Sleep Quality</h4>
+        <p>${analyses.sleep?.desc || 'Sleep consistency is optimal.'}</p>
+    </div>
+    <div class="content-box">
+        <h4>Recovery Score & Bedtime Targets</h4>
+        <p>${analyses.sleep?.rec || 'Maintain bedtime alignment.'}</p>
+    </div>
+
+    <div class="section-title">3. Hydration & Daily Meals</div>
+    <div class="content-box">
+        <h4>Hydration Target</h4>
+        <p>${analyses.water?.desc || 'Hydration volume is sufficient.'} ${analyses.water?.tips || ''}</p>
+    </div>
+    <table class="table">
+        <thead>
+            <tr><th colspan="2">Daily Meals Logged</th></tr>
+        </thead>
+        <tbody>
+            ${mealsSummaryHtml}
+        </tbody>
+    </table>
+
+    <div class="section-title">4. Physical Activity & Daily Steps</div>
+    <div class="content-box">
+        <h4>Exercise Performance</h4>
+        <p>${analyses.fitness?.desc || 'Physical activity tracked.'}</p>
+    </div>
+    <div class="content-box">
+        <h4>Steps & Consistency</h4>
+        <p>${analyses.fitness?.steps || 'Daily steps logged.'}</p>
+    </div>
+
+    <div class="section-title">5. Holistic Journaling & Reflections</div>
+    <div class="content-box">
+        <h4>Daily Affirmations</h4>
+        <p>${log.affirmations ? (Array.isArray(log.affirmations) ? log.affirmations.join('; ') : log.affirmations) : 'None logged'}</p>
+    </div>
+    <div class="content-box">
+        <h4>Personal Reflections & Evening Gratitude</h4>
+        <p>${log.reflections ? (Array.isArray(log.reflections) ? log.reflections.join('; ') : log.reflections) : 'None logged'}</p>
+    </div>
+
+    <div class="section-title">6. Coach Frannie's Recommendations & 24h Action Plan</div>
+    <div class="content-box" style="border-left-color: #a5e332; background: #fafdf7;">
+        <h4>Motivational Summary</h4>
+        <p>${analyses.motivate || 'Keep executing on your daily targets!'}</p>
+    </div>
+
+    <div class="footer">
+        <div>Verified by LeanLife Medical & Coaching Board</div>
+        <div>Confidential Health Document • Generated on ${new Date().toLocaleDateString()}</div>
+    </div>
+</div>`;
 
         // Generate PDF using html2pdf if available, else open print view
         if (window.html2pdf) {
@@ -3755,11 +3600,13 @@ const leanLifeAppCore = {
             container.style.position = 'fixed';
             container.style.top = '0';
             container.style.left = '0';
-            container.style.width = '780px';
-            container.style.maxWidth = '780px';
+            container.style.width = '750px';
+            container.style.maxWidth = '750px';
+            container.style.margin = '0';
+            container.style.padding = '0';
             container.style.backgroundColor = '#ffffff';
             container.style.color = '#1a202c';
-            container.style.zIndex = '-9999';
+            container.style.zIndex = '99999';
             container.style.opacity = '1';
             container.style.pointerEvents = 'none';
             container.innerHTML = pdfHtml;
@@ -3772,9 +3619,12 @@ const leanLifeAppCore = {
                 html2canvas: { 
                     scale: 2, 
                     useCORS: true,
-                    scrollY: 0,
                     scrollX: 0,
-                    windowWidth: 780,
+                    scrollY: 0,
+                    x: 0,
+                    y: 0,
+                    width: 750,
+                    windowWidth: 750,
                     backgroundColor: '#ffffff'
                 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -3852,96 +3702,42 @@ const leanLifeAppCore = {
             `;
         });
 
-        const pdfHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>LeanLife Wellness Logs Export</title>
+        const pdfHtml = `
+<div id="pdf-logs-content" style="width: 1050px; max-width: 1050px; margin: 0; padding: 14px; background: #ffffff; color: #1a202c; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; box-sizing: border-box; font-size: 10px;">
     <style>
-        * { box-sizing: border-box; }
-        @media print {
-            body { margin: 0; padding: 0; background: #ffffff !important; color: #1a202c !important; width: 1050px; }
-            .no-print { display: none !important; }
-        }
-        body {
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
-            color: #1a202c;
-            background: #ffffff;
-            margin: 0 auto;
-            padding: 16px;
-            font-size: 10px;
-            width: 1050px;
-            max-width: 1050px;
-        }
-        .header {
-            border-bottom: 2px solid #12826d;
-            padding-bottom: 10px;
-            margin-bottom: 14px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 9.5px;
-            background: #ffffff;
-            color: #1a202c;
-            table-layout: fixed;
-        }
-        .table th {
-            background: #12826d !important;
-            color: #ffffff !important;
-            padding: 6px 8px;
-            text-align: left;
-            border: 1px solid #12826d;
-            font-weight: bold;
-        }
-        .table td {
-            padding: 6px 8px;
-            border: 1px solid #e2e8f0;
-            color: #1a202c;
-            word-break: break-word;
-            overflow-wrap: break-word;
-        }
-        tr {
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
+        #pdf-logs-content * { box-sizing: border-box; }
+        #pdf-logs-content .header { border-bottom: 2px solid #12826d; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-logs-content .table { width: 100%; border-collapse: collapse; font-size: 9.5px; background: #ffffff; color: #1a202c; table-layout: fixed; }
+        #pdf-logs-content .table th { background: #12826d !important; color: #ffffff !important; padding: 6px 8px; text-align: left; border: 1px solid #12826d; font-weight: bold; }
+        #pdf-logs-content .table td { padding: 6px 8px; border: 1px solid #e2e8f0; color: #1a202c; word-break: break-word; overflow-wrap: break-word; }
+        #pdf-logs-content tr { page-break-inside: avoid; break-inside: avoid; }
     </style>
-</head>
-<body style="background:#ffffff; color:#1a202c;">
-    <div id="pdf-logs-content" style="background:#ffffff; color:#1a202c; width:100%; max-width:1050px; font-family:'Segoe UI', -apple-system, sans-serif;">
-        <div class="header">
-            <div>
-                <h2 style="margin:0; color:#12826d; font-size:16px;">🌿 LeanLife Wellness Logs Submissions</h2>
-                <div style="font-size:10px; color:#666;">Generated on ${new Date().toLocaleString()} • Total Records: ${logsToExport.length}</div>
-            </div>
-            <div style="font-weight:bold; color:#12826d; font-size:11px;">ADMIN AUDIT EXPORT</div>
+    <div class="header">
+        <div>
+            <h2 style="margin:0; color:#12826d; font-size:16px;">🌿 LeanLife Wellness Logs Submissions</h2>
+            <div style="font-size:10px; color:#666;">Generated on ${new Date().toLocaleString()} • Total Records: ${logsToExport.length}</div>
         </div>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th style="width:10%;">Date</th>
-                    <th style="width:18%;">Member Email</th>
-                    <th style="width:10%;">Sleep</th>
-                    <th style="width:12%;">Hydration</th>
-                    <th style="width:10%;">Steps</th>
-                    <th style="width:8%;">Mood</th>
-                    <th style="width:12%;">Exercise</th>
-                    <th style="width:12%;">Vitals (BP | Sugar)</th>
-                    <th style="width:8%;">Photos</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${logsHtmlRows}
-            </tbody>
-        </table>
+        <div style="font-weight:bold; color:#12826d; font-size:11px;">ADMIN AUDIT EXPORT</div>
     </div>
-</body>
-</html>`;
+    <table class="table">
+        <thead>
+            <tr>
+                <th style="width:10%;">Date</th>
+                <th style="width:18%;">Member Email</th>
+                <th style="width:10%;">Sleep</th>
+                <th style="width:12%;">Hydration</th>
+                <th style="width:10%;">Steps</th>
+                <th style="width:8%;">Mood</th>
+                <th style="width:12%;">Exercise</th>
+                <th style="width:12%;">Vitals (BP | Sugar)</th>
+                <th style="width:8%;">Photos</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${logsHtmlRows}
+        </tbody>
+    </table>
+</div>`;
 
         if (window.html2pdf) {
             const container = document.createElement('div');
@@ -3951,9 +3747,11 @@ const leanLifeAppCore = {
             container.style.left = '0';
             container.style.width = '1050px';
             container.style.maxWidth = '1050px';
+            container.style.margin = '0';
+            container.style.padding = '0';
             container.style.backgroundColor = '#ffffff';
             container.style.color = '#1a202c';
-            container.style.zIndex = '-9999';
+            container.style.zIndex = '99999';
             container.style.opacity = '1';
             container.style.pointerEvents = 'none';
             container.innerHTML = pdfHtml;
@@ -3966,8 +3764,11 @@ const leanLifeAppCore = {
                 html2canvas: { 
                     scale: 2, 
                     useCORS: true,
-                    scrollY: 0,
                     scrollX: 0,
+                    scrollY: 0,
+                    x: 0,
+                    y: 0,
+                    width: 1050,
                     windowWidth: 1050,
                     backgroundColor: '#ffffff'
                 },
@@ -4390,207 +4191,108 @@ const leanLifeAppCore = {
             `;
         }).join('') || `<tr><td colspan="6" style="padding: 10px; text-align: center; color: #888;">No daily records found for this period.</td></tr>`;
 
-        const pdfHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>LeanLife Monthly Wellness Report - ${data.monthName}</title>
+        const pdfHtml = `
+<div id="pdf-monthly-report-content" style="width: 750px; max-width: 750px; margin: 0; padding: 14px; background: #ffffff; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-sizing: border-box; font-size: 11px; line-height: 1.4;">
     <style>
-        * { box-sizing: border-box; }
-        @media print {
-            body { margin: 0; padding: 0; background: #fff; width: 780px; }
-            .no-print { display: none !important; }
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            color: #2d3748;
-            margin: 0 auto;
-            padding: 16px;
-            background: #fff;
-            line-height: 1.4;
-            font-size: 11px;
-            width: 780px;
-            max-width: 780px;
-        }
-        #pdf-monthly-report-content {
-            width: 100%;
-            max-width: 780px;
-            margin: 0 auto;
-            background: #ffffff;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #12826D;
-            padding-bottom: 12px;
-            margin-bottom: 16px;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .brand { font-size: 20px; font-weight: bold; color: #12826D; }
-        .grid-4 {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-            margin-bottom: 14px;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .card {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            padding: 8px;
-            text-align: center;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .card-val { font-size: 16px; font-weight: bold; color: #12826D; margin: 3px 0; }
-        .card-lbl { font-size: 9px; text-transform: uppercase; color: #718096; font-weight: 700; }
-        .section-title {
-            font-size: 12px;
-            font-weight: bold;
-            color: #12826D;
-            border-bottom: 1.5px solid #a5e332;
-            padding-bottom: 3px;
-            margin-top: 14px;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .synth-box {
-            background: #f0fdf4;
-            border-left: 3.5px solid #12826D;
-            padding: 10px 12px;
-            margin-bottom: 14px;
-            border-radius: 4px;
-            font-size: 11px;
-            line-height: 1.5;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 8px;
-            table-layout: fixed;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        th {
-            background: #12826D;
-            color: white;
-            text-align: left;
-            padding: 6px 8px;
-            font-size: 10px;
-            text-transform: uppercase;
-        }
-        tr {
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
-        .footer {
-            margin-top: 20px;
-            font-size: 9.5px;
-            color: #a0aec0;
-            text-align: center;
-            border-top: 1px solid #e2e8f0;
-            padding-top: 8px;
-            page-break-inside: avoid;
-            break-inside: avoid;
-        }
+        #pdf-monthly-report-content * { box-sizing: border-box; }
+        #pdf-monthly-report-content .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #12826D; padding-bottom: 10px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-monthly-report-content .brand { font-size: 19px; font-weight: bold; color: #12826D; }
+        #pdf-monthly-report-content .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-monthly-report-content .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; text-align: center; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-monthly-report-content .card-val { font-size: 15px; font-weight: bold; color: #12826D; margin: 3px 0; }
+        #pdf-monthly-report-content .card-lbl { font-size: 8.5px; text-transform: uppercase; color: #718096; font-weight: 700; }
+        #pdf-monthly-report-content .section-title { font-size: 11.5px; font-weight: bold; color: #12826D; border-bottom: 1.5px solid #a5e332; padding-bottom: 3px; margin-top: 12px; margin-bottom: 6px; text-transform: uppercase; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-monthly-report-content .synth-box { background: #f0fdf4; border-left: 3.5px solid #12826D; padding: 8px 10px; margin-bottom: 12px; border-radius: 4px; font-size: 10.5px; line-height: 1.4; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-monthly-report-content table { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; page-break-inside: avoid; break-inside: avoid; }
+        #pdf-monthly-report-content th { background: #12826D; color: white; text-align: left; padding: 5px 6px; font-size: 9.5px; text-transform: uppercase; }
+        #pdf-monthly-report-content tr { page-break-inside: avoid; break-inside: avoid; }
+        #pdf-monthly-report-content .footer { margin-top: 16px; font-size: 9px; color: #a0aec0; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 6px; page-break-inside: avoid; break-inside: avoid; }
     </style>
-</head>
-<body>
-    <div id="pdf-monthly-report-content">
-        <div class="header">
-            <div>
-                <div class="brand">🌱 LeanLife Health & Wellness</div>
-                <div style="font-size: 11px; color: #718096;">Monthly Cumulative Progress & Clinical Vitals Report</div>
-            </div>
-            <div style="text-align: right;">
-                <div style="font-size: 15px; font-weight: bold; color: #2d3748;">${data.monthName}</div>
-                <div style="font-size: 10.5px; color: #718096;">Member: <strong>${memberName}</strong> (${userEmail})</div>
-            </div>
+    
+    <div class="header">
+        <div>
+            <div class="brand">🌱 LeanLife Health & Wellness</div>
+            <div style="font-size: 10.5px; color: #718096;">Monthly Cumulative Progress & Clinical Vitals Report</div>
         </div>
-
-        <div class="grid-4">
-            <div class="card">
-                <div class="card-lbl">Monthly Score</div>
-                <div class="card-val">${data.overallScore} / 100</div>
-                <div style="font-size: 10px; color: #28a745; font-weight: bold;">Grade: ${data.grade}</div>
-            </div>
-            <div class="card">
-                <div class="card-lbl">Consistency</div>
-                <div class="card-val">${data.daysLoggedCount} / ${data.daysInMonth} Days</div>
-                <div style="font-size: 10px; color: #12826D;">${data.consistencyPct}% Adherence</div>
-            </div>
-            <div class="card">
-                <div class="card-lbl">Avg Sleep</div>
-                <div class="card-val">${data.avgSleep} hrs</div>
-                <div style="font-size: 10px; color: #673ab7;">${data.restfulPct}% Restful</div>
-            </div>
-            <div class="card">
-                <div class="card-lbl">Hydration Consumed</div>
-                <div class="card-val">${data.totalWaterGlasses} gl</div>
-                <div style="font-size: 10px; color: #2196f3;">${data.totalWaterOz.toLocaleString()} oz total</div>
-            </div>
-        </div>
-
-        <div class="grid-4">
-            <div class="card">
-                <div class="card-lbl">Total Steps</div>
-                <div class="card-val">${data.totalSteps.toLocaleString()}</div>
-                <div style="font-size: 10px; color: #8bc34a;">Avg: ${data.avgSteps.toLocaleString()} / day</div>
-            </div>
-            <div class="card">
-                <div class="card-lbl">Calories Burned</div>
-                <div class="card-val">${data.totalCalories.toLocaleString()} kcal</div>
-                <div style="font-size: 10px; color: #e91e63;">${data.workoutSessionsCount} Workouts</div>
-            </div>
-            <div class="card">
-                <div class="card-lbl">Weight Trend</div>
-                <div class="card-val">${data.endWeight} lbs</div>
-                <div style="font-size: 10px; color: #12826D;">Change: ${data.weightDelta} lbs</div>
-            </div>
-            <div class="card">
-                <div class="card-lbl">Vitals Average</div>
-                <div class="card-val">${data.avgBP}</div>
-                <div style="font-size: 10px; color: #718096;">Sugar: ${data.avgBloodSugar} mg • HR: ${data.avgHeartRate}</div>
-            </div>
-        </div>
-
-        <div class="section-title">Coach Frannie's Monthly Clinical Synthesis</div>
-        <div class="synth-box">
-            <p style="margin-top: 0;"><strong>Executive Review:</strong> During ${data.monthName}, ${memberName} demonstrated steady habit alignment across core health pillars. With a ${data.consistencyPct}% logging rate and cumulative physical activity of ${data.totalSteps.toLocaleString()} steps, structural health resilience is actively improving.</p>
-            <p style="margin-bottom: 0;"><strong>Recommendations for Next Month:</strong> Sustain target daily water intake (8+ glasses), maintain circadian bedtime alignment before 10:30 PM, and integrate scheduled post-workout recovery routines.</p>
-        </div>
-
-        <div class="section-title">Daily Submissions Log (${data.userLogs.length} Records)</div>
-        <table>
-            <thead>
-                <tr>
-                    <th style="width:18%;">Date</th>
-                    <th style="width:16%;">Sleep Duration</th>
-                    <th style="width:16%;">Hydration</th>
-                    <th style="width:16%;">Steps Walked</th>
-                    <th style="width:16%;">Mood State</th>
-                    <th style="width:18%;">Workout Completed</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rowsHtml}
-            </tbody>
-        </table>
-
-        <div class="footer">
-            LeanLife Wellness Center &bull; Generated on ${new Date().toLocaleString()} &bull; Confidential Healthcare Document
+        <div style="text-align: right;">
+            <div style="font-size: 14px; font-weight: bold; color: #2d3748;">${data.monthName}</div>
+            <div style="font-size: 10px; color: #718096;">Member: <strong>${memberName}</strong> (${userEmail})</div>
         </div>
     </div>
-</body>
-</html>`;
+
+    <div class="grid-4">
+        <div class="card">
+            <div class="card-lbl">Monthly Score</div>
+            <div class="card-val">${data.overallScore} / 100</div>
+            <div style="font-size: 9.5px; color: #28a745; font-weight: bold;">Grade: ${data.grade}</div>
+        </div>
+        <div class="card">
+            <div class="card-lbl">Consistency</div>
+            <div class="card-val">${data.daysLoggedCount} / ${data.daysInMonth} Days</div>
+            <div style="font-size: 9.5px; color: #12826D;">${data.consistencyPct}% Adherence</div>
+        </div>
+        <div class="card">
+            <div class="card-lbl">Avg Sleep</div>
+            <div class="card-val">${data.avgSleep} hrs</div>
+            <div style="font-size: 9.5px; color: #673ab7;">${data.restfulPct}% Restful</div>
+        </div>
+        <div class="card">
+            <div class="card-lbl">Hydration Consumed</div>
+            <div class="card-val">${data.totalWaterGlasses} gl</div>
+            <div style="font-size: 9.5px; color: #2196f3;">${data.totalWaterOz.toLocaleString()} oz total</div>
+        </div>
+    </div>
+
+    <div class="grid-4">
+        <div class="card">
+            <div class="card-lbl">Total Steps</div>
+            <div class="card-val">${data.totalSteps.toLocaleString()}</div>
+            <div style="font-size: 9.5px; color: #8bc34a;">Avg: ${data.avgSteps.toLocaleString()} / day</div>
+        </div>
+        <div class="card">
+            <div class="card-lbl">Calories Burned</div>
+            <div class="card-val">${data.totalCalories.toLocaleString()} kcal</div>
+            <div style="font-size: 9.5px; color: #e91e63;">${data.workoutSessionsCount} Workouts</div>
+        </div>
+        <div class="card">
+            <div class="card-lbl">Weight Trend</div>
+            <div class="card-val">${data.endWeight} lbs</div>
+            <div style="font-size: 9.5px; color: #12826D;">Change: ${data.weightDelta} lbs</div>
+        </div>
+        <div class="card">
+            <div class="card-lbl">Vitals Average</div>
+            <div class="card-val">${data.avgBP}</div>
+            <div style="font-size: 9.5px; color: #718096;">Sugar: ${data.avgBloodSugar} mg • HR: ${data.avgHeartRate}</div>
+        </div>
+    </div>
+
+    <div class="section-title">Coach Frannie's Monthly Clinical Synthesis</div>
+    <div class="synth-box">
+        <p style="margin-top: 0; margin-bottom: 4px;"><strong>Executive Review:</strong> During ${data.monthName}, ${memberName} demonstrated steady habit alignment across core health pillars. With a ${data.consistencyPct}% logging rate and cumulative physical activity of ${data.totalSteps.toLocaleString()} steps, structural health resilience is actively improving.</p>
+        <p style="margin-bottom: 0;"><strong>Recommendations for Next Month:</strong> Sustain target daily water intake (8+ glasses), maintain circadian bedtime alignment before 10:30 PM, and integrate scheduled post-workout recovery routines.</p>
+    </div>
+
+    <div class="section-title">Daily Submissions Log (${data.userLogs.length} Records)</div>
+    <table>
+        <thead>
+            <tr>
+                <th style="width:18%;">Date</th>
+                <th style="width:16%;">Sleep Duration</th>
+                <th style="width:16%;">Hydration</th>
+                <th style="width:16%;">Steps Walked</th>
+                <th style="width:16%;">Mood State</th>
+                <th style="width:18%;">Workout Completed</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${rowsHtml}
+        </tbody>
+    </table>
+
+    <div class="footer">
+        LeanLife Wellness Center &bull; Generated on ${new Date().toLocaleString()} &bull; Confidential Healthcare Document
+    </div>
+</div>`;
 
         if (window.html2pdf) {
             const container = document.createElement('div');
@@ -4598,11 +4300,13 @@ const leanLifeAppCore = {
             container.style.position = 'fixed';
             container.style.top = '0';
             container.style.left = '0';
-            container.style.width = '780px';
-            container.style.maxWidth = '780px';
+            container.style.width = '750px';
+            container.style.maxWidth = '750px';
+            container.style.margin = '0';
+            container.style.padding = '0';
             container.style.backgroundColor = '#ffffff';
             container.style.color = '#1a202c';
-            container.style.zIndex = '-9999';
+            container.style.zIndex = '99999';
             container.style.opacity = '1';
             container.style.pointerEvents = 'none';
             container.innerHTML = pdfHtml;
@@ -4615,9 +4319,12 @@ const leanLifeAppCore = {
                 html2canvas: { 
                     scale: 2, 
                     useCORS: true,
-                    scrollY: 0,
                     scrollX: 0,
-                    windowWidth: 780,
+                    scrollY: 0,
+                    x: 0,
+                    y: 0,
+                    width: 750,
+                    windowWidth: 750,
                     backgroundColor: '#ffffff'
                 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
