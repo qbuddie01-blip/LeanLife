@@ -3449,8 +3449,9 @@ const leanLifeAppCore = {
     <meta charset="UTF-8">
     <title>LeanLife Wellness Report - ${memberName}</title>
     <style>
+        * { box-sizing: border-box; }
         @media print {
-            body { margin: 0; padding: 0; background: #fff; }
+            body { margin: 0; padding: 0; background: #fff; width: 780px; }
             .no-print { display: none !important; }
             .page-break { page-break-before: always; }
         }
@@ -3458,13 +3459,16 @@ const leanLifeAppCore = {
             font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
             color: #1a202c;
             background-color: #ffffff;
-            margin: 0;
-            padding: 24px;
-            line-height: 1.5;
-            font-size: 13px;
+            margin: 0 auto;
+            padding: 16px;
+            line-height: 1.4;
+            font-size: 12px;
+            width: 780px;
+            max-width: 780px;
         }
         .report-container {
-            max-width: 800px;
+            width: 100%;
+            max-width: 780px;
             margin: 0 auto;
             background: #ffffff;
         }
@@ -3473,11 +3477,13 @@ const leanLifeAppCore = {
             justify-content: space-between;
             align-items: center;
             border-bottom: 2.5px solid #12826d;
-            padding-bottom: 16px;
-            margin-bottom: 20px;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .brand-title {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 800;
             color: #12826d;
             margin: 0;
@@ -3485,25 +3491,27 @@ const leanLifeAppCore = {
         .badge {
             background: #e6fffa;
             color: #12826d;
-            padding: 5px 12px;
-            border-radius: 16px;
-            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 14px;
+            font-size: 10px;
             font-weight: 700;
             border: 1px solid rgba(18, 130, 109, 0.3);
         }
         .meta-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
+            gap: 10px;
             background: #f8fafc;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 16px;
             border: 1px solid #e2e8f0;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .meta-label {
             color: #718096;
-            font-size: 10px;
+            font-size: 9px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             font-weight: 700;
@@ -3512,55 +3520,64 @@ const leanLifeAppCore = {
             font-weight: 700;
             color: #2d3748;
             margin-top: 2px;
-            font-size: 12px;
+            font-size: 11px;
+            word-break: break-word;
         }
         .score-banner {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-            margin-bottom: 20px;
+            gap: 10px;
+            margin-bottom: 16px;
             text-align: center;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .score-box {
             background: #f4fbf7;
             border: 1.5px solid #12826d;
-            padding: 12px;
-            border-radius: 8px;
+            padding: 10px;
+            border-radius: 6px;
         }
         .score-num {
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 900;
             color: #12826d;
             line-height: 1;
         }
         .score-name {
-            font-size: 10px;
+            font-size: 9.5px;
             text-transform: uppercase;
             color: #4a5568;
             font-weight: 700;
             margin-top: 4px;
         }
         .section-title {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
             color: #12826d;
-            margin-top: 20px;
-            margin-bottom: 8px;
+            margin-top: 14px;
+            margin-bottom: 6px;
             border-bottom: 1.5px solid #e2e8f0;
             padding-bottom: 4px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 16px;
-            font-size: 12px;
+            margin-bottom: 14px;
+            font-size: 11px;
+            table-layout: fixed;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .table th, .table td {
-            padding: 7px 10px;
+            padding: 6px 8px;
             border: 1px solid #e2e8f0;
             text-align: left;
+            word-break: break-word;
         }
         .table th {
             background: #f8fafc;
@@ -3571,28 +3588,33 @@ const leanLifeAppCore = {
             background: #f8fafc;
             border: 1px solid #e2e8f0;
             border-left: 3.5px solid #12826d;
-            padding: 12px 14px;
-            border-radius: 6px;
-            margin-bottom: 12px;
-            line-height: 1.5;
+            padding: 10px 12px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            line-height: 1.4;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .content-box h4 {
             margin: 0 0 4px 0;
-            font-size: 12px;
+            font-size: 11.5px;
             color: #2d3748;
         }
         .content-box p {
             margin: 0;
             color: #4a5568;
+            font-size: 11px;
         }
         .footer {
-            margin-top: 25px;
-            padding-top: 12px;
+            margin-top: 20px;
+            padding-top: 10px;
             border-top: 1px solid #e2e8f0;
             display: flex;
             justify-content: space-between;
-            font-size: 10px;
+            font-size: 9.5px;
             color: #a0aec0;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
     </style>
 </head>
@@ -3647,8 +3669,8 @@ const leanLifeAppCore = {
         <div class="section-title">1. Biometric Vitals & Health Metrics</div>
         <table class="table">
             <tr>
-                <th>Weight</th><td>${met.weight || log.weight || '--'} lbs</td>
-                <th>BMI</th><td>${met.bmi || '--'}</td>
+                <th style="width:20%;">Weight</th><td style="width:30%;">${met.weight || log.weight || '--'} lbs</td>
+                <th style="width:20%;">BMI</th><td style="width:30%;">${met.bmi || '--'}</td>
             </tr>
             <tr>
                 <th>Body Fat %</th><td>${met.bodyFat ? met.bodyFat + '%' : '--'}</td>
@@ -3663,8 +3685,8 @@ const leanLifeAppCore = {
                 <th>Energy Rating</th><td>${met.energy ? met.energy + '/10' : '--'}</td>
             </tr>
             <tr>
-                <th>Outdoor / Sunlight</th><td>${met.outdoorTime || log.outdoorTime || '--'}m / ${met.sunlight || log.sunlight || '--'}m</td>
-                <th>Meditation / Screen Time</th><td>${met.meditation || log.meditation || '--'}m / ${met.screenTime || log.screenTime || '--'}h</td>
+                <th>Outdoor / Sun</th><td>${met.outdoorTime || log.outdoorTime || '--'}m / ${met.sunlight || log.sunlight || '--'}m</td>
+                <th>Meditation / Screen</th><td>${met.meditation || log.meditation || '--'}m / ${met.screenTime || log.screenTime || '--'}h</td>
             </tr>
         </table>
 
@@ -3733,7 +3755,8 @@ const leanLifeAppCore = {
             container.style.position = 'fixed';
             container.style.top = '0';
             container.style.left = '0';
-            container.style.width = '1050px';
+            container.style.width = '780px';
+            container.style.maxWidth = '780px';
             container.style.backgroundColor = '#ffffff';
             container.style.color = '#1a202c';
             container.style.zIndex = '-9999';
@@ -3743,7 +3766,7 @@ const leanLifeAppCore = {
             document.body.appendChild(container);
 
             const opt = {
-                margin: [10, 10, 10, 10],
+                margin: [8, 8, 8, 8],
                 filename: `LeanLife_Wellness_Report_${memberName.replace(/\s+/g, '_')}_${report.id || Date.now()}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { 
@@ -3751,7 +3774,7 @@ const leanLifeAppCore = {
                     useCORS: true,
                     scrollY: 0,
                     scrollX: 0,
-                    windowWidth: 1050,
+                    windowWidth: 780,
                     backgroundColor: '#ffffff'
                 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -3835,68 +3858,81 @@ const leanLifeAppCore = {
     <meta charset="UTF-8">
     <title>LeanLife Wellness Logs Export</title>
     <style>
+        * { box-sizing: border-box; }
         @media print {
-            body { margin: 0; padding: 0; background: #ffffff !important; color: #1a202c !important; }
+            body { margin: 0; padding: 0; background: #ffffff !important; color: #1a202c !important; width: 1050px; }
             .no-print { display: none !important; }
         }
         body {
             font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
             color: #1a202c;
             background: #ffffff;
-            padding: 20px;
-            font-size: 11px;
+            margin: 0 auto;
+            padding: 16px;
+            font-size: 10px;
+            width: 1050px;
+            max-width: 1050px;
         }
         .header {
             border-bottom: 2px solid #12826d;
-            padding-bottom: 12px;
-            margin-bottom: 16px;
+            padding-bottom: 10px;
+            margin-bottom: 14px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 10.5px;
+            font-size: 9.5px;
             background: #ffffff;
             color: #1a202c;
+            table-layout: fixed;
         }
         .table th {
             background: #12826d !important;
             color: #ffffff !important;
-            padding: 8px;
+            padding: 6px 8px;
             text-align: left;
             border: 1px solid #12826d;
             font-weight: bold;
         }
         .table td {
-            padding: 7px 8px;
+            padding: 6px 8px;
             border: 1px solid #e2e8f0;
             color: #1a202c;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+        tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
     </style>
 </head>
 <body style="background:#ffffff; color:#1a202c;">
-    <div id="pdf-logs-content" style="background:#ffffff; color:#1a202c; padding:20px; font-family:'Segoe UI', -apple-system, sans-serif;">
-        <div class="header" style="border-bottom:2px solid #12826d; padding-bottom:12px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+    <div id="pdf-logs-content" style="background:#ffffff; color:#1a202c; width:100%; max-width:1050px; font-family:'Segoe UI', -apple-system, sans-serif;">
+        <div class="header">
             <div>
-                <h2 style="margin:0; color:#12826d; font-size:18px;">🌿 LeanLife Wellness Logs Submissions</h2>
-                <div style="font-size:11px; color:#666;">Generated on ${new Date().toLocaleString()} • Total Records: ${logsToExport.length}</div>
+                <h2 style="margin:0; color:#12826d; font-size:16px;">🌿 LeanLife Wellness Logs Submissions</h2>
+                <div style="font-size:10px; color:#666;">Generated on ${new Date().toLocaleString()} • Total Records: ${logsToExport.length}</div>
             </div>
-            <div style="font-weight:bold; color:#12826d;">ADMIN AUDIT EXPORT</div>
+            <div style="font-weight:bold; color:#12826d; font-size:11px;">ADMIN AUDIT EXPORT</div>
         </div>
-        <table class="table" style="width:100%; border-collapse:collapse; font-size:10.5px; background:#ffffff; color:#1a202c;">
+        <table class="table">
             <thead>
                 <tr>
-                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Date</th>
-                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Member Email</th>
-                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Sleep</th>
-                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Hydration</th>
-                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Steps</th>
-                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Mood</th>
-                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Exercise</th>
-                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Vitals (BP | Sugar)</th>
-                    <th style="background:#12826d; color:#ffffff; padding:8px; text-align:left; border:1px solid #12826d;">Photos</th>
+                    <th style="width:10%;">Date</th>
+                    <th style="width:18%;">Member Email</th>
+                    <th style="width:10%;">Sleep</th>
+                    <th style="width:12%;">Hydration</th>
+                    <th style="width:10%;">Steps</th>
+                    <th style="width:8%;">Mood</th>
+                    <th style="width:12%;">Exercise</th>
+                    <th style="width:12%;">Vitals (BP | Sugar)</th>
+                    <th style="width:8%;">Photos</th>
                 </tr>
             </thead>
             <tbody>
@@ -3914,6 +3950,7 @@ const leanLifeAppCore = {
             container.style.top = '0';
             container.style.left = '0';
             container.style.width = '1050px';
+            container.style.maxWidth = '1050px';
             container.style.backgroundColor = '#ffffff';
             container.style.color = '#1a202c';
             container.style.zIndex = '-9999';
@@ -4342,16 +4379,16 @@ const leanLifeAppCore = {
             const m = l.mood || 'happy';
             const ex = l.exerciseCompleted === 'yes' || l.exercise?.completed === 'yes' ? (l.exercise?.type || 'Yes') : 'No';
             return `
-                <tr>
-                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${d}</td>
-                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${s} hrs</td>
-                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${w} oz</td>
-                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${st}</td>
-                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-transform: capitalize;">${m}</td>
-                    <td style="padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${ex}</td>
+                <tr style="page-break-inside: avoid; break-inside: avoid;">
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-size: 10px;">${d}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-size: 10px;">${s} hrs</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-size: 10px;">${w} oz</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-size: 10px;">${st}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-size: 10px; text-transform: capitalize;">${m}</td>
+                    <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-size: 10px;">${ex}</td>
                 </tr>
             `;
-        }).join('') || `<tr><td colspan="6" style="padding: 12px; text-align: center; color: #888;">No daily records found for this period.</td></tr>`;
+        }).join('') || `<tr><td colspan="6" style="padding: 10px; text-align: center; color: #888;">No daily records found for this period.</td></tr>`;
 
         const pdfHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -4359,18 +4396,111 @@ const leanLifeAppCore = {
     <meta charset="UTF-8">
     <title>LeanLife Monthly Wellness Report - ${data.monthName}</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #2d3748; margin: 0; padding: 20px; background: #fff; line-height: 1.5; }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #12826D; padding-bottom: 15px; margin-bottom: 20px; }
-        .brand { font-size: 22px; font-weight: bold; color: #12826D; }
-        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
-        .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; text-align: center; }
-        .card-val { font-size: 18px; font-weight: bold; color: #12826D; margin: 4px 0; }
-        .card-lbl { font-size: 10px; text-transform: uppercase; color: #718096; font-weight: 600; }
-        .section-title { font-size: 14px; font-weight: bold; color: #12826D; border-bottom: 1.5px solid #a5e332; padding-bottom: 4px; margin-bottom: 12px; text-transform: uppercase; }
-        .synth-box { background: #f0fdf4; border-left: 4px solid #12826D; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 12px; line-height: 1.6; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { background: #12826D; color: white; text-align: left; padding: 8px; font-size: 11px; text-transform: uppercase; }
-        .footer { margin-top: 30px; font-size: 10px; color: #a0aec0; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+        * { box-sizing: border-box; }
+        @media print {
+            body { margin: 0; padding: 0; background: #fff; width: 780px; }
+            .no-print { display: none !important; }
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #2d3748;
+            margin: 0 auto;
+            padding: 16px;
+            background: #fff;
+            line-height: 1.4;
+            font-size: 11px;
+            width: 780px;
+            max-width: 780px;
+        }
+        #pdf-monthly-report-content {
+            width: 100%;
+            max-width: 780px;
+            margin: 0 auto;
+            background: #ffffff;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #12826D;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .brand { font-size: 20px; font-weight: bold; color: #12826D; }
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 14px;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 8px;
+            text-align: center;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .card-val { font-size: 16px; font-weight: bold; color: #12826D; margin: 3px 0; }
+        .card-lbl { font-size: 9px; text-transform: uppercase; color: #718096; font-weight: 700; }
+        .section-title {
+            font-size: 12px;
+            font-weight: bold;
+            color: #12826D;
+            border-bottom: 1.5px solid #a5e332;
+            padding-bottom: 3px;
+            margin-top: 14px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .synth-box {
+            background: #f0fdf4;
+            border-left: 3.5px solid #12826D;
+            padding: 10px 12px;
+            margin-bottom: 14px;
+            border-radius: 4px;
+            font-size: 11px;
+            line-height: 1.5;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+            table-layout: fixed;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        th {
+            background: #12826D;
+            color: white;
+            text-align: left;
+            padding: 6px 8px;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 9.5px;
+            color: #a0aec0;
+            text-align: center;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 8px;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
     </style>
 </head>
 <body>
@@ -4378,11 +4508,11 @@ const leanLifeAppCore = {
         <div class="header">
             <div>
                 <div class="brand">🌱 LeanLife Health & Wellness</div>
-                <div style="font-size: 12px; color: #718096;">Monthly Cumulative Progress & Clinical Vitals Report</div>
+                <div style="font-size: 11px; color: #718096;">Monthly Cumulative Progress & Clinical Vitals Report</div>
             </div>
             <div style="text-align: right;">
-                <div style="font-size: 16px; font-weight: bold; color: #2d3748;">${data.monthName}</div>
-                <div style="font-size: 11px; color: #718096;">Member: <strong>${memberName}</strong> (${userEmail})</div>
+                <div style="font-size: 15px; font-weight: bold; color: #2d3748;">${data.monthName}</div>
+                <div style="font-size: 10.5px; color: #718096;">Member: <strong>${memberName}</strong> (${userEmail})</div>
             </div>
         </div>
 
@@ -4390,22 +4520,22 @@ const leanLifeAppCore = {
             <div class="card">
                 <div class="card-lbl">Monthly Score</div>
                 <div class="card-val">${data.overallScore} / 100</div>
-                <div style="font-size: 11px; color: #28a745; font-weight: bold;">Grade: ${data.grade}</div>
+                <div style="font-size: 10px; color: #28a745; font-weight: bold;">Grade: ${data.grade}</div>
             </div>
             <div class="card">
                 <div class="card-lbl">Consistency</div>
                 <div class="card-val">${data.daysLoggedCount} / ${data.daysInMonth} Days</div>
-                <div style="font-size: 11px; color: #12826D;">${data.consistencyPct}% Adherence</div>
+                <div style="font-size: 10px; color: #12826D;">${data.consistencyPct}% Adherence</div>
             </div>
             <div class="card">
                 <div class="card-lbl">Avg Sleep</div>
                 <div class="card-val">${data.avgSleep} hrs</div>
-                <div style="font-size: 11px; color: #673ab7;">${data.restfulPct}% Restful</div>
+                <div style="font-size: 10px; color: #673ab7;">${data.restfulPct}% Restful</div>
             </div>
             <div class="card">
                 <div class="card-lbl">Hydration Consumed</div>
-                <div class="card-val">${data.totalWaterGlasses} glasses</div>
-                <div style="font-size: 11px; color: #2196f3;">${data.totalWaterOz.toLocaleString()} oz total</div>
+                <div class="card-val">${data.totalWaterGlasses} gl</div>
+                <div style="font-size: 10px; color: #2196f3;">${data.totalWaterOz.toLocaleString()} oz total</div>
             </div>
         </div>
 
@@ -4413,22 +4543,22 @@ const leanLifeAppCore = {
             <div class="card">
                 <div class="card-lbl">Total Steps</div>
                 <div class="card-val">${data.totalSteps.toLocaleString()}</div>
-                <div style="font-size: 11px; color: #8bc34a;">Avg: ${data.avgSteps.toLocaleString()} / day</div>
+                <div style="font-size: 10px; color: #8bc34a;">Avg: ${data.avgSteps.toLocaleString()} / day</div>
             </div>
             <div class="card">
                 <div class="card-lbl">Calories Burned</div>
                 <div class="card-val">${data.totalCalories.toLocaleString()} kcal</div>
-                <div style="font-size: 11px; color: #e91e63;">${data.workoutSessionsCount} Workouts</div>
+                <div style="font-size: 10px; color: #e91e63;">${data.workoutSessionsCount} Workouts</div>
             </div>
             <div class="card">
                 <div class="card-lbl">Weight Trend</div>
                 <div class="card-val">${data.endWeight} lbs</div>
-                <div style="font-size: 11px; color: #12826D;">Change: ${data.weightDelta} lbs</div>
+                <div style="font-size: 10px; color: #12826D;">Change: ${data.weightDelta} lbs</div>
             </div>
             <div class="card">
                 <div class="card-lbl">Vitals Average</div>
                 <div class="card-val">${data.avgBP}</div>
-                <div style="font-size: 11px; color: #718096;">Sugar: ${data.avgBloodSugar} mg/dL • HR: ${data.avgHeartRate} bpm</div>
+                <div style="font-size: 10px; color: #718096;">Sugar: ${data.avgBloodSugar} mg • HR: ${data.avgHeartRate}</div>
             </div>
         </div>
 
@@ -4442,12 +4572,12 @@ const leanLifeAppCore = {
         <table>
             <thead>
                 <tr>
-                    <th>Date</th>
-                    <th>Sleep Duration</th>
-                    <th>Hydration</th>
-                    <th>Steps Walked</th>
-                    <th>Mood State</th>
-                    <th>Workout Completed</th>
+                    <th style="width:18%;">Date</th>
+                    <th style="width:16%;">Sleep Duration</th>
+                    <th style="width:16%;">Hydration</th>
+                    <th style="width:16%;">Steps Walked</th>
+                    <th style="width:16%;">Mood State</th>
+                    <th style="width:18%;">Workout Completed</th>
                 </tr>
             </thead>
             <tbody>
@@ -4468,7 +4598,8 @@ const leanLifeAppCore = {
             container.style.position = 'fixed';
             container.style.top = '0';
             container.style.left = '0';
-            container.style.width = '1050px';
+            container.style.width = '780px';
+            container.style.maxWidth = '780px';
             container.style.backgroundColor = '#ffffff';
             container.style.color = '#1a202c';
             container.style.zIndex = '-9999';
@@ -4486,7 +4617,7 @@ const leanLifeAppCore = {
                     useCORS: true,
                     scrollY: 0,
                     scrollX: 0,
-                    windowWidth: 1050,
+                    windowWidth: 780,
                     backgroundColor: '#ffffff'
                 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
