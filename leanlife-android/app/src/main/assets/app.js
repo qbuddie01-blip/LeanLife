@@ -263,6 +263,226 @@ const LeanLifeCacheManager = {
 
 LeanLifeCacheManager.init();
 
+// ==================== AUTHENTICATION SUBSYSTEM & ISOLATION ====================
+const AuthResult = Object.freeze({
+    SUCCESS: 'AUTH_SUCCESS',
+    INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+    SERVICE_UNAVAILABLE: 'AUTH_SERVICE_UNAVAILABLE',
+    TIMEOUT: 'AUTH_TIMEOUT',
+    NETWORK_OFFLINE: 'NETWORK_OFFLINE',
+    ACCOUNT_DISABLED: 'ACCOUNT_DISABLED',
+    REQUIRES_SETUP: 'REQUIRES_SETUP'
+});
+
+const AuthService = {
+    app: null,
+
+    init(appInstance) {
+        this.app = appInstance;
+    },
+
+    normalizeEmail(email) {
+        return (email || '').trim().toLowerCase();
+    },
+
+    // Fast cached authentication (< 15ms target)
+    async authenticateFromCache(identifier, password) {
+        const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        const inputId = this.normalizeEmail(identifier);
+        if (!inputId || !password) {
+            return { result: AuthResult.INVALID_CREDENTIALS, user: null, elapsedMs: 0 };
+        }
+
+        const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
+        const users = (appRef && appRef.db && appRef.db.users) ? appRef.db.users : [];
+        for (const u of users) {
+            const uEmail = this.normalizeEmail(u.email);
+            const uName = (u.name || '').trim().toLowerCase();
+            const uUsername = uEmail.split('@')[0];
+
+            if (uEmail === inputId || uName === inputId || uUsername === inputId) {
+                const isValid = await appRef.verifyUserCredentials(u, password);
+                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                if (isValid) {
+                    return { result: AuthResult.SUCCESS, user: u, source: 'cache', elapsedMs };
+                } else {
+                    return { result: AuthResult.INVALID_CREDENTIALS, user: null, elapsedMs };
+                }
+            }
+        }
+
+        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+        return { result: null, user: null, notFoundInCache: true, elapsedMs };
+    },
+
+    // Remote authentication for fresh devices (serverless endpoint or targeted fallback)
+    async authenticateFromRemote(identifier, password) {
+        const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        const inputId = this.normalizeEmail(identifier);
+        const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
+
+        // Check if browser is strictly offline
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            return {
+                result: AuthResult.NETWORK_OFFLINE,
+                message: 'You are currently offline. Please check your internet connection.',
+                elapsedMs: 0
+            };
+        }
+
+        // 1. Primary remote path: Netlify secure serverless endpoint
+        let endpointFailed = false;
+        try {
+            const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
+
+            const response = await fetch('/.netlify/functions/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: inputId, password: password }),
+                signal: controller ? controller.signal : undefined
+            });
+
+            if (timeoutId) clearTimeout(timeoutId);
+
+            if (response.status === 200) {
+                const data = await response.json();
+                if (data && data.success && data.user) {
+                    const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                    return { result: AuthResult.SUCCESS, user: data.user, source: 'remote_function', elapsedMs };
+                }
+            } else if (response.status === 401) {
+                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
+            } else if (response.status === 404) {
+                endpointFailed = true;
+            } else {
+                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                return {
+                    result: AuthResult.SERVICE_UNAVAILABLE,
+                    message: 'Authentication service is temporarily unavailable. Please try again shortly.',
+                    elapsedMs
+                };
+            }
+        } catch (fetchErr) {
+            if (fetchErr.name === 'AbortError') {
+                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                return {
+                    result: AuthResult.TIMEOUT,
+                    message: 'Authentication request timed out. Please check your connection and try again.',
+                    elapsedMs
+                };
+            }
+            endpointFailed = true;
+        }
+
+        // 2. Secondary fallback path (for Android WebView or local static environments)
+        if (endpointFailed && appRef && appRef.supabase) {
+            try {
+                const withTimeout = (p, ms = 2500) => Promise.race([
+                    p,
+                    new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))
+                ]);
+
+                const { data, error } = await withTimeout(
+                    appRef.supabase
+                        .from('system_settings')
+                        .select('data')
+                        .eq('id', 'leanlife_cloud_db')
+                        .single()
+                );
+
+                if (error || !data || !data.data) {
+                    const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                    return {
+                        result: AuthResult.SERVICE_UNAVAILABLE,
+                        message: 'Authentication service is currently unreachable. Please check your connection.',
+                        elapsedMs
+                    };
+                }
+
+                // Cloud data received: merge into memory
+                appRef.mergeCloudDatabase(data.data);
+                appRef.saveDatabase(true);
+
+                // Re-verify against downloaded cloud users
+                for (const u of (appRef.db.users || [])) {
+                    const uEmail = this.normalizeEmail(u.email);
+                    const uName = (u.name || '').trim().toLowerCase();
+                    const uUsername = uEmail.split('@')[0];
+
+                    if ((uEmail === inputId || uName === inputId || uUsername === inputId) &&
+                        (await appRef.verifyUserCredentials(u, password))) {
+                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                        return { result: AuthResult.SUCCESS, user: u, source: 'remote_fallback', elapsedMs };
+                    }
+                }
+
+                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
+            } catch (cloudErr) {
+                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                if (cloudErr && cloudErr.message === 'timeout') {
+                    return {
+                        result: AuthResult.TIMEOUT,
+                        message: 'Connection to authentication service timed out. Please try again.',
+                        elapsedMs
+                    };
+                }
+                return {
+                    result: AuthResult.SERVICE_UNAVAILABLE,
+                    message: 'Authentication service is currently unreachable. Please verify your connection or try again shortly.',
+                    elapsedMs
+                };
+            }
+        }
+
+        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+        return {
+            result: AuthResult.SERVICE_UNAVAILABLE,
+            message: 'Authentication service is temporarily unavailable. Please try again shortly.',
+            elapsedMs
+        };
+    },
+
+    // Unified entry point for authentication
+    async authenticate(identifier, password) {
+        // Step 1: Check Local Cache First (fast cached login < 15ms)
+        const cacheResult = await this.authenticateFromCache(identifier, password);
+        if (cacheResult.result === AuthResult.SUCCESS) {
+            return cacheResult;
+        }
+        if (cacheResult.result === AuthResult.INVALID_CREDENTIALS) {
+            return cacheResult;
+        }
+
+        // Step 2: Fresh Device / Cleared Browser Remote Authentication
+        return await this.authenticateFromRemote(identifier, password);
+    },
+
+    // Dedicated authoritative password update
+    async updateCredentials(email, newPassword) {
+        const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
+        if (!appRef || !appRef.db || !appRef.db.users) return false;
+        const normalized = this.normalizeEmail(email);
+        const user = appRef.db.users.find(u => this.normalizeEmail(u.email) === normalized);
+        if (!user) return false;
+
+        const hashedPassword = await appRef.hashPassword(newPassword);
+        user.password = hashedPassword;
+        user.tempPasswordRaw = null;
+        user.firstLogin = false;
+        user.authUpdatedAt = new Date().toISOString();
+        user.updatedAt = new Date().toISOString();
+
+        await appRef.saveDatabase();
+        if (appRef.supabase) {
+            appRef.saveCloudData().catch(e => console.warn("[AuthService] Cloud save warning:", e));
+        }
+        return true;
+    }
+};
+
 // ==================== STATE MANAGEMENT & DATABASE INITIALIZATION ====================
 const leanLifeAppCore = {
     // Current Active Session
@@ -458,6 +678,11 @@ const leanLifeAppCore = {
         } catch (e) {
             return 'fallback_' + String(password);
         }
+    },
+
+    // Helper to evaluate candidate credentials against stored user record
+    async verifyUserCredentialCandidate(u, password) {
+        return await this.verifyUserCredentials(u, password);
     },
 
     // Unified Authoritative Credential Verification Engine
@@ -659,8 +884,14 @@ const leanLifeAppCore = {
     async init() {
         console.log("Initializing LeanLife App...");
         this.initSupabase();
+        if (typeof AuthService !== 'undefined') {
+            AuthService.init(this);
+        }
+        this.AuthResult = typeof AuthResult !== 'undefined' ? AuthResult : null;
+        this.AuthService = typeof AuthService !== 'undefined' ? AuthService : null;
         
-        this.dbLoadedPromise = (async () => {
+        // 1. Fast Local Cache Preparation (< 10ms)
+        this.localCacheReadyPromise = (async () => {
             await this.loadDatabase();
             await this.seedInitialData();
 
@@ -708,7 +939,16 @@ const leanLifeAppCore = {
             }
         })();
 
+        // 2. Point dbLoadedPromise & authInfrastructureReadyPromise to localCacheReadyPromise for 100% test compatibility
+        this.dbLoadedPromise = this.localCacheReadyPromise;
+        this.authInfrastructureReadyPromise = this.localCacheReadyPromise;
+
         await this.dbLoadedPromise;
+
+        // 3. Launch background cloud sync without blocking user interaction or login
+        this.backgroundCloudSyncPromise = this.syncCloudData().catch(e => {
+            console.warn("[App] Background cloud sync notice:", e);
+        });
 
         this.checkSession();
         this.startCarousel();
@@ -1106,8 +1346,8 @@ const leanLifeAppCore = {
         this.db.systemSettings.emailjsAutoreplyTemplateId = this.db.systemSettings.emailjsAutoreplyTemplateId || 'template_fzzf45u';
         this.db.systemSettings.emailjsPublicKey = this.db.systemSettings.emailjsPublicKey || '1KO_vRCldTUVxoqtM';
 
-        // Supabase Cloud Load Sync
-        await this.syncCloudData();
+        // Note: Supabase Cloud Sync runs asynchronously in backgroundCloudSyncPromise
+        // and does NOT block local cache readiness or authentication.
     },
 
     // Periodically fetch and merge latest cloud data
@@ -1190,7 +1430,35 @@ const leanLifeAppCore = {
             cloudDb.users = cloudDb.users.filter(u => !deletedSet.has((u.email || '').toLowerCase().trim()));
         }
 
-        this.db.users = mergeLists(this.db.users, cloudDb.users, 'email');
+        if (cloudDb.users) {
+            // Snapshot existing local users to preserve updated local authentication credentials
+            const localUserMap = new Map();
+            (this.db.users || []).forEach(u => {
+                const k = (u.email || '').toLowerCase().trim();
+                if (k) localUserMap.set(k, u);
+            });
+
+            this.db.users = mergeLists(this.db.users, cloudDb.users, 'email').map(u => {
+                const k = (u.email || '').toLowerCase().trim();
+                const localU = localUserMap.get(k);
+                if (localU) {
+                    const localAuthTime = localU.authUpdatedAt ? new Date(localU.authUpdatedAt).getTime() : (localU.updatedAt ? new Date(localU.updatedAt).getTime() : 0);
+                    const cloudAuthTime = u.authUpdatedAt ? new Date(u.authUpdatedAt).getTime() : (u.updatedAt ? new Date(u.updatedAt).getTime() : 0);
+
+                    // Dedicated Authentication Isolation: If local auth credentials are newer or equal, preserve them
+                    if (localAuthTime >= cloudAuthTime) {
+                        return {
+                            ...u,
+                            password: localU.password,
+                            tempPasswordRaw: localU.tempPasswordRaw,
+                            firstLogin: localU.firstLogin,
+                            authUpdatedAt: localU.authUpdatedAt || localU.updatedAt
+                        };
+                    }
+                }
+                return u;
+            });
+        }
         this.db.wellnessLogs = mergeLists(this.db.wellnessLogs, cloudDb.wellnessLogs, 'id');
         this.db.aiReports = mergeLists(this.db.aiReports, cloudDb.aiReports, 'id');
         this.db.posts = mergeLists(this.db.posts, cloudDb.posts, 'id');
@@ -2007,6 +2275,7 @@ const leanLifeAppCore = {
                     firstLogin: false,
                     streakCount: 0,
                     preferredCoach: 'sarah',
+                    authUpdatedAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 };
 
@@ -2050,76 +2319,41 @@ const leanLifeAppCore = {
                     "fa-user-check"
                 );
             } else {
-                // Unified Secure Login Validation (PBKDF2, Legacy, Temp Credentials)
-                const inputId = email;
-                let user = null;
+                // Unified Secure Login Validation via AuthService (Isolated from full database sync)
+                const authRes = await AuthService.authenticate(email, password);
 
-                for (const u of (this.db.users || [])) {
-                    const uEmail = (u.email || '').trim().toLowerCase();
-                    const uName = (u.name || '').trim().toLowerCase();
-                    const uUsername = uEmail.split('@')[0];
-                    
-                    const matchesIdentifier = (
-                        uEmail === inputId ||
-                        uName === inputId ||
-                        uUsername === inputId
-                    );
-                    
-                    if (matchesIdentifier && (await this.verifyUserCredentials(u, password))) {
-                        user = u;
-                        break;
-                    }
-                }
-                
-                // If account not found in local memory, sync from Supabase with timeout protection
-                if (!user && this.supabase) {
-                    try {
-                        const withTimeout = (p, ms = 2500) => Promise.race([
-                            p,
-                            new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))
-                        ]);
-
-                        const { data, error } = await withTimeout(
-                            this.supabase
-                                .from('system_settings')
-                                .select('data')
-                                .eq('id', 'leanlife_cloud_db')
-                                .single()
-                        );
-
-                        if (data && data.data) {
-                            this.mergeCloudDatabase(data.data);
-                            this.saveDatabase(true);
-
-                            for (const u of (this.db.users || [])) {
-                                const uEmail = (u.email || '').trim().toLowerCase();
-                                const uName = (u.name || '').trim().toLowerCase();
-                                const uUsername = uEmail.split('@')[0];
-                                
-                                const matchesIdentifier = (
-                                    uEmail === inputId ||
-                                    uName === inputId ||
-                                    uUsername === inputId
-                                );
-                                
-                                if (matchesIdentifier && (await this.verifyUserCredentials(u, password))) {
-                                    user = u;
-                                    break;
-                                }
-                            }
-                        }
-                    } catch(cloudErr) {
-                        console.warn("Live cloud lookup notice:", cloudErr.message || cloudErr);
-                    }
-                }
-
-                if (!user) {
+                if (!authRes || authRes.result !== AuthResult.SUCCESS) {
                     if (submitBtn) {
                         submitBtn.disabled = false;
                         submitBtn.innerHTML = originalBtnText;
                     }
-                    alert("Invalid email address or password. Please verify your credentials and try again.");
+
+                    if (authRes && authRes.result === AuthResult.NETWORK_OFFLINE) {
+                        alert(authRes.message || "You are currently offline. Please check your internet connection.");
+                    } else if (authRes && authRes.result === AuthResult.TIMEOUT) {
+                        alert(authRes.message || "Authentication request timed out. Please check your connection and try again.");
+                    } else if (authRes && authRes.result === AuthResult.SERVICE_UNAVAILABLE) {
+                        alert(authRes.message || "Authentication service is temporarily unavailable. Please try again shortly.");
+                    } else {
+                        // Genuine credential mismatch (INVALID_CREDENTIALS)
+                        alert("Invalid email address or password. Please verify your credentials and try again.");
+                    }
                     return;
+                }
+
+                let user = authRes.user;
+
+                // If user authenticated via remote function, ensure local user record is saved in local cache
+                if (authRes.source === 'remote_function' || authRes.source === 'remote_fallback') {
+                    const localIdx = (this.db.users || []).findIndex(u => (u.email || '').toLowerCase().trim() === (user.email || '').toLowerCase().trim());
+                    if (localIdx >= 0) {
+                        this.db.users[localIdx] = { ...this.db.users[localIdx], ...user };
+                        user = this.db.users[localIdx];
+                    } else {
+                        this.db.users = this.db.users || [];
+                        this.db.users.push(user);
+                    }
+                    this.saveDatabase(true);
                 }
 
                 // Always reinstate active status
@@ -2133,10 +2367,7 @@ const leanLifeAppCore = {
                     const newPwd = await this.showTempPasswordModal(user);
                     if (newPwd && newPwd.trim() !== '') {
                         const cleanPwd = newPwd.trim();
-                        user.password = await this.hashPassword(cleanPwd);
-                        user.firstLogin = false;
-                        user.updatedAt = new Date().toISOString();
-                        await this.saveDatabase();
+                        await AuthService.updateCredentials(user.email, cleanPwd);
                         this.logAudit(user.name, 'Password Updated', 'First login temporary password replaced');
                         alert("Password updated successfully! Welcome to LeanLife.");
                     } else {
@@ -5455,6 +5686,7 @@ const leanLifeAppCore = {
         const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
         user.tempPasswordRaw = tempPassword;
         user.firstLogin = true;
+        user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
         
         // 1. INSTANT (0ms): Re-render admin users table & display Action Center Modal
@@ -5556,6 +5788,7 @@ const leanLifeAppCore = {
                 goal: 'General Wellness',
                 avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
                 streakCount: 0,
+                authUpdatedAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 healthProfile: {
                     height: 170,
@@ -7117,8 +7350,14 @@ if (window.app) {
 }
 
 // Start application immediately if DOM is already ready, otherwise on DOMContentLoaded
-if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    window.app.init();
-} else {
-    window.addEventListener('DOMContentLoaded', () => window.app.init());
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        window.app.init();
+    } else {
+        window.addEventListener('DOMContentLoaded', () => window.app.init());
+    }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { app: (typeof window !== 'undefined' && window.app) || leanLifeAppCore, AuthService, AuthResult, LeanLifeCacheManager };
 }
