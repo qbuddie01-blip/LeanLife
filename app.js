@@ -216,6 +216,8 @@ const LeanLifeCacheManager = {
         try {
             sessionStorage.removeItem('leanlife_session');
             localStorage.removeItem('leanlife_session');
+            sessionStorage.removeItem('leanlife_token');
+            localStorage.removeItem('leanlife_token');
         } catch (e) {
             console.warn("[CacheManager] Storage purge warning on logout:", e);
         }
@@ -349,7 +351,7 @@ const AuthService = {
                 const data = await response.json();
                 if (data && data.success && data.user) {
                     const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                    return { result: AuthResult.SUCCESS, user: data.user, source: 'remote_function', elapsedMs };
+                    return { result: AuthResult.SUCCESS, user: data.user, token: data.token, source: 'remote_function', elapsedMs };
                 }
             } else if (response.status === 401) {
                 const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
@@ -384,15 +386,34 @@ const AuthService = {
                     new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))
                 ]);
 
-                const { data, error } = await withTimeout(
+                // Prioritize dedicated leanlife_auth_index query first
+                let cloudUsers = null;
+                const { data: authIndexRecord, error: authIndexErr } = await withTimeout(
                     appRef.supabase
                         .from('system_settings')
                         .select('data')
-                        .eq('id', 'leanlife_cloud_db')
+                        .eq('id', 'leanlife_auth_index')
                         .single()
                 );
 
-                if (error || !data || !data.data) {
+                if (!authIndexErr && authIndexRecord && authIndexRecord.data && Array.isArray(authIndexRecord.data.users)) {
+                    cloudUsers = authIndexRecord.data.users;
+                } else {
+                    const { data, error } = await withTimeout(
+                        appRef.supabase
+                            .from('system_settings')
+                            .select('data')
+                            .eq('id', 'leanlife_cloud_db')
+                            .single()
+                    );
+                    if (data && data.data && Array.isArray(data.data.users)) {
+                        cloudUsers = data.data.users;
+                        appRef.mergeCloudDatabase(data.data);
+                        appRef.saveDatabase(true);
+                    }
+                }
+
+                if (!cloudUsers || cloudUsers.length === 0) {
                     const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
                     return {
                         result: AuthResult.SERVICE_UNAVAILABLE,
@@ -401,12 +422,8 @@ const AuthService = {
                     };
                 }
 
-                // Cloud data received: merge into memory
-                appRef.mergeCloudDatabase(data.data);
-                appRef.saveDatabase(true);
-
                 // Re-verify against downloaded cloud users
-                for (const u of (appRef.db.users || [])) {
+                for (const u of cloudUsers) {
                     const uEmail = this.normalizeEmail(u.email);
                     const uName = (u.name || '').trim().toLowerCase();
                     const uUsername = uEmail.split('@')[0];
@@ -479,6 +496,20 @@ const AuthService = {
         if (appRef.supabase) {
             appRef.saveCloudData().catch(e => console.warn("[AuthService] Cloud save warning:", e));
         }
+
+        // Synchronize updated password with serverless user-admin endpoint if token available
+        try {
+            const token = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+                          (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
+            if (token && typeof fetch !== 'undefined') {
+                fetch('/.netlify/functions/user-admin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ action: 'update-password', targetEmail: normalized, newPassword: newPassword })
+                }).catch(e => console.warn("[AuthService] user-admin update notice:", e));
+            }
+        } catch (e) {}
+
         return true;
     }
 };
@@ -1760,8 +1791,10 @@ const leanLifeAppCore = {
     // Session validation
     checkSession() {
         let loggedUser = null;
+        let token = null;
         try {
             loggedUser = sessionStorage.getItem('leanlife_session') || localStorage.getItem('leanlife_session');
+            token = sessionStorage.getItem('leanlife_token') || localStorage.getItem('leanlife_token');
         } catch (e) {
             console.warn("Storage access notice in checkSession:", e);
         }
@@ -1769,6 +1802,54 @@ const leanLifeAppCore = {
         if (loggedUser) {
             try {
                 this.currentUser = JSON.parse(loggedUser);
+
+                // Anti-tampering verification using signed session token if present
+                if (token && typeof token === 'string' && token.includes('.')) {
+                    const parts = token.split('.');
+                    if (parts.length === 3) {
+                        try {
+                            let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+                            while (base64.length % 4) base64 += '=';
+                            const payloadStr = (typeof atob !== 'undefined')
+                                ? atob(base64)
+                                : (typeof Buffer !== 'undefined' ? Buffer.from(base64, 'base64').toString('utf8') : null);
+                            if (payloadStr) {
+                                const tokenPayload = JSON.parse(payloadStr);
+
+                                // Expiration check
+                                const nowSec = Math.floor(Date.now() / 1000);
+                                if (tokenPayload.exp && tokenPayload.exp < nowSec) {
+                                    console.warn("[Security] Session token expired. Purging session.");
+                                    LeanLifeCacheManager.purgeUserSessionOnLogout();
+                                    this.currentUser = null;
+                                    this.updateUIAfterLogout();
+                                    return;
+                                }
+
+                                // Anti-Tampering: detect client-side role privilege escalation
+                                if (tokenPayload.role && this.currentUser.role && tokenPayload.role !== this.currentUser.role) {
+                                    console.warn("[Security Alert] Session role tampering detected! Purging session.");
+                                    LeanLifeCacheManager.purgeUserSessionOnLogout();
+                                    this.currentUser = null;
+                                    this.updateUIAfterLogout();
+                                    return;
+                                }
+
+                                // Anti-Tampering: detect email identity substitution
+                                if (tokenPayload.email && this.currentUser.email && tokenPayload.email.toLowerCase() !== this.currentUser.email.toLowerCase()) {
+                                    console.warn("[Security Alert] Session email tampering detected! Purging session.");
+                                    LeanLifeCacheManager.purgeUserSessionOnLogout();
+                                    this.currentUser = null;
+                                    this.updateUIAfterLogout();
+                                    return;
+                                }
+                            }
+                        } catch (tokenErr) {
+                            console.warn("[Security] Malformed session token notice:", tokenErr);
+                        }
+                    }
+                }
+
                 const dbUser = (this.db && this.db.users) ? this.db.users.find(u => u.email?.toLowerCase() === this.currentUser.email?.toLowerCase()) : null;
                 if (dbUser) {
                     this.currentUser = { ...this.currentUser, ...dbUser };
@@ -2379,10 +2460,13 @@ const leanLifeAppCore = {
                 this.calculateUserMonthlyStreak(user);
                 this.currentUser = user;
                 const remember = document.getElementById('auth-remember')?.checked;
+                const sessionToken = authRes.token || null;
                 try {
                     sessionStorage.setItem('leanlife_session', JSON.stringify(user));
+                    if (sessionToken) sessionStorage.setItem('leanlife_token', sessionToken);
                     if (remember || window.innerWidth <= 768) {
                         localStorage.setItem('leanlife_session', JSON.stringify(user));
+                        if (sessionToken) localStorage.setItem('leanlife_token', sessionToken);
                     }
                 } catch (e) {
                     console.warn("Storage notice during session save:", e);
