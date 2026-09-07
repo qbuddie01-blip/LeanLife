@@ -14,7 +14,11 @@ const CORS_HEADERS = {
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vqvbxhzxtwjhieihvoah.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdmJ4aHp4dHdqaGllaWh2b2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDU1NDAsImV4cCI6MjA5ODk4MTU0MH0.40ItPbKKZihVJ6IgC2BMU_cGO4pOzQFD-6-QkxEuZTk';
-const AUTH_SECRET = process.env.AUTH_SECRET || 'leanlife_server_hmac_secret_2026_production_safe_key';
+const AUTH_SECRET = process.env.AUTH_SECRET;
+
+if (!AUTH_SECRET) {
+    throw new Error('AUTH_SECRET environment variable is required');
+}
 
 // Baseline seed authentication accounts (used if leanlife_auth_index is being initialized)
 const BASELINE_AUTH_INDEX_USERS = [
