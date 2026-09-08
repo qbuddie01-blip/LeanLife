@@ -1227,6 +1227,10 @@
                 <button class="admin-tab-btn" id="btn-admin-moderation-cms" onclick="app.switchAdminTab('moderation-cms')"><i class="fa-solid fa-comments"></i> Moderation</button>
                 <button class="admin-tab-btn" id="btn-admin-notices-cms" onclick="app.switchAdminTab('notices-cms')"><i class="fa-solid fa-bullhorn"></i> Events</button>
                 <button class="admin-tab-btn" id="btn-admin-coaches-cms" onclick="app.switchAdminTab('coaches-cms')"><i class="fa-solid fa-user-doctor"></i> Coaches</button>
+                <button class="admin-tab-btn" id="btn-admin-appointments-cms" onclick="app.switchAdminTab('appointments-cms')">
+                    <i class="fa-solid fa-calendar-check"></i> Appointments
+                    <span id="appt-tab-badge" class="badge" style="display:none; background:#e74c3c; color:#fff; border-radius:10px; padding:2px 7px; font-size:0.75rem; margin-left:6px; font-weight:700;">0</span>
+                </button>
                 <button class="admin-tab-btn" id="btn-admin-analytics-cms" onclick="app.switchAdminTab('analytics-cms')"><i class="fa-solid fa-chart-line"></i> Analytics</button>
                 <button class="admin-tab-btn" id="btn-admin-audits-cms" onclick="app.switchAdminTab('audits-cms')"><i class="fa-solid fa-shield-halved"></i> Audit Trails</button>
                 <button class="admin-tab-btn" id="btn-admin-settings-cms" onclick="app.switchAdminTab('settings-cms')"><i class="fa-solid fa-sliders"></i> Settings & Backups</button>
@@ -1643,6 +1647,90 @@
                     <ul id="admin-blocked-dates-list" style="display: flex; flex-direction: column; gap: 8px; padding-left: 1.2rem; font-size: 0.95rem;">
                         <!-- Dynamic -->
                     </ul>
+                </div>
+            </div>
+
+            <!-- SUBVIEW: APPOINTMENT TRACKING & COACH REMINDERS -->
+            <div id="admin-subview-appointments-cms" class="admin-subpanel" style="display: none;">
+                <!-- Summary Metric Cards -->
+                <div class="dashboard-stats" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; margin-bottom: 2rem;">
+                    <div class="stat-card" style="border-left: 4px solid #12826d;">
+                        <div class="stat-num" id="admin-appt-total-count" style="color: #12826d;">0</div>
+                        <div class="stat-label">Total Appointments</div>
+                    </div>
+                    <div class="stat-card" style="border-left: 4px solid #f39c12;">
+                        <div class="stat-num" id="admin-appt-pending-count" style="color: #f39c12;">0</div>
+                        <div class="stat-label">Pending Confirmation</div>
+                    </div>
+                    <div class="stat-card" style="border-left: 4px solid #27ae60;">
+                        <div class="stat-num" id="admin-appt-upcoming-count" style="color: #27ae60;">0</div>
+                        <div class="stat-label">Upcoming (24h / Today)</div>
+                    </div>
+                    <div class="stat-card" style="border-left: 4px solid #25d366;">
+                        <div style="font-size: 1.1rem; font-weight: 700; color: #25d366; margin-bottom: 4px;"><i class="fa-brands fa-whatsapp"></i> Coach WhatsApp</div>
+                        <div style="font-size: 0.95rem; font-weight: 600; color: #2c3e50;">Coach Francess Orenuga</div>
+                        <div style="font-size: 0.85rem; color: #7f8c8d;">+1 (757) 513-0205</div>
+                    </div>
+                </div>
+
+                <!-- Main Glass Card for Appointments CMS -->
+                <div class="glass-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(0,0,0,0.06);">
+                        <div>
+                            <h3 style="font-family: var(--font-brand); margin: 0; display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-calendar-check" style="color: #12826d;"></i> Clinic Appointment Tracking & Coach Reminders
+                            </h3>
+                            <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: #666;">
+                                Real-time consultation management, status workflow, and automated WhatsApp reminder alerts for Coach Francess Orenuga.
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn btn-secondary" onclick="app.checkAppointmentReminders(true)" style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem;">
+                                <i class="fa-solid fa-arrows-rotate"></i> Check & Trigger Reminders
+                            </button>
+                            <a href="https://wa.me/17575130205?text=Hello%20Coach%20Francess,%20here%20is%20an%20update%20from%20LeanLife%20Clinic." target="_blank" class="btn" style="background-color: #25d366; color: white; border: none; display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; text-decoration: none;">
+                                <i class="fa-brands fa-whatsapp"></i> Chat with Coach
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Search & Filter Controls -->
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center;">
+                        <div style="flex: 1; min-width: 240px; position: relative;">
+                            <input type="text" id="admin-appt-search" class="form-input" placeholder="Search by patient name, email, date, or notes..." oninput="app.renderAdminAppointmentsCMS()" style="padding-left: 2.2rem;">
+                            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #999;"></i>
+                        </div>
+                        <div style="min-width: 180px;">
+                            <select id="admin-appt-filter-status" class="form-input" onchange="app.renderAdminAppointmentsCMS()">
+                                <option value="all">All Statuses</option>
+                                <option value="Requested">Pending Requests</option>
+                                <option value="Confirmed">Confirmed</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Appointments Table -->
+                    <div style="overflow-x: auto;">
+                        <table class="admin-table" style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Patient / Member</th>
+                                    <th>Consultation Mode</th>
+                                    <th>Scheduled Date & Time</th>
+                                    <th>Time Remaining</th>
+                                    <th>Notes</th>
+                                    <th>Status</th>
+                                    <th>Reminders Dispatched</th>
+                                    <th>WhatsApp & Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-appointments-tbody">
+                                <!-- Dynamic appointment rows rendered via app.renderAdminAppointmentsCMS() -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 

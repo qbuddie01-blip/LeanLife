@@ -1976,6 +1976,7 @@ const leanLifeAppCore = {
             if (navAdmin) {
                 navAdmin.textContent = this.currentUser.role === 'coach' ? 'Coach Portal' : 'Admin Panel';
             }
+            this.updateAppointmentNotificationBadges();
         } else {
             document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
         }
@@ -3302,6 +3303,10 @@ const leanLifeAppCore = {
         if (this.activeView === 'admin' && this.activeAdminTab === 'automation') {
             this.renderAdminAutomationCMS();
         }
+
+        // 6. Check Clinic Appointment Reminders & Update Notification Badges
+        this.checkAppointmentReminders();
+        this.updateAppointmentNotificationBadges();
     },
 
     startTimerInterval(targetTime) {
@@ -4799,11 +4804,16 @@ const leanLifeAppCore = {
             time: time,
             notes: notes,
             status: 'Requested',
+            coachViewed: false,
+            notifiedCoach: false,
+            reminder24hSent: false,
+            reminder1hSent: false,
             timestamp: new Date().toISOString()
         };
 
         this.db.appointments.push(newAppt);
         this.saveDatabase();
+        this.updateAppointmentNotificationBadges();
         this.logAudit(this.currentUser.name, 'Coach Consultation Scheduled', `Request made for ${date} at ${time}`);
 
         const coachName = 'Coach Francess Orenuga';
@@ -5328,6 +5338,7 @@ const leanLifeAppCore = {
                 titleEl.textContent = 'Super Admin Console';
             }
         }
+        this.updateAppointmentNotificationBadges();
         this.switchAdminTab(this.activeAdminTab);
     },
 
@@ -5345,6 +5356,23 @@ const leanLifeAppCore = {
 
         this.activeAdminTab = tab;
 
+        // Mark unviewed appointments as viewed when coach opens appointments tab
+        if (tab === 'appointments-cms') {
+            if (this.db && Array.isArray(this.db.appointments)) {
+                let modified = false;
+                this.db.appointments.forEach(a => {
+                    if (!a.coachViewed) {
+                        a.coachViewed = true;
+                        modified = true;
+                    }
+                });
+                if (modified) {
+                    this.saveDatabase();
+                }
+            }
+            this.updateAppointmentNotificationBadges();
+        }
+
         // Deferred subview render via setTimeout 0 for zero-lag UI thread execution
         setTimeout(() => {
             switch (tab) {
@@ -5355,6 +5383,7 @@ const leanLifeAppCore = {
                 case 'moderation-cms': this.renderAdminModerationCMS(); break;
                 case 'notices-cms': this.renderAdminEventsCMS(); break;
                 case 'coaches-cms': this.renderAdminCoachesCMS(); break;
+                case 'appointments-cms': this.renderAdminAppointmentsCMS(); break;
                 case 'analytics-cms': this.renderAdminAnalyticsCMS(); break;
                 case 'audits-cms': this.renderAdminAuditsCMS(); break;
                 case 'settings-cms': this.renderAdminSettingsCMS(); break;
@@ -6368,6 +6397,394 @@ const leanLifeAppCore = {
         }
     },
 
+    // ==================== CLINIC APPOINTMENT TRACKING & COACH WHATSAPP REMINDERS ====================
+    getAppointmentTimeRemaining(appt) {
+        if (!appt || !appt.date || !appt.time) return null;
+        try {
+            let [year, month, day] = appt.date.split('-').map(Number);
+            if (!year || !month || !day) {
+                const parsed = new Date(appt.date);
+                if (isNaN(parsed.getTime())) return null;
+                year = parsed.getFullYear();
+                month = parsed.getMonth() + 1;
+                day = parsed.getDate();
+            }
+            
+            let hours = 9;
+            let minutes = 0;
+            const timeStr = String(appt.time).trim();
+            const isPM = /pm/i.test(timeStr);
+            const isAM = /am/i.test(timeStr);
+            const cleanTime = timeStr.replace(/am|pm/gi, '').trim();
+            const parts = cleanTime.split(':').map(Number);
+            
+            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                hours = parts[0];
+                minutes = parts[1];
+                if (isPM && hours < 12) hours += 12;
+                if (isAM && hours === 12) hours = 0;
+            } else if (parts.length === 1 && !isNaN(parts[0])) {
+                hours = parts[0];
+                if (isPM && hours < 12) hours += 12;
+                if (isAM && hours === 12) hours = 0;
+            }
+
+            const apptDate = new Date(year, month - 1, day, hours, minutes, 0);
+            const now = new Date();
+            const diffMs = apptDate.getTime() - now.getTime();
+            const hoursRemaining = diffMs / (1000 * 60 * 60);
+
+            let humanRemaining = '';
+            if (hoursRemaining < -2) {
+                humanRemaining = 'Passed';
+            } else if (hoursRemaining < 0) {
+                humanRemaining = 'Happening Now';
+            } else if (hoursRemaining < 1) {
+                const mins = Math.max(1, Math.round(diffMs / (1000 * 60)));
+                humanRemaining = `In ${mins} min${mins === 1 ? '' : 's'}`;
+            } else if (hoursRemaining <= 24) {
+                const hrs = Math.round(hoursRemaining);
+                humanRemaining = `In ~${hrs} hr${hrs === 1 ? '' : 's'}`;
+            } else {
+                const days = Math.round(hoursRemaining / 24);
+                humanRemaining = `In ~${days} day${days === 1 ? '' : 's'}`;
+            }
+
+            return {
+                apptDate,
+                diffMs,
+                hoursRemaining,
+                humanRemaining,
+                isWithin24h: hoursRemaining <= 24 && hoursRemaining > 1,
+                isWithin1h: hoursRemaining <= 1 && hoursRemaining > -2,
+                isPassed: hoursRemaining <= -2
+            };
+        } catch (e) {
+            console.warn("Error parsing appointment date/time:", e);
+            return null;
+        }
+    },
+
+    getCoachAppointmentWhatsAppUrl(appt, type = 'booking') {
+        const coachPhone = '17575130205';
+        let message = '';
+        
+        if (type === 'reminder1h') {
+            message = `⚡ *LeanLife Clinic — URGENT 1-Hour Appointment Reminder*\n\nHello Coach Francess,\n\nYou have a clinic consultation starting in approximately 1 hour:\n\n👤 *Patient:* ${appt.userName}\n📧 *Email:* ${appt.userEmail}\n📅 *Date:* ${appt.date}\n⏰ *Time:* ${appt.time}\n💻 *Mode:* ${appt.mode}\n📝 *Notes:* ${appt.notes || 'None provided'}\n\nPlease prepare for consultation.`;
+        } else if (type === 'reminder24h') {
+            message = `🔔 *LeanLife Clinic — 24-Hour Appointment Reminder*\n\nHello Coach Francess,\n\nYou have an upcoming clinic appointment scheduled for tomorrow:\n\n👤 *Patient:* ${appt.userName}\n📧 *Email:* ${appt.userEmail}\n📅 *Date:* ${appt.date}\n⏰ *Time:* ${appt.time}\n💻 *Mode:* ${appt.mode}\n📝 *Notes:* ${appt.notes || 'None provided'}\n\nPlease check your Coach Dashboard to review the patient details.`;
+        } else {
+            message = `📅 *LeanLife Clinic — New Appointment Notification*\n\nHello Coach Francess,\n\nA new consultation has been booked with LeanLife Clinic:\n\n👤 *Patient:* ${appt.userName}\n📧 *Email:* ${appt.userEmail}\n📅 *Date:* ${appt.date}\n⏰ *Time:* ${appt.time}\n💻 *Mode:* ${appt.mode}\n📝 *Notes:* ${appt.notes || 'None provided'}\n\nPlease check your Coach Portal to confirm this consultation.`;
+        }
+
+        return `https://wa.me/${coachPhone}?text=${encodeURIComponent(message)}`;
+    },
+
+    sendCoachAppointmentWhatsApp(apptId, type = 'booking') {
+        if (!this.db || !this.db.appointments) return;
+        const appt = this.db.appointments.find(a => a.id === apptId);
+        if (!appt) {
+            alert("Appointment not found.");
+            return;
+        }
+
+        const nowIso = new Date().toISOString();
+        if (type === 'reminder24h') {
+            appt.reminder24hSent = true;
+            appt.reminder24hTimestamp = nowIso;
+        } else if (type === 'reminder1h') {
+            appt.reminder1hSent = true;
+            appt.reminder1hTimestamp = nowIso;
+        } else {
+            appt.notifiedCoach = true;
+            appt.notifiedCoachTimestamp = nowIso;
+        }
+
+        this.saveDatabase();
+        this.logAudit(this.currentUser.name, 'WhatsApp Reminder Dispatched', `Dispatched ${type} for appointment ${appt.id} (${appt.userName}) to Coach Francess Orenuga (+1 757-513-0205)`);
+
+        const url = this.getCoachAppointmentWhatsAppUrl(appt, type);
+        window.open(url, '_blank');
+
+        this.renderAdminAppointmentsCMS();
+        this.updateAppointmentNotificationBadges();
+    },
+
+    updateAppointmentStatus(apptId, newStatus) {
+        if (!this.db || !this.db.appointments) return;
+        const appt = this.db.appointments.find(a => a.id === apptId);
+        if (!appt) return;
+
+        const oldStatus = appt.status;
+        appt.status = newStatus;
+        appt.updatedAt = new Date().toISOString();
+        this.saveDatabase();
+
+        this.logAudit(this.currentUser.name, 'Appointment Status Changed', `Updated appointment ${appt.id} (${appt.userName}) from ${oldStatus} to ${newStatus}`);
+        
+        this.renderAdminAppointmentsCMS();
+        this.updateAppointmentNotificationBadges();
+    },
+
+    checkAppointmentReminders(manual = false) {
+        if (!this.db || !Array.isArray(this.db.appointments)) return;
+
+        let triggered24h = 0;
+        let triggered1h = 0;
+        let modified = false;
+        const nowIso = new Date().toISOString();
+
+        this.db.appointments.forEach(appt => {
+            if (appt.status === 'Cancelled' || appt.status === 'Completed') return;
+
+            const timeInfo = this.getAppointmentTimeRemaining(appt);
+            if (!timeInfo) return;
+
+            // 1-Day (24-Hour) Ahead Reminder
+            if (timeInfo.isWithin24h && !appt.reminder24hSent) {
+                appt.reminder24hSent = true;
+                appt.reminder24hTimestamp = nowIso;
+                appt.coachViewed = false; // Trigger notification badge
+                triggered24h++;
+                modified = true;
+                this.logAudit('System', '24h Appointment Reminder Triggered', `Queued 24h reminder for Coach Francess (+1 757-513-0205) for patient ${appt.userName} on ${appt.date}`);
+            }
+
+            // 1-Hour Ahead Urgent Reminder
+            if (timeInfo.isWithin1h && !appt.reminder1hSent) {
+                appt.reminder1hSent = true;
+                appt.reminder1hTimestamp = nowIso;
+                appt.coachViewed = false; // Trigger urgent notification badge
+                triggered1h++;
+                modified = true;
+                this.logAudit('System', '1h Appointment Reminder Triggered', `Queued 1h urgent reminder for Coach Francess (+1 757-513-0205) for patient ${appt.userName} at ${appt.time}`);
+            }
+        });
+
+        if (modified) {
+            this.saveDatabase();
+            this.updateAppointmentNotificationBadges();
+            if (this.activeView === 'admin' && this.activeAdminTab === 'appointments-cms') {
+                this.renderAdminAppointmentsCMS();
+            }
+        }
+
+        if (manual) {
+            const totalActive = this.db.appointments.filter(a => a.status !== 'Cancelled' && a.status !== 'Completed').length;
+            this.showCustomAlert(
+                `📋 Reminder Check Complete!\n\nEvaluated ${totalActive} active clinic appointments.\n• 1-Day (24h) Reminders Active: ${triggered24h}\n• 1-Hour Urgent Reminders Active: ${triggered1h}\n\nCoach Francess Orenuga's WhatsApp line (+1 757-513-0205) is synchronized.`,
+                "Appointment Reminders Checked",
+                "fa-bell"
+            );
+        }
+    },
+
+    updateAppointmentNotificationBadges() {
+        const badge = document.getElementById('appt-tab-badge');
+        if (!badge || !this.db || !Array.isArray(this.db.appointments)) return;
+
+        let pendingCount = 0;
+        let urgentCount = 0;
+
+        this.db.appointments.forEach(appt => {
+            if (appt.status === 'Cancelled' || appt.status === 'Completed') return;
+
+            const timeInfo = this.getAppointmentTimeRemaining(appt);
+            const isUrgent = (timeInfo && timeInfo.isWithin1h);
+            const isPendingRequest = (appt.status === 'Requested');
+            const isUnviewed = !appt.coachViewed;
+
+            if (isUrgent) {
+                urgentCount++;
+                pendingCount++;
+            } else if (isPendingRequest || isUnviewed) {
+                pendingCount++;
+            }
+        });
+
+        if (pendingCount > 0) {
+            badge.textContent = pendingCount;
+            badge.style.display = 'inline-block';
+            if (urgentCount > 0) {
+                badge.style.background = '#e74c3c'; // Vibrant red for urgent within 1h
+            } else {
+                badge.style.background = '#f39c12'; // Amber for pending confirmation / 24h
+            }
+            badge.title = `${pendingCount} new or pending appointment notifications`;
+        } else {
+            badge.style.display = 'none';
+        }
+    },
+
+    renderAdminAppointmentsCMS() {
+        const tbody = document.getElementById('admin-appointments-tbody');
+        if (!tbody) return;
+
+        const appointments = this.db.appointments || [];
+        const query = (document.getElementById('admin-appt-search')?.value || '').toLowerCase().trim();
+        const statusFilter = document.getElementById('admin-appt-filter-status')?.value || 'all';
+
+        // Update top-level metrics
+        const totalCount = appointments.length;
+        const pendingCount = appointments.filter(a => a.status === 'Requested').length;
+        const upcomingCount = appointments.filter(a => {
+            if (a.status === 'Cancelled' || a.status === 'Completed') return false;
+            const t = this.getAppointmentTimeRemaining(a);
+            return t && (t.isWithin24h || t.isWithin1h);
+        }).length;
+
+        const totalEl = document.getElementById('admin-appt-total-count');
+        const pendingEl = document.getElementById('admin-appt-pending-count');
+        const upcomingEl = document.getElementById('admin-appt-upcoming-count');
+
+        if (totalEl) totalEl.textContent = totalCount;
+        if (pendingEl) pendingEl.textContent = pendingCount;
+        if (upcomingEl) upcomingEl.textContent = upcomingCount;
+
+        // Filter and sort appointments (most recent / upcoming first)
+        let filtered = appointments.filter(a => {
+            const matchStatus = (statusFilter === 'all') || (a.status === statusFilter);
+            const matchQuery = !query || 
+                (a.userName && a.userName.toLowerCase().includes(query)) ||
+                (a.userEmail && a.userEmail.toLowerCase().includes(query)) ||
+                (a.date && a.date.toLowerCase().includes(query)) ||
+                (a.notes && a.notes.toLowerCase().includes(query));
+            return matchStatus && matchQuery;
+        });
+
+        filtered.sort((x, y) => {
+            const tx = this.getAppointmentTimeRemaining(x)?.diffMs ?? -999999999;
+            const ty = this.getAppointmentTimeRemaining(y)?.diffMs ?? -999999999;
+            return tx - ty;
+        });
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" style="text-align: center; padding: 2.5rem; color: #888;">
+                        <i class="fa-solid fa-calendar-xmark" style="font-size: 2rem; color: #ccc; margin-bottom: 0.5rem; display: block;"></i>
+                        No appointments found matching the current criteria.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        let html = '';
+        filtered.forEach(a => {
+            const timeInfo = this.getAppointmentTimeRemaining(a);
+            
+            // Urgency badge styling
+            let urgencyHtml = '<span style="color:#888;">-</span>';
+            if (timeInfo) {
+                if (timeInfo.isWithin1h) {
+                    urgencyHtml = `<span class="badge" style="background:#e74c3c; color:white; font-weight:bold; animation: pulse 2s infinite;"><i class="fa-solid fa-bolt"></i> ${timeInfo.humanRemaining}</span>`;
+                } else if (timeInfo.isWithin24h) {
+                    urgencyHtml = `<span class="badge" style="background:#f39c12; color:white; font-weight:600;"><i class="fa-solid fa-clock"></i> ${timeInfo.humanRemaining}</span>`;
+                } else if (timeInfo.isPassed) {
+                    urgencyHtml = `<span class="badge" style="background:#95a5a6; color:white;">Passed</span>`;
+                } else {
+                    urgencyHtml = `<span class="badge" style="background:#2ecc71; color:white;">${timeInfo.humanRemaining}</span>`;
+                }
+            }
+
+            // Status badge styling
+            let statusBadge = '';
+            if (a.status === 'Requested') {
+                statusBadge = '<span class="badge" style="background:#e67e22; color:white; font-weight:bold;">Requested</span>';
+            } else if (a.status === 'Confirmed') {
+                statusBadge = '<span class="badge" style="background:#27ae60; color:white; font-weight:bold;">Confirmed</span>';
+            } else if (a.status === 'Completed') {
+                statusBadge = '<span class="badge" style="background:#2980b9; color:white;">Completed</span>';
+            } else if (a.status === 'Cancelled') {
+                statusBadge = '<span class="badge" style="background:#7f8c8d; color:white;">Cancelled</span>';
+            } else {
+                statusBadge = `<span class="badge" style="background:#34495e; color:white;">${a.status || 'Scheduled'}</span>`;
+            }
+
+            // Reminders Dispatched status
+            const r24h = a.reminder24hSent 
+                ? `<span class="badge" style="background:#27ae60; color:white; font-size:0.75rem;" title="24h reminder sent"><i class="fa-solid fa-check"></i> 1-Day Sent</span>`
+                : `<span class="badge" style="background:#ecf0f1; color:#7f8c8d; font-size:0.75rem;">1-Day Pending</span>`;
+            
+            const r1h = a.reminder1hSent 
+                ? `<span class="badge" style="background:#27ae60; color:white; font-size:0.75rem;" title="1h reminder sent"><i class="fa-solid fa-check"></i> 1-Hr Sent</span>`
+                : `<span class="badge" style="background:#ecf0f1; color:#7f8c8d; font-size:0.75rem;">1-Hr Pending</span>`;
+
+            // Consultation Mode badge
+            const modeIcon = a.mode === 'Virtual' || /virtual|zoom/i.test(a.mode) ? 'fa-video' : 'fa-handshake';
+            const modeBadge = `<span class="badge" style="background:rgba(18, 130, 109, 0.12); color:#12826d; border:1px solid rgba(18, 130, 109, 0.3);"><i class="fa-solid ${modeIcon}"></i> ${a.mode || 'In-Person'}</span>`;
+
+            html += `
+                <tr>
+                    <td>
+                        <strong style="color: #2c3e50; display: block;">${a.userName || 'Member'}</strong>
+                        <span style="font-size: 0.85rem; color: #7f8c8d;">${a.userEmail || ''}</span>
+                    </td>
+                    <td>${modeBadge}</td>
+                    <td>
+                        <strong style="color: #12826d;">${a.date}</strong>
+                        <div style="font-size: 0.85rem; color: #555;"><i class="fa-regular fa-clock"></i> ${a.time}</div>
+                    </td>
+                    <td>${urgencyHtml}</td>
+                    <td style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(a.notes || '').replace(/"/g, '&quot;')}">
+                        ${a.notes || '<span style="color:#aaa;">None</span>'}
+                    </td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            ${r24h}
+                            ${r1h}
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 6px; min-width: 130px;">
+                            <!-- WhatsApp Action Menu -->
+                            <div style="display: flex; gap: 4px;">
+                                <button class="btn btn-sm" onclick="app.sendCoachAppointmentWhatsApp('${a.id}', 'reminder24h')" style="background-color: #25d366; color: white; border: none; padding: 4px 8px; font-size: 0.75rem; border-radius: 4px; flex: 1;" title="Send 1-Day Reminder to Coach Francess Orenuga via WhatsApp">
+                                    <i class="fa-brands fa-whatsapp"></i> 1-Day
+                                </button>
+                                <button class="btn btn-sm" onclick="app.sendCoachAppointmentWhatsApp('${a.id}', 'reminder1h')" style="background-color: #128c7e; color: white; border: none; padding: 4px 8px; font-size: 0.75rem; border-radius: 4px; flex: 1;" title="Send 1-Hour Urgent Reminder to Coach Francess Orenuga via WhatsApp">
+                                    <i class="fa-brands fa-whatsapp"></i> 1-Hr
+                                </button>
+                            </div>
+
+                            <!-- Status Transitions -->
+                            <div style="display: flex; gap: 4px;">
+                                ${a.status === 'Requested' ? `
+                                    <button class="btn btn-sm" onclick="app.updateAppointmentStatus('${a.id}', 'Confirmed')" style="background-color: #27ae60; color: white; border: none; padding: 3px 6px; font-size: 0.72rem; border-radius: 4px; flex: 1;">
+                                        Confirm
+                                    </button>
+                                ` : ''}
+                                ${a.status !== 'Completed' && a.status !== 'Cancelled' ? `
+                                    <button class="btn btn-sm" onclick="app.updateAppointmentStatus('${a.id}', 'Completed')" style="background-color: #3498db; color: white; border: none; padding: 3px 6px; font-size: 0.72rem; border-radius: 4px; flex: 1;">
+                                        Done
+                                    </button>
+                                    <button class="btn btn-sm" onclick="app.updateAppointmentStatus('${a.id}', 'Cancelled')" style="background-color: #e74c3c; color: white; border: none; padding: 3px 6px; font-size: 0.72rem; border-radius: 4px; flex: 1;">
+                                        Cancel
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+    },
+
+    clearLocalDatabaseCache() {
+        try {
+            localStorage.removeItem('leanlife_db');
+            sessionStorage.removeItem('leanlife_db');
+            console.log("Local database cache cleared successfully.");
+            alert("Local database cache cleared successfully.");
+        } catch (e) {
+            console.warn("Notice clearing local database cache:", e);
+        }
+    },
+
     renderAdminAnalyticsCMS() {
         const totalUsers = this.db.users.filter(u => u.role === 'member').length;
         
@@ -6792,6 +7209,18 @@ const leanLifeAppCore = {
                 portal_url: 'https://leanlife-community.app/',
                 login_url: 'https://leanlife-community.app/',
                 
+                // Hosted Brand Logos (Universal HTTPS links - Display flawlessly across Gmail, Outlook, Apple Mail)
+                logo_url: 'https://leanlife-community.app/logo_white_version.png',
+                logo: 'https://leanlife-community.app/logo_white_version.png',
+                app_logo: 'https://leanlife-community.app/logo_white_version.png',
+                company_logo: 'https://leanlife-community.app/logo_white_version.png',
+                brand_logo: 'https://leanlife-community.app/logo_white_version.png',
+                header_logo: 'https://leanlife-community.app/logo_white_version.png',
+                logo_img: '<img src="https://leanlife-community.app/logo_white_version.png" alt="LeanLife Logo" width="140" style="max-width:140px; height:auto; display:block; margin:0 auto 12px;" />',
+                logo_white_url: 'https://leanlife-community.app/logo_white_version.png',
+                logo_transparent_url: 'https://leanlife-community.app/logo_transparent.png',
+                logo_standard_url: 'https://leanlife-community.app/logo.png',
+                
                 // Passwords & Credentials
                 temp_password: tempPassword || '',
                 tempPassword: tempPassword || '',
@@ -6894,9 +7323,12 @@ const leanLifeAppCore = {
             try {
                 const htmlBody = `
                     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #e1e8ed;">
-                        <div style="text-align: center; margin-bottom: 25px;">
-                            <h1 style="color: #12826d; margin: 0; font-size: 24px;">LeanLife Wellness Community</h1>
-                            <p style="color: #777; font-size: 14px;">Your Personalized Healthcare & Wellness Portal</p>
+                        <div style="text-align: center; margin-bottom: 25px; background: linear-gradient(135deg, #0DBE85 0%, #12826D 100%); padding: 20px; border-radius: 8px;">
+                            <a href="https://leanlife-community.app/" target="_blank" style="text-decoration:none; outline:none; display:inline-block;">
+                                <img src="https://leanlife-community.app/logo_white_version.png" alt="LeanLife Logo" width="140" style="display:inline-block; max-height:45px; width:auto; border:0; outline:none;" />
+                            </a>
+                            <h1 style="color: #ffffff; margin: 10px 0 0 0; font-size: 22px; font-weight: 700;">LeanLife Wellness Community</h1>
+                            <p style="color: rgba(255, 255, 255, 0.9); font-size: 13px; margin: 4px 0 0 0;">Your Personalized Healthcare & Wellness Portal</p>
                         </div>
                         <div style="padding: 20px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">
                             <p style="font-size: 16px; color: #333;">Hello <strong>${recipientName}</strong>,</p>
