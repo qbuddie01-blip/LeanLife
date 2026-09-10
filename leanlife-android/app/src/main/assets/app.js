@@ -386,19 +386,15 @@ const AuthService = {
 
                     if (!authIndexErr && authIndexRecord && authIndexRecord.data && Array.isArray(authIndexRecord.data.users)) {
                         cloudUsers = authIndexRecord.data.users;
-                    } else {
-                        const { data, error } = await withTimeout(
-                            appRef.supabase
-                                .from('system_settings')
-                                .select('data')
-                                .eq('id', 'leanlife_cloud_db')
-                                .single()
-                        );
-                        if (data && data.data && Array.isArray(data.data.users)) {
-                            cloudUsers = data.data.users;
-                            appRef.mergeCloudDatabase(data.data);
-                            appRef.saveDatabase(true);
-                        }
+                    }
+
+                    if (!cloudUsers || cloudUsers.length === 0) {
+                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                        return {
+                            result: AuthResult.SERVICE_UNAVAILABLE,
+                            message: 'Authentication service is currently unreachable. Please check your connection.',
+                            elapsedMs
+                        };
                     }
 
                     if (cloudUsers && cloudUsers.length > 0) {
@@ -1253,17 +1249,14 @@ const leanLifeAppCore = {
                         ]);
                     };
 
-                    // Fetch latest cloud state before upserting with timeout protection
-                    const res = await withTimeout(
-                        this.supabase
-                            .from('system_settings')
-                            .select('data')
-                            .eq('id', 'leanlife_cloud_db')
-                            .single()
-                    );
+                    // Fetch session token for authenticated gateway write
+                    const token = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+                                  (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
 
-                    if (res && res.data && res.data.data) {
-                        this.mergeCloudDatabase(res.data.data);
+                    if (!token) {
+                        console.warn("[CloudSync] Deferred: Unauthenticated visitor session. Local cache preserved.");
+                        LeanLifeCacheManager.metrics.syncStatus = 'unauthorized';
+                        return;
                     }
 
                     // Prepare sanitized lightweight payload for cloud storage
@@ -1279,31 +1272,45 @@ const leanLifeAppCore = {
                         }
                         return p;
                     });
-                    const cloudPayload = {
-                        ...this.db,
+
+                    const syncPayload = {
                         wellnessLogs: cleanLogs,
-                        posts: cleanPosts
+                        posts: cleanPosts,
+                        appointments: this.db.appointments || [],
+                        aiReports: this.db.aiReports || [],
+                        notifications: this.db.notifications || [],
+                        events: this.db.events || [],
+                        userProfile: this.currentUser || null
                     };
 
-                    const { error } = await withTimeout(
-                        this.supabase
-                            .from('system_settings')
-                            .upsert({
-                                id: 'leanlife_cloud_db',
-                                data: cloudPayload,
-                                updated_at: new Date().toISOString()
-                            })
+                    const baseUrl = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http'))
+                        ? window.location.origin
+                        : 'https://leanlife-community.app';
+
+                    const res = await withTimeout(
+                        fetch(`${baseUrl}/.netlify/functions/cloud-sync`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify(syncPayload)
+                        })
                     );
 
                     const duration = performance.now() - syncStart;
                     LeanLifeCacheManager.metrics.lastSyncDurationMs = duration;
-                    LeanLifeCacheManager.metrics.lastSyncTimestamp = Date.now();
 
-                    if (error) {
-                        console.warn("Supabase Cloud Sync warning:", error.message);
-                        LeanLifeCacheManager.metrics.syncStatus = 'offline';
+                    if (res && res.ok) {
+                        LeanLifeCacheManager.metrics.lastSyncTimestamp = Date.now();
+                        LeanLifeCacheManager.metrics.syncStatus = 'synced';
+                        console.log("Supabase Cloud Sync completed successfully via authenticated gateway.");
+                    } else if (res && res.status === 401) {
+                        console.warn("[CloudSync] Unauthorized session. Sync deferred until re-authentication.");
+                        LeanLifeCacheManager.metrics.syncStatus = 'unauthorized';
                     } else {
-                        console.log("Supabase Cloud Sync completed successfully with verified integrity.");
+                        console.warn(`[CloudSync] Gateway response HTTP ${res ? res.status : 'error'}`);
+                        LeanLifeCacheManager.metrics.syncStatus = 'offline';
                     }
                 } catch (err) {
                     console.warn("Supabase Cloud Sync skipped/offline:", err.message || err);
@@ -1397,37 +1404,59 @@ const leanLifeAppCore = {
         // and does NOT block local cache readiness or authentication.
     },
 
-    // Periodically fetch and merge latest cloud data
+    // Periodically fetch and merge latest cloud data via secure read gateway
     async syncCloudData() {
-        if (!this.supabase) return;
         try {
-            const { data, error } = await this.supabase
-                .from('system_settings')
-                .select('data')
-                .eq('id', 'leanlife_cloud_db')
-                .single();
+            const token = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+                          (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
 
-            if (data && data.data) {
-                this.mergeCloudDatabase(data.data);
-                if (this.currentUser) {
-                    const dbUser = (this.db.users || []).find(u => u.email?.toLowerCase() === this.currentUser.email?.toLowerCase());
-                    if (dbUser) {
-                        this.currentUser = { ...this.currentUser, ...dbUser };
+            const headers = { 'Accept': 'application/json' };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const baseUrl = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http'))
+                ? window.location.origin
+                : 'https://leanlife-community.app';
+
+            const withTimeout = (promise, ms = 4500) => {
+                return Promise.race([
+                    promise,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Cloud read timeout')), ms))
+                ]);
+            };
+
+            const response = await withTimeout(fetch(`${baseUrl}/.netlify/functions/cloud-read`, {
+                method: 'GET',
+                headers: headers
+            }));
+
+            if (response && response.ok) {
+                const body = await response.json();
+                if (body && body.success && body.data) {
+                    this.mergeCloudDatabase(body.data);
+                    if (this.currentUser) {
+                        const dbUser = (this.db.users || []).find(u => u.email?.toLowerCase() === this.currentUser.email?.toLowerCase());
+                        if (dbUser) {
+                            this.currentUser = { ...this.currentUser, ...dbUser };
+                        }
+                        this.calculateUserMonthlyStreak(this.currentUser);
                     }
-                    this.calculateUserMonthlyStreak(this.currentUser);
+                    if (this.activeView === 'admin') {
+                        if (this.activeAdminTab === 'users') this.renderAdminUsers();
+                        else if (this.activeAdminTab === 'logs-cms') this.renderAdminLogsCMS();
+                        else if (this.activeAdminTab === 'reports-cms') this.renderAdminReportsCMS();
+                    } else if (this.activeView === 'dashboard') {
+                        this.renderDashboard();
+                    }
                 }
-                if (this.activeView === 'admin') {
-                    if (this.activeAdminTab === 'users') this.renderAdminUsers();
-                    else if (this.activeAdminTab === 'logs-cms') this.renderAdminLogsCMS();
-                    else if (this.activeAdminTab === 'reports-cms') this.renderAdminReportsCMS();
-                } else if (this.activeView === 'dashboard') {
-                    this.renderDashboard();
-                }
-            } else if (error && error.code !== 'PGRST116') {
-                console.warn("Supabase fetch returned error:", error);
+            } else if (response && response.status === 401) {
+                console.warn("[CloudRead] Session expired or invalid; public community data retained.");
+            } else {
+                console.warn(`[CloudRead] Gateway notice HTTP ${response ? response.status : 'error'}`);
             }
         } catch (err) {
-            console.error("Failed to fetch data from Supabase:", err);
+            console.warn("[CloudRead] Cloud read skipped/offline:", err.message || err);
         }
     },
 
