@@ -124,7 +124,7 @@ exports.handler = async function(event, context) {
                     supabaseStatusText: res.statusText,
                     hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
                     hasSupabaseKey: !!process.env.SUPABASE_KEY,
-                    keyType: SUPABASE_KEY ? (SUPABASE_KEY.startsWith('sb_secret_') ? 'sb_secret_' : (SUPABASE_KEY.split('.').length === 3 ? 'jwt' : 'other')) : 'none',
+                    keyType: SUPABASE_KEY ? (SUPABASE_KEY.split('.').length === 3 ? 'legacy JWT' : 'opaque secret key') : 'missing',
                     version: 'v2-header-fix'
                 };
             }
@@ -224,8 +224,8 @@ exports.handler = async function(event, context) {
             },
             _envDiagnostics: {
                 supabaseUrl: process.env.SUPABASE_URL ? 'PRESENT' : 'ABSENT',
-                supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ? (process.env.SUPABASE_SERVICE_ROLE_KEY.startsWith('sb_secret_') ? 'PRESENT (starts with sb_secret_)' : (process.env.SUPABASE_SERVICE_ROLE_KEY.split('.').length === 3 ? 'PRESENT (legacy JWT)' : 'PRESENT (other)')) : 'ABSENT',
-                supabaseKey: process.env.SUPABASE_KEY ? (process.env.SUPABASE_KEY.startsWith('sb_secret_') ? 'PRESENT (starts with sb_secret_)' : (process.env.SUPABASE_KEY.split('.').length === 3 ? 'PRESENT (legacy JWT)' : 'PRESENT (other)')) : 'ABSENT',
+                supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ? (process.env.SUPABASE_SERVICE_ROLE_KEY.split('.').length === 3 ? 'PRESENT (legacy JWT)' : 'PRESENT (opaque secret key)') : 'ABSENT',
+                supabaseKey: process.env.SUPABASE_KEY ? (process.env.SUPABASE_KEY.split('.').length === 3 ? 'PRESENT (legacy JWT)' : 'PRESENT (opaque secret key)') : 'ABSENT',
                 authSecret: process.env.AUTH_SECRET ? 'PRESENT' : 'ABSENT'
             }
         };
