@@ -19,7 +19,7 @@ const CORS_HEADERS = {
 };
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://fgjjeyonzhuipnbdebvr.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnampleW9uemh1aXBuYmRlYnZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NjE0NDYsImV4cCI6MjA5OTQzNzQ0Nn0.l1Gy0IXP1L_CnWy84QjeQCjrGvRa1F7vkOoCc_aOONY';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 const AUTH_SECRET = process.env.AUTH_SECRET;
 
 exports.handler = async function(event, context) {
@@ -87,6 +87,15 @@ exports.handler = async function(event, context) {
     }
 
     // 4. Fetch Current Authoritative leanlife_cloud_db from Supabase
+    if (!SUPABASE_KEY) {
+        console.error('[CloudSync] SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY is required');
+        return {
+            statusCode: 503,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({ success: false, error: 'SERVER_CONFIGURATION_ERROR', message: 'Database credential not configured.' })
+        };
+    }
+
     let currentCloudDb = null;
     try {
         const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
@@ -96,7 +105,6 @@ exports.handler = async function(event, context) {
             method: 'GET',
             headers: {
                 'apikey': SUPABASE_KEY,
-                'Authorization': `Bearer ${SUPABASE_KEY}`,
                 'Accept': 'application/json'
             },
             signal: controller ? controller.signal : undefined
@@ -437,7 +445,6 @@ exports.handler = async function(event, context) {
             method: 'POST',
             headers: {
                 'apikey': SUPABASE_KEY,
-                'Authorization': `Bearer ${SUPABASE_KEY}`,
                 'Content-Type': 'application/json',
                 'Prefer': 'resolution=merge-duplicates'
             },
