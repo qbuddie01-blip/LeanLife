@@ -117,18 +117,36 @@ exports.handler = async function(event, context) {
             }
         } else {
             console.warn(`[CloudRead] Supabase error HTTP ${res.status}: ${res.statusText}`);
+            const errorBody = { success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database read failed.' };
+            if (isAuthenticated && caller && caller.role === 'admin') {
+                errorBody.diagnostic = {
+                    supabaseStatus: res.status,
+                    supabaseStatusText: res.statusText,
+                    hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+                    hasSupabaseKey: !!process.env.SUPABASE_KEY,
+                    keyType: SUPABASE_KEY ? (SUPABASE_KEY.startsWith('sb_secret_') ? 'sb_secret_' : (SUPABASE_KEY.split('.').length === 3 ? 'jwt' : 'other')) : 'none',
+                    version: 'v2-header-fix'
+                };
+            }
             return {
                 statusCode: 503,
                 headers: CORS_HEADERS,
-                body: JSON.stringify({ success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database read failed.' })
+                body: JSON.stringify(errorBody)
             };
         }
     } catch (fetchErr) {
         console.warn("[CloudRead] Supabase connection failure:", fetchErr.message || fetchErr);
+        const errBody = { success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database connection error.' };
+        if (isAuthenticated && caller && caller.role === 'admin') {
+            errBody.diagnostic = {
+                fetchError: fetchErr.message || String(fetchErr),
+                version: 'v2-header-fix'
+            };
+        }
         return {
             statusCode: 503,
             headers: CORS_HEADERS,
-            body: JSON.stringify({ success: false, error: 'SERVICE_UNAVAILABLE', message: 'Database connection error.' })
+            body: JSON.stringify(errBody)
         };
     }
 
