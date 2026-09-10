@@ -1,4 +1,4 @@
-﻿// netlify/functions/user-admin.js
+// netlify/functions/user-admin.js
 // LeanLife Protected Server-Side Administration & Auth Index Mutation Endpoint
 // Enforces cryptographic server-side authorization: 401 Unauthorized / 403 Forbidden
 
@@ -34,6 +34,19 @@ exports.handler = async function(event, context) {
             statusCode: 405,
             headers: CORS_HEADERS,
             body: JSON.stringify({ success: false, error: 'METHOD_NOT_ALLOWED' })
+        };
+    }
+
+    if (!process.env.AUTH_SECRET) {
+        console.error('[User Admin] AUTH_SECRET environment variable is required');
+        return {
+            statusCode: 503,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                error: 'SERVER_CONFIGURATION_ERROR',
+                message: 'AUTH_SECRET environment variable is required'
+            })
         };
     }
 

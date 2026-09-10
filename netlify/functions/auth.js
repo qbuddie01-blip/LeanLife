@@ -16,10 +16,6 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vqvbxhzxtwjhieihvoah.s
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdmJ4aHp4dHdqaGllaWh2b2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDU1NDAsImV4cCI6MjA5ODk4MTU0MH0.40ItPbKKZihVJ6IgC2BMU_cGO4pOzQFD-6-QkxEuZTk';
 const AUTH_SECRET = process.env.AUTH_SECRET;
 
-if (!AUTH_SECRET) {
-    throw new Error('AUTH_SECRET environment variable is required');
-}
-
 // Baseline seed authentication accounts (used if leanlife_auth_index is being initialized)
 const BASELINE_AUTH_INDEX_USERS = [
     {
@@ -81,7 +77,10 @@ function base64UrlDecode(str) {
     return Buffer.from(base64, 'base64').toString('utf8');
 }
 
-function signSessionToken(payload, secret = AUTH_SECRET) {
+function signSessionToken(payload, secret = (process.env.AUTH_SECRET || AUTH_SECRET)) {
+    if (!secret) {
+        throw new Error('AUTH_SECRET environment variable is required');
+    }
     const header = { alg: 'HS256', typ: 'JWT' };
     const encodedHeader = base64UrlEncode(JSON.stringify(header));
     const encodedPayload = base64UrlEncode(JSON.stringify(payload));
@@ -95,7 +94,8 @@ function signSessionToken(payload, secret = AUTH_SECRET) {
     return `${encodedHeader}.${encodedPayload}.${signature}`;
 }
 
-function verifySessionToken(token, secret = AUTH_SECRET) {
+function verifySessionToken(token, secret = (process.env.AUTH_SECRET || AUTH_SECRET)) {
+    if (!secret) return { valid: false, error: 'AUTH_SECRET_REQUIRED' };
     if (!token || typeof token !== 'string') return { valid: false, error: 'MISSING_TOKEN' };
     const parts = token.split('.');
     if (parts.length !== 3) return { valid: false, error: 'MALFORMED_TOKEN' };
@@ -262,6 +262,20 @@ exports.handler = async function(event, context) {
         };
     }
 
+    const activeSecret = process.env.AUTH_SECRET || AUTH_SECRET;
+    if (!activeSecret) {
+        console.error('[Auth Function] AUTH_SECRET environment variable is required');
+        return {
+            statusCode: 503,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                error: 'SERVER_CONFIGURATION_ERROR',
+                message: 'AUTH_SECRET environment variable is required'
+            })
+        };
+    }
+
     // 2. Parse & Validate Payload
     let body = {};
     try {
@@ -309,7 +323,7 @@ exports.handler = async function(event, context) {
     let authUsers = null;
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const timeoutId = setTimeout(() => controller.abort(), 1500);
 
         const response = await fetch(`${SUPABASE_URL}/rest/v1/system_settings?id=eq.leanlife_auth_index&select=data`, {
             method: 'GET',

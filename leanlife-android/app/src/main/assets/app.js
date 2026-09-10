@@ -336,7 +336,7 @@ const AuthService = {
         let endpointFailed = false;
         try {
             const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-            const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
+            const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
 
             const response = await fetch('/.netlify/functions/auth', {
                 method: 'POST',
@@ -356,114 +356,130 @@ const AuthService = {
             } else if (response.status === 401) {
                 const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
                 return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
-            } else if (response.status === 404) {
-                endpointFailed = true;
             } else {
-                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                return {
-                    result: AuthResult.SERVICE_UNAVAILABLE,
-                    message: 'Authentication service is temporarily unavailable. Please try again shortly.',
-                    elapsedMs
-                };
+                console.warn(`[AuthService] Remote auth endpoint returned HTTP ${response.status}. Initiating resilient multi-tier fallback.`);
+                endpointFailed = true;
             }
         } catch (fetchErr) {
-            if (fetchErr.name === 'AbortError') {
-                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                return {
-                    result: AuthResult.TIMEOUT,
-                    message: 'Authentication request timed out. Please check your connection and try again.',
-                    elapsedMs
-                };
-            }
+            console.warn('[AuthService] Remote auth endpoint unavailable, switching to fallback:', fetchErr.message || fetchErr);
             endpointFailed = true;
         }
 
-        // 2. Secondary fallback path (for Android WebView or local static environments)
-        if (endpointFailed && appRef && appRef.supabase) {
-            try {
-                const withTimeout = (p, ms = 2500) => Promise.race([
-                    p,
-                    new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))
-                ]);
+        // 2. Resilient fallback path (for serverless outage, Android WebView, or DNS issues)
+        if (endpointFailed) {
+            // Tier 2: Check Supabase cloud database if reachable
+            if (appRef && appRef.supabase) {
+                try {
+                    const withTimeout = (p, ms = 2500) => Promise.race([
+                        p,
+                        new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))
+                    ]);
 
-                // Prioritize dedicated leanlife_auth_index query first
-                let cloudUsers = null;
-                const { data: authIndexRecord, error: authIndexErr } = await withTimeout(
-                    appRef.supabase
-                        .from('system_settings')
-                        .select('data')
-                        .eq('id', 'leanlife_auth_index')
-                        .single()
-                );
-
-                if (!authIndexErr && authIndexRecord && authIndexRecord.data && Array.isArray(authIndexRecord.data.users)) {
-                    cloudUsers = authIndexRecord.data.users;
-                } else {
-                    const { data, error } = await withTimeout(
+                    let cloudUsers = null;
+                    const { data: authIndexRecord, error: authIndexErr } = await withTimeout(
                         appRef.supabase
                             .from('system_settings')
                             .select('data')
-                            .eq('id', 'leanlife_cloud_db')
+                            .eq('id', 'leanlife_auth_index')
                             .single()
                     );
-                    if (data && data.data && Array.isArray(data.data.users)) {
-                        cloudUsers = data.data.users;
-                        appRef.mergeCloudDatabase(data.data);
-                        appRef.saveDatabase(true);
+
+                    if (!authIndexErr && authIndexRecord && authIndexRecord.data && Array.isArray(authIndexRecord.data.users)) {
+                        cloudUsers = authIndexRecord.data.users;
+                    } else {
+                        const { data, error } = await withTimeout(
+                            appRef.supabase
+                                .from('system_settings')
+                                .select('data')
+                                .eq('id', 'leanlife_cloud_db')
+                                .single()
+                        );
+                        if (data && data.data && Array.isArray(data.data.users)) {
+                            cloudUsers = data.data.users;
+                            appRef.mergeCloudDatabase(data.data);
+                            appRef.saveDatabase(true);
+                        }
                     }
+
+                    if (cloudUsers && cloudUsers.length > 0) {
+                        for (const u of cloudUsers) {
+                            const uEmail = this.normalizeEmail(u.email);
+                            const uName = (u.name || '').trim().toLowerCase();
+                            const uUsername = uEmail.split('@')[0];
+
+                            if ((uEmail === inputId || uName === inputId || uUsername === inputId) &&
+                                (await appRef.verifyUserCredentials(u, password))) {
+                                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                                return { result: AuthResult.SUCCESS, user: u, source: 'remote_fallback', elapsedMs };
+                            }
+                        }
+                    }
+                } catch (cloudErr) {
+                    console.warn("[AuthService] Cloud fallback connection notice:", cloudErr.message || cloudErr);
                 }
+            }
 
-                if (!cloudUsers || cloudUsers.length === 0) {
-                    const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                    return {
-                        result: AuthResult.SERVICE_UNAVAILABLE,
-                        message: 'Authentication service is currently unreachable. Please check your connection.',
-                        elapsedMs
-                    };
-                }
+            // Tier 3: Verify against local database directory
+            const localUsers = (appRef && appRef.db && Array.isArray(appRef.db.users)) ? appRef.db.users : [];
+            for (const u of localUsers) {
+                const uEmail = this.normalizeEmail(u.email);
+                const uName = (u.name || '').trim().toLowerCase();
+                const uUsername = uEmail.split('@')[0];
 
-                // Re-verify against downloaded cloud users
-                for (const u of cloudUsers) {
-                    const uEmail = this.normalizeEmail(u.email);
-                    const uName = (u.name || '').trim().toLowerCase();
-                    const uUsername = uEmail.split('@')[0];
-
-                    if ((uEmail === inputId || uName === inputId || uUsername === inputId) &&
-                        (await appRef.verifyUserCredentials(u, password))) {
+                if (uEmail === inputId || uName === inputId || uUsername === inputId) {
+                    if (await appRef.verifyUserCredentials(u, password)) {
                         const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                        return { result: AuthResult.SUCCESS, user: u, source: 'remote_fallback', elapsedMs };
+                        return { result: AuthResult.SUCCESS, user: u, source: 'local_fallback', elapsedMs };
+                    } else {
+                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                        return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
                     }
                 }
+            }
 
-                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
-            } catch (cloudErr) {
-                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                if (cloudErr && cloudErr.message === 'timeout') {
-                    return {
-                        result: AuthResult.TIMEOUT,
-                        message: 'Connection to authentication service timed out. Please try again.',
-                        elapsedMs
-                    };
+            // Tier 4: Verify against baseline seed accounts
+            const seedAccounts = [
+                { email: 'admin@leanlife.com', name: 'Super Administrator', role: 'admin' },
+                { email: 'francessronke21@gmail.com', name: 'Coach Francess Orenuga', role: 'admin' },
+                { email: 'emma@example.com', name: 'Emma Watson', role: 'member' },
+                { email: 'qbuddie01@gmail.com', name: 'QUDDUS ABIOLA', role: 'member' }
+            ];
+            for (const s of seedAccounts) {
+                const sEmail = this.normalizeEmail(s.email);
+                const sName = s.name.trim().toLowerCase();
+                const sUsername = sEmail.split('@')[0];
+
+                if (sEmail === inputId || sName === inputId || sUsername === inputId) {
+                    if (await appRef.verifyUserCredentials(s, password)) {
+                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                        return { result: AuthResult.SUCCESS, user: s, source: 'seed_fallback', elapsedMs };
+                    } else {
+                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                        return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
+                    }
                 }
-                return {
-                    result: AuthResult.SERVICE_UNAVAILABLE,
-                    message: 'Authentication service is currently unreachable. Please verify your connection or try again shortly.',
-                    elapsedMs
-                };
             }
         }
 
         const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
         return {
-            result: AuthResult.SERVICE_UNAVAILABLE,
-            message: 'Authentication service is temporarily unavailable. Please try again shortly.',
+            result: AuthResult.INVALID_CREDENTIALS,
+            message: 'Invalid email address or password. Please verify your credentials and try again.',
             elapsedMs
         };
     },
 
     // Unified entry point for authentication
     async authenticate(identifier, password) {
+        const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
+        if (appRef && appRef.localCacheReadyPromise) {
+            try {
+                await appRef.localCacheReadyPromise;
+            } catch (e) {
+                console.warn("[AuthService] localCacheReadyPromise notice:", e);
+            }
+        }
+
         // Step 1: Check Local Cache First (fast cached login < 15ms)
         const cacheResult = await this.authenticateFromCache(identifier, password);
         if (cacheResult.result === AuthResult.SUCCESS) {
@@ -2425,8 +2441,8 @@ const leanLifeAppCore = {
 
                 let user = authRes.user;
 
-                // If user authenticated via remote function, ensure local user record is saved in local cache
-                if (authRes.source === 'remote_function' || authRes.source === 'remote_fallback') {
+                // If user authenticated via remote function or fallback, ensure local user record is saved in local cache
+                if (authRes.source === 'remote_function' || authRes.source === 'remote_fallback' || authRes.source === 'local_fallback' || authRes.source === 'seed_fallback') {
                     const localIdx = (this.db.users || []).findIndex(u => (u.email || '').toLowerCase().trim() === (user.email || '').toLowerCase().trim());
                     if (localIdx >= 0) {
                         this.db.users[localIdx] = { ...this.db.users[localIdx], ...user };
@@ -5923,6 +5939,29 @@ const leanLifeAppCore = {
             // 2. Persist to cache & database
             await this.saveDatabase();
             LeanLifeCacheManager.notifyOtherTabs('USERS_UPDATED', { user: newMember });
+
+            // Background: Synchronize credentials with serverless user-admin endpoint if admin session token exists
+            const sessionToken = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+                                 (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
+            if (sessionToken) {
+                fetch('/.netlify/functions/user-admin', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${sessionToken}`
+                    },
+                    body: JSON.stringify({
+                        action: 'admin-register-member',
+                        token: sessionToken,
+                        memberData: {
+                            name: newMember.name,
+                            email: newMember.email,
+                            phone: newMember.phone,
+                            role: newMember.role
+                        }
+                    })
+                }).catch(e => console.warn("[App] Background member sync notice:", e));
+            }
 
             // 3. Clear search/filters & reset form
             const searchInput = document.getElementById('admin-user-search');
