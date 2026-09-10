@@ -18,7 +18,7 @@ const CORS_HEADERS = {
     'Content-Type': 'application/json'
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://fgjjeyonzhuipnbdebvr.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 const AUTH_SECRET = process.env.AUTH_SECRET;
 
@@ -87,12 +87,12 @@ exports.handler = async function(event, context) {
     }
 
     // 4. Fetch Current Authoritative leanlife_cloud_db from Supabase
-    if (!SUPABASE_KEY) {
-        console.error('[CloudSync] SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY is required');
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+        console.error('[CloudSync] SUPABASE_URL and (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY) are required');
         return {
             statusCode: 503,
             headers: CORS_HEADERS,
-            body: JSON.stringify({ success: false, error: 'SERVER_CONFIGURATION_ERROR', message: 'Database credential not configured.' })
+            body: JSON.stringify({ success: false, error: 'SERVER_CONFIGURATION_ERROR', message: 'Database configuration not configured.' })
         };
     }
 
