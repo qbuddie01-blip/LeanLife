@@ -12,8 +12,8 @@ const CORS_HEADERS = {
     'Content-Type': 'application/json'
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vqvbxhzxtwjhieihvoah.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdmJ4aHp4dHdqaGllaWh2b2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDU1NDAsImV4cCI6MjA5ODk4MTU0MH0.40ItPbKKZihVJ6IgC2BMU_cGO4pOzQFD-6-QkxEuZTk';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 const AUTH_SECRET = process.env.AUTH_SECRET;
 
 // Baseline seed authentication accounts (used if leanlife_auth_index is being initialized)
@@ -22,7 +22,7 @@ const BASELINE_AUTH_INDEX_USERS = [
         id: 'USR-ADMIN-1',
         name: 'Super Administrator',
         email: 'admin@leanlife.com',
-        password: 'pbkdf2$100000$4b83f06d86016da01f3792cbdb3a6ff3$347f8585489eb205ea1dd1c4d924181977aa8aa32a5df9b85c18151283dca018',
+        password: 'pbkdf2$100000$4b83f06d86016da01f3792cbdb3a6ff3$56826a2886412a68d997af9c77b2067dc5d0175e66fa8467ad36e4859aee70e4',
         role: 'admin',
         status: 'Active',
         firstLogin: false,
@@ -32,7 +32,7 @@ const BASELINE_AUTH_INDEX_USERS = [
         id: 'USR-FRANCESS-1',
         name: 'Coach Francess Orenuga',
         email: 'francessronke21@gmail.com',
-        password: 'pbkdf2$100000$8798e4f58c738e4df9c2cba332b704d2$b8b150965d5682136eec08db8c6f2a67e42d88a245f7c32bf28a8677c77c0f18',
+        password: 'pbkdf2$100000$8798e4f58c738e4df9c2cba332b704d2$327a0a4913134d6f9c9c12a02b14cf90dd411518525ad383832853f699201439',
         role: 'admin',
         status: 'Active',
         firstLogin: false,
@@ -42,7 +42,7 @@ const BASELINE_AUTH_INDEX_USERS = [
         id: 'USR-EMMA-1',
         name: 'Emma Watson',
         email: 'emma@example.com',
-        password: 'pbkdf2$100000$8798e4f58c738e4df9c2cba332b704d2$b8b150965d5682136eec08db8c6f2a67e42d88a245f7c32bf28a8677c77c0f18',
+        password: 'pbkdf2$100000$8798e4f58c738e4df9c2cba332b704d2$327a0a4913134d6f9c9c12a02b14cf90dd411518525ad383832853f699201439',
         role: 'member',
         status: 'Active',
         firstLogin: false,
@@ -52,7 +52,7 @@ const BASELINE_AUTH_INDEX_USERS = [
         id: 'USR-QUDDUS-1',
         name: 'QUDDUS ABIOLA',
         email: 'qbuddie01@gmail.com',
-        password: 'pbkdf2$100000$8798e4f58c738e4df9c2cba332b704d2$b8b150965d5682136eec08db8c6f2a67e42d88a245f7c32bf28a8677c77c0f18',
+        password: 'pbkdf2$100000$8798e4f58c738e4df9c2cba332b704d2$327a0a4913134d6f9c9c12a02b14cf90dd411518525ad383832853f699201439',
         role: 'member',
         status: 'Active',
         firstLogin: false,
@@ -229,17 +229,6 @@ function verifyUserCredentials(user, inputPassword) {
         }
     }
 
-    // 4. Seed / System account fallback
-    const uEmail = (user.email || '').toLowerCase().trim();
-    if (
-        (uEmail === 'admin@leanlife.com' && (trimmed === 'admin123' || trimmed === 'admin')) ||
-        (uEmail === 'francessronke21@gmail.com' && (trimmed === 'password123' || trimmed === 'admin123')) ||
-        (uEmail === 'emma@example.com' && trimmed === 'password123') ||
-        (uEmail === 'qbuddie01@gmail.com' && trimmed === 'password123')
-    ) {
-        return true;
-    }
-
     return false;
 }
 
@@ -317,19 +306,31 @@ exports.handler = async function(event, context) {
         };
     }
 
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+        console.error('[Auth Function] SUPABASE_URL and (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY) are required');
+        return {
+            statusCode: 503,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                error: 'SERVER_CONFIGURATION_ERROR',
+                message: 'Database configuration not configured.'
+            })
+        };
+    }
+
     // 3. Query DEDICATED Minimal Authentication Dataset: leanlife_auth_index
     // NOTE: This queries system_settings?id=eq.leanlife_auth_index (EXCLUSIVELY credential data)
     // ZERO retrieval of health metrics, coaching records, or community content
     let authUsers = null;
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500);
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
 
         const response = await fetch(`${SUPABASE_URL}/rest/v1/system_settings?id=eq.leanlife_auth_index&select=data`, {
             method: 'GET',
             headers: {
                 'apikey': SUPABASE_KEY,
-                'Authorization': `Bearer ${SUPABASE_KEY}`,
                 'Accept': 'application/json'
             },
             signal: controller.signal
@@ -348,7 +349,7 @@ exports.handler = async function(event, context) {
             console.warn(`[Auth Function] Supabase error HTTP ${response.status}: ${response.statusText}`);
         }
     } catch (fetchErr) {
-        console.warn('[Auth Function] Supabase connection notice (falling back to auth index):', fetchErr.message || fetchErr);
+        console.warn('[Auth Function] Supabase connection notice:', fetchErr.message || fetchErr);
     }
 
     // If leanlife_auth_index is being initialized or cold, fall back to baseline seed accounts

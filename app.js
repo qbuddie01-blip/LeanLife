@@ -276,11 +276,25 @@ const AuthResult = Object.freeze({
     REQUIRES_SETUP: 'REQUIRES_SETUP'
 });
 
+function getApiBaseUrl() {
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+        const origin = window.location.origin;
+        if (origin.startsWith('http://') || origin.startsWith('https://')) {
+            return origin;
+        }
+    }
+    return 'https://leanlife-community.app';
+}
+
 const AuthService = {
     app: null,
 
     init(appInstance) {
         this.app = appInstance;
+    },
+
+    getApiBaseUrl() {
+        return getApiBaseUrl();
     },
 
     normalizeEmail(email) {
@@ -303,6 +317,10 @@ const AuthService = {
             const uUsername = uEmail.split('@')[0];
 
             if (uEmail === inputId || uName === inputId || uUsername === inputId) {
+                // If the cached user has no password hash (e.g. from cloud-read sync), cannot verify locally
+                if (!u.password) {
+                    continue;
+                }
                 const isValid = await appRef.verifyUserCredentials(u, password);
                 const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
                 if (isValid) {
@@ -338,7 +356,8 @@ const AuthService = {
             const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
             const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
 
-            const response = await fetch('/.netlify/functions/auth', {
+            const baseUrl = getApiBaseUrl();
+            const response = await fetch(`${baseUrl}/.netlify/functions/auth`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: inputId, password: password }),
@@ -433,28 +452,6 @@ const AuthService = {
                 }
             }
 
-            // Tier 4: Verify against baseline seed accounts
-            const seedAccounts = [
-                { email: 'admin@leanlife.com', name: 'Super Administrator', role: 'admin' },
-                { email: 'francessronke21@gmail.com', name: 'Coach Francess Orenuga', role: 'admin' },
-                { email: 'emma@example.com', name: 'Emma Watson', role: 'member' },
-                { email: 'qbuddie01@gmail.com', name: 'QUDDUS ABIOLA', role: 'member' }
-            ];
-            for (const s of seedAccounts) {
-                const sEmail = this.normalizeEmail(s.email);
-                const sName = s.name.trim().toLowerCase();
-                const sUsername = sEmail.split('@')[0];
-
-                if (sEmail === inputId || sName === inputId || sUsername === inputId) {
-                    if (await appRef.verifyUserCredentials(s, password)) {
-                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                        return { result: AuthResult.SUCCESS, user: s, source: 'seed_fallback', elapsedMs };
-                    } else {
-                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                        return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
-                    }
-                }
-            }
         }
 
         const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
@@ -465,7 +462,7 @@ const AuthService = {
         };
     },
 
-    // Unified entry point for authentication
+    // Unified entry point for authentication: Server authoritative when online
     async authenticate(identifier, password) {
         const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
         if (appRef && appRef.localCacheReadyPromise) {
@@ -476,21 +473,33 @@ const AuthService = {
             }
         }
 
-        // Step 1: Check Local Cache First (fast cached login < 15ms)
+        const isOffline = (typeof navigator !== 'undefined' && navigator.onLine === false);
+        if (isOffline) {
+            // Strictly offline: check local cache
+            return await this.authenticateFromCache(identifier, password);
+        }
+
+        // Online mode: Serverless remote authentication is authoritative
+        const remoteResult = await this.authenticateFromRemote(identifier, password);
+        if (remoteResult.result === AuthResult.SUCCESS) {
+            return remoteResult;
+        }
+        if (remoteResult.result === AuthResult.INVALID_CREDENTIALS) {
+            // Authoritative server rejection
+            return remoteResult;
+        }
+
+        // If remote was unreachable/outage, fall back to valid local cache
         const cacheResult = await this.authenticateFromCache(identifier, password);
         if (cacheResult.result === AuthResult.SUCCESS) {
             return cacheResult;
         }
-        if (cacheResult.result === AuthResult.INVALID_CREDENTIALS) {
-            return cacheResult;
-        }
 
-        // Step 2: Fresh Device / Cleared Browser Remote Authentication
-        return await this.authenticateFromRemote(identifier, password);
+        return remoteResult;
     },
 
     // Dedicated authoritative password update
-    async updateCredentials(email, newPassword) {
+    async updateCredentials(email, newPassword, authToken) {
         const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
         if (!appRef || !appRef.db || !appRef.db.users) return false;
         const normalized = this.normalizeEmail(email);
@@ -509,18 +518,22 @@ const AuthService = {
             appRef.saveCloudData().catch(e => console.warn("[AuthService] Cloud save warning:", e));
         }
 
-        // Synchronize updated password with serverless user-admin endpoint if token available
+        // Synchronize updated password with serverless user-admin endpoint
         try {
-            const token = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+            const token = authToken ||
+                          (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
                           (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
             if (token && typeof fetch !== 'undefined') {
-                fetch('/.netlify/functions/user-admin', {
+                const baseUrl = getApiBaseUrl();
+                await fetch(`${baseUrl}/.netlify/functions/user-admin`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ action: 'update-password', targetEmail: normalized, newPassword: newPassword })
-                }).catch(e => console.warn("[AuthService] user-admin update notice:", e));
+                });
             }
-        } catch (e) {}
+        } catch (e) {
+            console.warn("[AuthService] user-admin update notice:", e);
+        }
 
         return true;
     }
@@ -818,17 +831,6 @@ const leanLifeAppCore = {
                     return true;
                 }
             }
-        }
-
-        // 4. Special Fallback for System / Seed Accounts
-        const uEmail = (user.email || '').toLowerCase().trim();
-        if (
-            (uEmail === 'admin@leanlife.com' && (trimmed === 'admin123' || trimmed === 'admin')) ||
-            (uEmail === 'francessronke21@gmail.com' && (trimmed === 'password123' || trimmed === 'admin123')) ||
-            (uEmail === 'emma@example.com' && trimmed === 'password123') ||
-            (uEmail === 'qbuddie01@gmail.com' && trimmed === 'password123')
-        ) {
-            return true;
         }
 
         return false;
@@ -2139,17 +2141,48 @@ const leanLifeAppCore = {
             return;
         }
 
-        const user = this.db.users.find(u => (u.email || '').toLowerCase() === email);
-        if (!user) {
-            this.showCustomAlert(`No LeanLife account was found matching "${email}". Please verify the email address or register a new account.`, "Account Not Found", "fa-triangle-exclamation");
-            return;
+        let tempPassword = null;
+        let userName = 'LeanLife Member';
+
+        // 1. Authoritative serverless password reset via user-admin function
+        try {
+            const baseUrl = getApiBaseUrl();
+            const res = await fetch(`${baseUrl}/.netlify/functions/user-admin`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'request-password-reset', targetEmail: email })
+            });
+            const data = await res.json();
+            if (res.ok && data.success && data.tempPassword) {
+                tempPassword = data.tempPassword;
+                if (data.user && data.user.name) userName = data.user.name;
+            } else if (res.status === 404) {
+                this.showCustomAlert(`No LeanLife account was found matching "${email}". Please verify the email address or register a new account.`, "Account Not Found", "fa-triangle-exclamation");
+                return;
+            }
+        } catch (serverlessErr) {
+            console.warn("[Auth] Serverless password reset request notice:", serverlessErr.message || serverlessErr);
         }
 
-        const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
-        user.password = await this.hashPassword(tempPassword);
-        user.firstLogin = true;
-        user.updatedAt = new Date().toISOString();
-        await this.saveDatabase();
+        // 2. Local fallback if offline or serverless unreachable
+        let user = (this.db.users && Array.isArray(this.db.users)) ? this.db.users.find(u => (u.email || '').toLowerCase().trim() === email) : null;
+        if (!tempPassword) {
+            if (!user) {
+                this.showCustomAlert(`No LeanLife account was found matching "${email}". Please verify the email address or register a new account.`, "Account Not Found", "fa-triangle-exclamation");
+                return;
+            }
+            tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
+            userName = user.name || userName;
+        }
+
+        // 3. Update local database cache
+        if (user) {
+            user.password = await this.hashPassword(tempPassword);
+            user.tempPasswordRaw = tempPassword;
+            user.firstLogin = true;
+            user.updatedAt = new Date().toISOString();
+            await this.saveDatabase();
+        }
 
         const outboxId = 'EML-' + Date.now();
         this.db.emails = this.db.emails || [];
@@ -2163,7 +2196,7 @@ const leanLifeAppCore = {
         });
         await this.saveDatabase();
 
-        this.logAudit(user.name || email, 'Password Reset Requested', `Generated temporary reset password for ${email}`);
+        this.logAudit(userName, 'Password Reset Requested', `Generated temporary reset password for ${email}`);
 
         this.showCustomAlert(
             `🔑 Password Reset Link & Pin Sent!\n\nA temporary access password (${tempPassword}) has been generated and dispatched to ${email}.\n\nPlease check your email inbox to log in and set a new password.`,
@@ -2376,11 +2409,35 @@ const leanLifeAppCore = {
             }
 
             if (isRegistering) {
-                // Check if user exists
+                // Check if user exists locally
                 const exists = this.db.users.find(u => (u.email || '').toLowerCase().trim() === email);
                 if (exists) {
                     alert("Email already registered. Please log in.");
                     return;
+                }
+
+                // Register with authoritative serverless endpoint
+                try {
+                    const baseUrl = getApiBaseUrl();
+                    const regRes = await fetch(`${baseUrl}/.netlify/functions/user-admin`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'self-register-member',
+                            memberData: {
+                                name: fullname || 'LeanLife Member',
+                                email: email,
+                                password: password,
+                                phone: '+1 (555) 0000'
+                            }
+                        })
+                    });
+                    if (regRes.status === 409) {
+                        alert("Email already registered. Please log in.");
+                        return;
+                    }
+                } catch (regErr) {
+                    console.warn("[Auth] Serverless registration notice:", regErr.message || regErr);
                 }
 
                 const hashedPassword = await this.hashPassword(password);
@@ -2489,12 +2546,34 @@ const leanLifeAppCore = {
                 // Audit
                 this.logAudit(user.name, 'User Login', `${user.role} logged in successfully`);
 
+                // Set session state and store tokens immediately
+                this.calculateUserMonthlyStreak(user);
+                this.currentUser = user;
+                const remember = document.getElementById('auth-remember')?.checked;
+                const sessionToken = authRes.token || null;
+                try {
+                    sessionStorage.setItem('leanlife_session', JSON.stringify(user));
+                    if (sessionToken) sessionStorage.setItem('leanlife_token', sessionToken);
+                    if (remember || (typeof window !== 'undefined' && window.innerWidth <= 768)) {
+                        localStorage.setItem('leanlife_session', JSON.stringify(user));
+                        if (sessionToken) localStorage.setItem('leanlife_token', sessionToken);
+                    }
+                } catch (e) {
+                    console.warn("Storage notice during session save:", e);
+                }
+
                 // First Login check (prompt for change password via modal)
                 if (user.firstLogin) {
                     const newPwd = await this.showTempPasswordModal(user);
                     if (newPwd && newPwd.trim() !== '') {
                         const cleanPwd = newPwd.trim();
-                        await AuthService.updateCredentials(user.email, cleanPwd);
+                        await AuthService.updateCredentials(user.email, cleanPwd, sessionToken);
+                        user.firstLogin = false;
+                        this.currentUser = user;
+                        try {
+                            sessionStorage.setItem('leanlife_session', JSON.stringify(user));
+                            localStorage.setItem('leanlife_session', JSON.stringify(user));
+                        } catch (stErr) {}
                         this.logAudit(user.name, 'Password Updated', 'First login temporary password replaced');
                         alert("Password updated successfully! Welcome to LeanLife.");
                     } else {
@@ -2503,20 +2582,6 @@ const leanLifeAppCore = {
                     }
                 }
 
-                this.calculateUserMonthlyStreak(user);
-                this.currentUser = user;
-                const remember = document.getElementById('auth-remember')?.checked;
-                const sessionToken = authRes.token || null;
-                try {
-                    sessionStorage.setItem('leanlife_session', JSON.stringify(user));
-                    if (sessionToken) sessionStorage.setItem('leanlife_token', sessionToken);
-                    if (remember || window.innerWidth <= 768) {
-                        localStorage.setItem('leanlife_session', JSON.stringify(user));
-                        if (sessionToken) localStorage.setItem('leanlife_token', sessionToken);
-                    }
-                } catch (e) {
-                    console.warn("Storage notice during session save:", e);
-                }
                 this.updateUIAfterLogin();
                 if (user.role === 'admin' || user.role === 'coach') {
                     this.navigateTo('admin');
@@ -5857,6 +5922,18 @@ const leanLifeAppCore = {
                 user.password = await this.hashPassword(tempPassword);
                 await this.saveDatabase();
                 LeanLifeCacheManager.notifyOtherTabs('USERS_UPDATED', { user });
+
+                // Synchronize with authoritative Supabase auth index via user-admin function
+                const adminToken = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+                                   (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
+                if (adminToken) {
+                    const baseUrl = getApiBaseUrl();
+                    fetch(`${baseUrl}/.netlify/functions/user-admin`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+                        body: JSON.stringify({ action: 'admin-reset-password', targetEmail: user.email, tempPassword: tempPassword })
+                    }).catch(e => console.warn("[Admin] Cloud reset sync notice:", e));
+                }
                 
                 const emailResult = await this.sendRealEmail(user.name, user.email, 'LeanLife Temporary Credentials Reset', tempPassword, 'reset');
                 const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
@@ -5973,7 +6050,8 @@ const leanLifeAppCore = {
             const sessionToken = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
                                  (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
             if (sessionToken) {
-                fetch('/.netlify/functions/user-admin', {
+                const baseUrl = getApiBaseUrl();
+                fetch(`${baseUrl}/.netlify/functions/user-admin`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

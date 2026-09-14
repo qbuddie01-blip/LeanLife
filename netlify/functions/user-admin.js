@@ -12,8 +12,8 @@ const CORS_HEADERS = {
     'Content-Type': 'application/json'
 };
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vqvbxhzxtwjhieihvoah.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdmJ4aHp4dHdqaGllaWh2b2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDU1NDAsImV4cCI6MjA5ODk4MTU0MH0.40ItPbKKZihVJ6IgC2BMU_cGO4pOzQFD-6-QkxEuZTk';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 
 function hashPasswordPBKDF2Sync(password, saltUint8 = null) {
     const iterations = 100000;
@@ -61,30 +61,6 @@ exports.handler = async function(event, context) {
         };
     }
 
-    // 1. Extract Bearer Token
-    const authHeader = event.headers.authorization || event.headers.Authorization || '';
-    const token = authHeader.replace(/^Bearer\s+/i, '').trim() || body.token;
-
-    // Case A: Missing Session Token -> 401 Unauthorized
-    if (!token) {
-        return {
-            statusCode: 401,
-            headers: CORS_HEADERS,
-            body: JSON.stringify({ success: false, error: 'UNAUTHORIZED', message: 'Authentication session token required.' })
-        };
-    }
-
-    // Case B: Invalid / Tampered Session Token -> 401 Unauthorized
-    const tokenVerification = verifySessionToken(token);
-    if (!tokenVerification.valid) {
-        return {
-            statusCode: 401,
-            headers: CORS_HEADERS,
-            body: JSON.stringify({ success: false, error: 'UNAUTHORIZED', message: 'Invalid or expired session token.' })
-        };
-    }
-
-    const caller = tokenVerification.payload;
     const action = body.action;
 
     if (!action) {
@@ -95,45 +71,92 @@ exports.handler = async function(event, context) {
         };
     }
 
-    // 2. Role-Based Server-Side Authorization
-    const adminActions = ['admin-reset-password', 'admin-register-member', 'toggle-user-status', 'change-user-role', 'admin-delete-user'];
-    
-    // Case C: Valid Ordinary Member attempting Admin Action -> 403 Forbidden
-    if (adminActions.includes(action) && caller.role !== 'admin') {
-        return {
-            statusCode: 403,
-            headers: CORS_HEADERS,
-            body: JSON.stringify({
-                success: false,
-                error: 'FORBIDDEN',
-                message: 'Administrator privileges required for this operation.'
-            })
-        };
-    }
+    // 1. Authorize Action
+    const publicActions = ['request-password-reset', 'self-register-member'];
+    let caller = null;
 
-    // Case D: Member Self-Update Authorization Check
-    if (action === 'update-password') {
-        const targetEmail = (body.targetEmail || '').trim().toLowerCase();
-        if (caller.role !== 'admin' && caller.email.toLowerCase() !== targetEmail) {
+    if (!publicActions.includes(action)) {
+        const authHeader = event.headers.authorization || event.headers.Authorization || '';
+        const token = authHeader.replace(/^Bearer\s+/i, '').trim() || body.token;
+
+        // Case A: Missing Session Token -> 401 Unauthorized
+        if (!token) {
+            return {
+                statusCode: 401,
+                headers: CORS_HEADERS,
+                body: JSON.stringify({ success: false, error: 'UNAUTHORIZED', message: 'Authentication session token required.' })
+            };
+        }
+
+        // Case B: Invalid / Tampered Session Token -> 401 Unauthorized
+        const tokenVerification = verifySessionToken(token);
+        if (!tokenVerification.valid) {
+            return {
+                statusCode: 401,
+                headers: CORS_HEADERS,
+                body: JSON.stringify({ success: false, error: 'UNAUTHORIZED', message: 'Invalid or expired session token.' })
+            };
+        }
+
+        caller = tokenVerification.payload;
+
+        // 2. Role-Based Server-Side Authorization
+        const adminActions = ['admin-reset-password', 'admin-register-member', 'toggle-user-status', 'change-user-role', 'admin-delete-user'];
+        
+        // Case C: Valid Ordinary Member attempting Admin Action -> 403 Forbidden
+        if (adminActions.includes(action) && caller.role !== 'admin') {
             return {
                 statusCode: 403,
                 headers: CORS_HEADERS,
                 body: JSON.stringify({
                     success: false,
                     error: 'FORBIDDEN',
-                    message: 'Cannot modify credentials of another user.'
+                    message: 'Administrator privileges required for this operation.'
                 })
             };
         }
+
+        // Case D: Member Self-Update Authorization Check
+        if (action === 'update-password') {
+            const targetEmail = (body.targetEmail || '').trim().toLowerCase();
+            if (caller.role !== 'admin' && caller.email.toLowerCase() !== targetEmail) {
+                return {
+                    statusCode: 403,
+                    headers: CORS_HEADERS,
+                    body: JSON.stringify({
+                        success: false,
+                        error: 'FORBIDDEN',
+                        message: 'Cannot modify credentials of another user.'
+                    })
+                };
+            }
+        }
+    }
+
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+        console.error('[User Admin] SUPABASE_URL and (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY) are required');
+        return {
+            statusCode: 503,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                error: 'SERVER_CONFIGURATION_ERROR',
+                message: 'Database configuration not configured.'
+            })
+        };
     }
 
     // 3. Retrieve leanlife_auth_index from Supabase (or baseline seed)
     let authUsers = null;
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
         const res = await fetch(`${SUPABASE_URL}/rest/v1/system_settings?id=eq.leanlife_auth_index&select=data`, {
             method: 'GET',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+            headers: { 'apikey': SUPABASE_KEY, 'Accept': 'application/json' },
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
         if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data) && data.length > 0 && data[0].data && Array.isArray(data[0].data.users)) {
@@ -162,7 +185,7 @@ exports.handler = async function(event, context) {
                 body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND' })
             };
         }
-        const tempPin = 'LL-' + Math.floor(100000 + Math.random() * 900000);
+        const tempPin = body.tempPassword || ('LL-' + Math.floor(100000 + Math.random() * 900000));
         user.tempPasswordRaw = tempPin;
         user.password = hashPasswordPBKDF2Sync(tempPin);
         user.firstLogin = true;
@@ -229,15 +252,60 @@ exports.handler = async function(event, context) {
         user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
+    } else if (action === 'request-password-reset') {
+        const targetEmail = (body.targetEmail || body.email || '').trim().toLowerCase();
+        if (!targetEmail) {
+            return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'EMAIL_REQUIRED', message: 'Email address is required.' }) };
+        }
+        const user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
+        if (!user) {
+            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND', message: 'Account not found.' }) };
+        }
+        const tempPin = 'LL-' + Math.floor(100000 + Math.random() * 900000);
+        user.tempPasswordRaw = tempPin;
+        user.password = hashPasswordPBKDF2Sync(tempPin);
+        user.firstLogin = true;
+        user.authUpdatedAt = new Date().toISOString();
+        user.updatedAt = new Date().toISOString();
+        mutatedUser = user;
+        extraResponseData.tempPassword = tempPin;
+    } else if (action === 'self-register-member') {
+        const { name, email, password, phone } = body.memberData || body || {};
+        const cleanEmail = (email || '').trim().toLowerCase();
+        if (!cleanEmail) {
+            return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'EMAIL_REQUIRED', message: 'Email is required.' }) };
+        }
+        if (!password) {
+            return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'PASSWORD_REQUIRED', message: 'Password is required.' }) };
+        }
+        const exists = authUsers.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
+        if (exists) {
+            return { statusCode: 409, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_ALREADY_EXISTS', message: 'Email is already registered.' }) };
+        }
+        const newUser = {
+            id: 'USR-' + Date.now(),
+            name: name || 'LeanLife Member',
+            email: cleanEmail,
+            phone: phone || '',
+            password: hashPasswordPBKDF2Sync(password),
+            role: 'member',
+            status: 'Active',
+            firstLogin: false,
+            authUpdatedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        authUsers.push(newUser);
+        mutatedUser = newUser;
     }
 
     // 5. Persist updated leanlife_auth_index to Supabase with Upsert
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
         await fetch(`${SUPABASE_URL}/rest/v1/system_settings`, {
             method: 'POST',
             headers: {
                 'apikey': SUPABASE_KEY,
-                'Authorization': `Bearer ${SUPABASE_KEY}`,
                 'Content-Type': 'application/json',
                 'Prefer': 'resolution=merge-duplicates'
             },
@@ -245,8 +313,10 @@ exports.handler = async function(event, context) {
                 id: 'leanlife_auth_index',
                 data: { users: authUsers },
                 updated_at: new Date().toISOString()
-            })
+            }),
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
     } catch (saveErr) {
         console.warn("[User Admin] Cloud write warning:", saveErr.message || saveErr);
     }
