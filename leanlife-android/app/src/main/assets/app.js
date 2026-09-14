@@ -503,8 +503,16 @@ const AuthService = {
         const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
         if (!appRef || !appRef.db || !appRef.db.users) return false;
         const normalized = this.normalizeEmail(email);
-        const user = appRef.db.users.find(u => this.normalizeEmail(u.email) === normalized);
-        if (!user) return false;
+        let user = appRef.db.users.find(u => this.normalizeEmail(u.email) === normalized);
+        if (!user) {
+            if (appRef.currentUser && this.normalizeEmail(appRef.currentUser.email) === normalized) {
+                user = appRef.currentUser;
+                appRef.db.users.push(user);
+            } else {
+                user = { email: normalized, role: 'member', status: 'Active' };
+                appRef.db.users.push(user);
+            }
+        }
 
         const hashedPassword = await appRef.hashPassword(newPassword);
         user.password = hashedPassword;
@@ -514,7 +522,9 @@ const AuthService = {
         user.updatedAt = new Date().toISOString();
 
         await appRef.saveDatabase();
-        if (appRef.supabase) {
+        if (typeof appRef.syncCloudData === 'function') {
+            appRef.syncCloudData().catch(e => console.warn("[AuthService] Cloud sync warning:", e));
+        } else if (typeof appRef.saveCloudData === 'function') {
             appRef.saveCloudData().catch(e => console.warn("[AuthService] Cloud save warning:", e));
         }
 
