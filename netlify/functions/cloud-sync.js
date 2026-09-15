@@ -176,7 +176,7 @@ exports.handler = async function(event, context) {
 
     // 5. Apply Role-Based Mutation & Field-Level Access Control
 
-    if (callerRole === 'admin') {
+    if (callerRole === 'admin' || callerRole === 'coach') {
         // ==================== ADMIN / COACH PRIVILEGES ====================
         
         // A. Appointments: Admins can update/confirm/complete any appointment

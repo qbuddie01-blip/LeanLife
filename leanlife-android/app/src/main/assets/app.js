@@ -1257,12 +1257,15 @@ const leanLifeAppCore = {
         }
 
         // 3. Supabase Cloud Sync with Safe Merging (Prevents overwriting submissions from other devices)
-        if (this.supabase) {
+        const token = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+                      (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
+
+        if (this.supabase || token) {
             const syncPromise = (async () => {
                 const syncStart = performance.now();
                 LeanLifeCacheManager.metrics.syncStatus = 'syncing';
                 try {
-                    const withTimeout = (promise, ms = 3500) => {
+                    const withTimeout = (promise, ms = 6000) => {
                         return Promise.race([
                             promise,
                             new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase request timeout')), ms))
@@ -1439,7 +1442,7 @@ const leanLifeAppCore = {
                 ? window.location.origin
                 : 'https://leanlife-community.app';
 
-            const withTimeout = (promise, ms = 4500) => {
+            const withTimeout = (promise, ms = 6000) => {
                 return Promise.race([
                     promise,
                     new Promise((_, reject) => setTimeout(() => reject(new Error('Cloud read timeout')), ms))
@@ -1466,6 +1469,7 @@ const leanLifeAppCore = {
                         if (this.activeAdminTab === 'users') this.renderAdminUsers();
                         else if (this.activeAdminTab === 'logs-cms') this.renderAdminLogsCMS();
                         else if (this.activeAdminTab === 'reports-cms') this.renderAdminReportsCMS();
+                        else if (this.activeAdminTab === 'appointments-cms') this.renderAdminAppointmentsCMS();
                     } else if (this.activeView === 'dashboard') {
                         this.renderDashboard();
                     }
@@ -1977,6 +1981,7 @@ const leanLifeAppCore = {
             this.renderCoaching();
         } else if (viewId === 'admin') {
             this.renderAdminPanel();
+            this.syncCloudData().catch(e => console.warn("[Admin] Navigation sync notice:", e));
         } else if (viewId === 'profile') {
             this.renderUserProfile();
         } else if (viewId === 'ai-report') {
@@ -2042,12 +2047,32 @@ const leanLifeAppCore = {
                 navAdmin.textContent = this.currentUser.role === 'coach' ? 'Coach Portal' : 'Admin Panel';
             }
             this.updateAppointmentNotificationBadges();
+
+            // Background live sync interval for coaches/admins (every 30s)
+            if (!this.coachSyncInterval) {
+                this.coachSyncInterval = setInterval(() => {
+                    if (this.currentUser && (this.currentUser.role === 'admin' || this.currentUser.role === 'coach')) {
+                        this.syncCloudData().catch(() => {});
+                    } else if (this.coachSyncInterval) {
+                        clearInterval(this.coachSyncInterval);
+                        this.coachSyncInterval = null;
+                    }
+                }, 30000);
+            }
         } else {
             document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+            if (this.coachSyncInterval) {
+                clearInterval(this.coachSyncInterval);
+                this.coachSyncInterval = null;
+            }
         }
     },
 
     updateUIAfterLogout() {
+        if (this.coachSyncInterval) {
+            clearInterval(this.coachSyncInterval);
+            this.coachSyncInterval = null;
+        }
         document.getElementById('auth-nav-buttons').style.display = 'flex';
         document.getElementById('user-nav-dropdown').style.display = 'none';
 
@@ -2659,6 +2684,8 @@ const leanLifeAppCore = {
                 }
 
                 this.updateUIAfterLogin();
+                // Immediately synchronize authoritative cloud dataset using newly verified token
+                this.syncCloudData().catch(e => console.warn("[Auth] Post-login sync notice:", e));
                 if (user.role === 'admin' || user.role === 'coach') {
                     this.navigateTo('admin');
                 } else {
@@ -5542,6 +5569,11 @@ const leanLifeAppCore = {
 
         this.activeAdminTab = tab;
 
+        // Automatically pull latest cloud data in background for data-driven tabs
+        if (['users', 'logs-cms', 'reports-cms', 'appointments-cms'].includes(tab)) {
+            this.syncCloudData().catch(e => console.warn("[Admin] Tab switch sync notice:", e));
+        }
+
         // Mark unviewed appointments as viewed when coach opens appointments tab
         if (tab === 'appointments-cms') {
             if (this.db && Array.isArray(this.db.appointments)) {
@@ -5578,6 +5610,29 @@ const leanLifeAppCore = {
         }, 0);
     },
 
+    async refreshAdminData() {
+        const btn = document.getElementById('btn-admin-refresh-data');
+        const origHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Syncing...';
+        }
+        try {
+            await this.syncCloudData();
+            if (this.activeAdminTab === 'users') this.renderAdminUsers();
+            else if (this.activeAdminTab === 'logs-cms') this.renderAdminLogsCMS();
+            else if (this.activeAdminTab === 'reports-cms') this.renderAdminReportsCMS();
+            else if (this.activeAdminTab === 'appointments-cms') this.renderAdminAppointmentsCMS();
+        } catch(e) {
+            console.warn("[Admin] Manual refresh notice:", e);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml || '<i class="fa-solid fa-rotate"></i> Sync Cloud';
+            }
+        }
+    },
+
     renderAdminUsers() {
         const tbody = document.getElementById('admin-user-list-tbody');
         if (!tbody) return;
@@ -5588,10 +5643,11 @@ const leanLifeAppCore = {
         let html = '';
         this.db.users.forEach(u => {
             const isSelf = u.email === this.currentUser.email;
+            const uEmail = (u.email || '').toLowerCase().trim();
             
             // Filter by search
-            const matchSearch = u.name.toLowerCase().includes(query) || 
-                                u.email.toLowerCase().includes(query) || 
+            const matchSearch = (u.name || '').toLowerCase().includes(query) || 
+                                uEmail.includes(query) || 
                                 (u.preferredCoach || '').toLowerCase().includes(query);
             
             // Filter by status
@@ -5599,7 +5655,10 @@ const leanLifeAppCore = {
 
             if (!matchSearch || !matchStatus) return;
 
-            const userLogs = this.db.wellnessLogs.filter(l => l.userEmail.toLowerCase() === u.email.toLowerCase());
+            const userLogs = (this.db.wellnessLogs || []).filter(l => {
+                const lEmail = (l.userEmail || l.email || l.user_email || '').toLowerCase().trim();
+                return lEmail === uEmail;
+            });
             const logCount = userLogs.length;
 
             html += `
@@ -5639,8 +5698,8 @@ const leanLifeAppCore = {
             return;
         }
 
-        const user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (!user) return;
+        const normEmail = (email || '').toLowerCase().trim();
+        const user = (this.db.users || []).find(u => (u.email || '').toLowerCase().trim() === normEmail) || { email: email, name: email };
 
         const modal = document.getElementById('admin-client-logs-modal');
         if (!modal) return;
@@ -5648,38 +5707,52 @@ const leanLifeAppCore = {
         // Set header info
         const nameEl = document.getElementById('client-logs-modal-user-name');
         const emailEl = document.getElementById('client-logs-modal-user-email');
-        if (nameEl) nameEl.textContent = user.name;
-        if (emailEl) emailEl.textContent = user.email;
+        if (nameEl) nameEl.textContent = user.name || user.email;
+        if (emailEl) emailEl.textContent = user.email || email;
 
         // Get user's wellness logs sorted newest first
-        const userLogs = this.db.wellnessLogs
-            .filter(l => l.userEmail.toLowerCase() === email.toLowerCase())
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        const getSortedLogs = () => (this.db.wellnessLogs || [])
+            .filter(l => {
+                const lEmail = (l.userEmail || l.email || l.user_email || '').toLowerCase().trim();
+                return lEmail === normEmail;
+            })
+            .sort((a, b) => new Date(b.timestamp || b.updatedAt || b.date || 0) - new Date(a.timestamp || a.updatedAt || a.date || 0));
 
-        // Populate date dropdown
-        const dateSelect = document.getElementById('client-logs-date-select');
-        if (dateSelect) {
-            dateSelect.innerHTML = '';
-            if (userLogs.length === 0) {
-                dateSelect.innerHTML = '<option value="">No logs available</option>';
-            } else {
-                userLogs.forEach((l, idx) => {
-                    const opt = document.createElement('option');
-                    opt.value = l.id;
-                    const dateStr = new Date(l.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-                    const timeStr = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    const deviceTag = l.device ? ` [${l.device.includes('Android') ? 'Android' : (l.device.includes('iOS') ? 'iOS' : 'Web')}]` : '';
-                    opt.textContent = `${idx === 0 ? 'Latest: ' : ''}${dateStr} at ${timeStr}${deviceTag}`;
-                    dateSelect.appendChild(opt);
-                });
+        const populateDropdownAndRender = (logs) => {
+            const dateSelect = document.getElementById('client-logs-date-select');
+            if (dateSelect) {
+                dateSelect.innerHTML = '';
+                if (logs.length === 0) {
+                    dateSelect.innerHTML = '<option value="">No logs available</option>';
+                } else {
+                    logs.forEach((l, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = l.id;
+                        const logTime = l.timestamp || l.updatedAt || l.date || '';
+                        const dateStr = logTime && !isNaN(new Date(logTime)) ? new Date(logTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent';
+                        const timeStr = (logTime && logTime.includes('T') && !isNaN(new Date(logTime))) ? new Date(logTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                        const deviceTag = l.device ? ` [${l.device.includes('Android') ? 'Android' : (l.device.includes('iOS') ? 'iOS' : 'Web')}]` : '';
+                        opt.textContent = `${idx === 0 ? 'Latest: ' : ''}${dateStr}${timeStr ? ' at ' + timeStr : ''}${deviceTag}`;
+                        dateSelect.appendChild(opt);
+                    });
+                }
             }
-        }
+            this.renderSelectedClientLog(logs[0] || null, user);
+        };
 
-        // Render first log
-        this.renderSelectedClientLog(userLogs[0] || null, user);
+        const userLogs = getSortedLogs();
+        populateDropdownAndRender(userLogs);
 
         modal.style.display = 'block';
         modal.scrollIntoView({ behavior: 'smooth' });
+
+        // Asynchronously revalidate from cloud in background to guarantee zero-lag freshness
+        this.syncCloudData().then(() => {
+            const freshLogs = getSortedLogs();
+            if (freshLogs.length !== userLogs.length || (freshLogs[0] && userLogs[0] && freshLogs[0].id !== userLogs[0].id)) {
+                populateDropdownAndRender(freshLogs);
+            }
+        }).catch(() => {});
     },
 
     handleClientLogDateSelect(logId) {
@@ -6204,7 +6277,11 @@ const leanLifeAppCore = {
         }
 
         let html = '';
-        this.db.wellnessLogs.forEach(r => {
+        const sortedLogs = [...(this.db.wellnessLogs || [])].sort((a, b) => 
+            new Date(b.timestamp || b.updatedAt || b.date || 0) - new Date(a.timestamp || a.updatedAt || a.date || 0)
+        );
+
+        sortedLogs.forEach(r => {
             const userEmail = (r.userEmail || r.user_email || r.email || '').toLowerCase();
             const mood = (r.mood || 'happy').toLowerCase();
             const exerciseType = (r.exercise?.type || 'None').toLowerCase();
@@ -6216,11 +6293,14 @@ const leanLifeAppCore = {
             const waterGlasses = r.waterCount || 8;
             const steps = r.steps || 0;
             const isExercise = r.exerciseCompleted === 'yes' || r.exercise?.completed === 'yes';
+            const logTime = r.timestamp || r.updatedAt || r.date || '';
+            const dateStr = logTime && !isNaN(new Date(logTime)) ? new Date(logTime).toLocaleDateString() : 'Recent';
+            const timeStr = (logTime && logTime.includes('T') && !isNaN(new Date(logTime))) ? new Date(logTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
             html += `
                 <tr>
-                    <td>${new Date(r.timestamp).toLocaleDateString()} ${new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                    <td style="font-weight:600; color: var(--clr-primary-green);">${r.userEmail || r.user_email || 'Member'}</td>
+                    <td>${dateStr} ${timeStr}</td>
+                    <td style="font-weight:600; color: var(--clr-primary-green);">${r.userEmail || r.user_email || r.email || 'Member'}</td>
                     <td>${sleepDuration} hrs (${sleepQuality})</td>
                     <td>${waterGlasses * 8} oz (${waterGlasses} gl)</td>
                     <td>${steps.toLocaleString()}</td>

@@ -196,7 +196,7 @@ exports.handler = async function(event, context) {
     const callerEmail = (caller.email || '').trim().toLowerCase();
     const callerRole = (caller.role || 'member').trim().toLowerCase();
 
-    if (callerRole === 'admin') {
+    if (callerRole === 'admin' || callerRole === 'coach') {
         // ==================== B. ADMIN / COACH ====================
         // Returns administrative dataset required by coach & admin dashboards.
         // Sanitizes all user credentials (passwords, tempPasswordRaw).
@@ -205,7 +205,7 @@ exports.handler = async function(event, context) {
 
         const adminPayload = {
             authenticated: true,
-            role: 'admin',
+            role: callerRole,
             posts: allPosts,
             events: allEvents,
             users: sanitizedUsers,

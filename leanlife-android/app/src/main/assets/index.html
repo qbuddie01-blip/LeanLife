@@ -1235,6 +1235,7 @@
                 <button class="admin-tab-btn" id="btn-admin-audits-cms" onclick="app.switchAdminTab('audits-cms')"><i class="fa-solid fa-shield-halved"></i> Audit Trails</button>
                 <button class="admin-tab-btn" id="btn-admin-settings-cms" onclick="app.switchAdminTab('settings-cms')"><i class="fa-solid fa-sliders"></i> Settings & Backups</button>
                 <button class="admin-tab-btn" id="btn-admin-automation" onclick="app.switchAdminTab('automation')"><i class="fa-solid fa-gears"></i> Automation Center</button>
+                <button class="btn btn-outline" id="btn-admin-refresh-data" style="margin-left:auto; padding: 0.35rem 0.8rem; font-size:0.8rem; color:var(--clr-primary-green); border-color:var(--clr-primary-green);" onclick="app.refreshAdminData()"><i class="fa-solid fa-rotate"></i> Sync Cloud</button>
             </div>
 
             <!-- SUBVIEW 1: USER MANAGEMENT -->
@@ -2615,8 +2616,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         window.SUPABASE_CONFIG = window.SUPABASE_CONFIG || {
-            URL: 'https://vqvbxhzxtwjhieihvoah.supabase.co',
-            KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdmJ4aHp4dHdqaGllaWh2b2FoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MDU1NDAsImV4cCI6MjA5ODk4MTU0MH0.40ItPbKKZihVJ6IgC2BMU_cGO4pOzQFD-6-QkxEuZTk',
+            URL: 'https://fgjjeyonzhuipnbdebvr.supabase.co',
+            KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnampleW9uemh1aXBuYmRlYnZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NjE0NDYsImV4cCI6MjA5OTQzNzQ0Nn0.l1Gy0IXP1L_CnWy84QjeQCjrGvRa1F7vkOoCc_aOONY',
             EMAILJS_SERVICE_ID: 'service_60jfsbe',
             EMAILJS_TEMPLATE_ID: 'template_gyjh3gp',
             EMAILJS_WELCOME_TEMPLATE_ID: 'template_gyjh3gp',
