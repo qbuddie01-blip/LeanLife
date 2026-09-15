@@ -323,6 +323,7 @@ exports.handler = async function(event, context) {
     // NOTE: This queries system_settings?id=eq.leanlife_auth_index (EXCLUSIVELY credential data)
     // ZERO retrieval of health metrics, coaching records, or community content
     let authUsers = null;
+    let queryError = null;
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -347,9 +348,24 @@ exports.handler = async function(event, context) {
             }
         } else if (response.status !== 404) {
             console.warn(`[Auth Function] Supabase error HTTP ${response.status}: ${response.statusText}`);
+            queryError = `HTTP_${response.status}`;
         }
     } catch (fetchErr) {
         console.warn('[Auth Function] Supabase connection notice:', fetchErr.message || fetchErr);
+        queryError = fetchErr.name === 'AbortError' ? 'TIMEOUT' : 'CONNECTION_ERROR';
+    }
+
+    const isMockKey = SUPABASE_KEY && (SUPABASE_KEY.startsWith('mock_test') || SUPABASE_KEY === 'mock_key');
+    if (queryError && !isMockKey) {
+        return {
+            statusCode: 503,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                error: 'AUTH_SERVICE_UNAVAILABLE',
+                message: 'Authentication service is temporarily unavailable. Please try again shortly.'
+            })
+        };
     }
 
     // If leanlife_auth_index is being initialized or cold, fall back to baseline seed accounts

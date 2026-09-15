@@ -3,7 +3,7 @@
 // Enforces cryptographic server-side authorization: 401 Unauthorized / 403 Forbidden
 
 const crypto = require('crypto');
-const { verifySessionToken, BASELINE_AUTH_INDEX_USERS } = require('./auth');
+const { verifySessionToken, signSessionToken, BASELINE_AUTH_INDEX_USERS } = require('./auth');
 
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -23,6 +23,8 @@ function hashPasswordPBKDF2Sync(password, saltUint8 = null) {
     const hashHex = derived.toString('hex');
     return `pbkdf2$${iterations}$${saltHex}$${hashHex}`;
 }
+
+const inMemoryWarmUsers = [];
 
 exports.handler = async function(event, context) {
     if (event.httpMethod === 'OPTIONS') {
@@ -101,7 +103,14 @@ exports.handler = async function(event, context) {
         caller = tokenVerification.payload;
 
         // 2. Role-Based Server-Side Authorization
-        const adminActions = ['admin-reset-password', 'admin-register-member', 'toggle-user-status', 'change-user-role', 'admin-delete-user'];
+        const adminActions = [
+            'admin-reset-password',
+            'admin-register-member',
+            'toggle-user-status',
+            'change-user-role',
+            'admin-delete-user',
+            'reconcile-auth-index'
+        ];
         
         // Case C: Valid Ordinary Member attempting Admin Action -> 403 Forbidden
         if (adminActions.includes(action) && caller.role !== 'admin') {
@@ -146,38 +155,97 @@ exports.handler = async function(event, context) {
         };
     }
 
-    // 3. Retrieve leanlife_auth_index from Supabase (or baseline seed)
-    let authUsers = null;
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/system_settings?id=eq.leanlife_auth_index&select=data`, {
-            method: 'GET',
-            headers: { 'apikey': SUPABASE_KEY, 'Accept': 'application/json' },
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0 && data[0].data && Array.isArray(data[0].data.users)) {
-                authUsers = data[0].data.users;
+    // 3. Helper to Fetch Datasets from system_settings
+    async function fetchDataset(id) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/system_settings?id=eq.${encodeURIComponent(id)}&select=data`, {
+                method: 'GET',
+                headers: { 'apikey': SUPABASE_KEY, 'Accept': 'application/json' },
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0 && data[0].data) {
+                    return data[0].data;
+                }
             }
+        } catch (e) {
+            console.warn(`[User Admin] Cloud read notice for ${id}:`, e.message || e);
         }
-    } catch (e) {
-        console.warn("[User Admin] Cloud read notice:", e.message || e);
+        return null;
+    }
+
+    // Retrieve leanlife_auth_index
+    let authUsers = null;
+    const authData = await fetchDataset('leanlife_auth_index');
+    if (authData && Array.isArray(authData.users)) {
+        authUsers = authData.users;
     }
 
     if (!authUsers || authUsers.length === 0) {
         authUsers = BASELINE_AUTH_INDEX_USERS.map(u => ({ ...u }));
     }
 
-    // 4. Execute Privileged Mutation
+    if (inMemoryWarmUsers.length > 0) {
+        for (const warmUser of inMemoryWarmUsers) {
+            const warmEmail = (warmUser.email || '').trim().toLowerCase();
+            if (warmEmail && !authUsers.some(u => (u.email || '').trim().toLowerCase() === warmEmail)) {
+                authUsers.push(warmUser);
+            }
+        }
+    }
+
+    // Retrieve leanlife_cloud_db for dual-dataset operations
+    let cloudDbRaw = null;
+    let cloudDbMutated = false;
+    const cloudActions = [
+        'self-register-member',
+        'admin-register-member',
+        'request-password-reset',
+        'reconcile-auth-index',
+        'update-password',
+        'admin-delete-user',
+        'toggle-user-status',
+        'change-user-role',
+        'admin-reset-password'
+    ];
+
+    if (cloudActions.includes(action)) {
+        cloudDbRaw = await fetchDataset('leanlife_cloud_db');
+        if (!cloudDbRaw) {
+            cloudDbRaw = { users: [] };
+        } else if (!Array.isArray(cloudDbRaw.users)) {
+            cloudDbRaw.users = [];
+        }
+    }
+
+    // 4. Execute Privileged or Public Mutation
     let mutatedUser = null;
     let extraResponseData = {};
 
     if (action === 'admin-reset-password') {
         const targetEmail = (body.targetEmail || '').trim().toLowerCase();
-        const user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
+        let user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
+        const cloudUser = cloudDbRaw ? cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail) : null;
+
+        if (!user && cloudUser) {
+            user = {
+                id: cloudUser.id || ('USR-' + Date.now()),
+                name: cloudUser.name || 'LeanLife Member',
+                email: targetEmail,
+                phone: cloudUser.phone || '',
+                role: cloudUser.role || 'member',
+                status: cloudUser.status || 'Active',
+                firstLogin: true,
+                authUpdatedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            authUsers.push(user);
+        }
+
         if (!user) {
             return {
                 statusCode: 404,
@@ -193,19 +261,31 @@ exports.handler = async function(event, context) {
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
         extraResponseData.tempPassword = tempPin;
+
+        if (cloudUser) {
+            cloudUser.tempPasswordRaw = tempPin;
+            cloudUser.password = user.password;
+            cloudUser.firstLogin = true;
+            cloudUser.authUpdatedAt = user.authUpdatedAt;
+            cloudUser.updatedAt = user.updatedAt;
+            cloudDbMutated = true;
+        }
     } else if (action === 'admin-register-member') {
         const { name, email, phone, role = 'member' } = body.memberData || {};
         const cleanEmail = (email || '').trim().toLowerCase();
         if (!cleanEmail) {
             return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'EMAIL_REQUIRED' }) };
         }
-        const exists = authUsers.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
-        if (exists) {
+        const existsInAuth = authUsers.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
+        const existsInCloud = cloudDbRaw && cloudDbRaw.users.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
+        if (existsInAuth || existsInCloud) {
             return { statusCode: 409, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_ALREADY_EXISTS' }) };
         }
         const tempPin = 'LL-' + Math.floor(100000 + Math.random() * 900000);
+        const userId = 'USR-' + Date.now();
+        const nowIso = new Date().toISOString();
         const newUser = {
-            id: 'USR-' + Date.now(),
+            id: userId,
             name: name || 'LeanLife Member',
             email: cleanEmail,
             phone: phone || '',
@@ -214,12 +294,27 @@ exports.handler = async function(event, context) {
             role: role,
             status: 'Active',
             firstLogin: true,
-            authUpdatedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            authUpdatedAt: nowIso,
+            updatedAt: nowIso
         };
         authUsers.push(newUser);
         mutatedUser = newUser;
         extraResponseData.tempPassword = tempPin;
+
+        if (cloudDbRaw) {
+            cloudDbRaw.users.push({
+                id: userId,
+                name: name || 'LeanLife Member',
+                email: cleanEmail,
+                phone: phone || '',
+                role: role,
+                status: 'Active',
+                firstLogin: true,
+                authUpdatedAt: nowIso,
+                updatedAt: nowIso
+            });
+            cloudDbMutated = true;
+        }
     } else if (action === 'toggle-user-status') {
         const targetEmail = (body.targetEmail || '').trim().toLowerCase();
         const user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
@@ -230,6 +325,15 @@ exports.handler = async function(event, context) {
         user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
+
+        if (cloudDbRaw) {
+            const cloudUser = cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
+            if (cloudUser) {
+                cloudUser.status = user.status;
+                cloudUser.updatedAt = user.updatedAt;
+                cloudDbMutated = true;
+            }
+        }
     } else if (action === 'change-user-role') {
         const targetEmail = (body.targetEmail || '').trim().toLowerCase();
         const user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
@@ -240,9 +344,54 @@ exports.handler = async function(event, context) {
         user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
+
+        if (cloudDbRaw) {
+            const cloudUser = cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
+            if (cloudUser) {
+                cloudUser.role = user.role;
+                cloudUser.updatedAt = user.updatedAt;
+                cloudDbMutated = true;
+            }
+        }
+    } else if (action === 'admin-delete-user') {
+        const targetEmail = (body.targetEmail || '').trim().toLowerCase();
+        const authIdx = authUsers.findIndex(u => (u.email || '').trim().toLowerCase() === targetEmail);
+        if (authIdx === -1 && (!cloudDbRaw || !cloudDbRaw.users.some(u => (u.email || '').trim().toLowerCase() === targetEmail))) {
+            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND' }) };
+        }
+        if (authIdx !== -1) {
+            mutatedUser = authUsers[authIdx];
+            authUsers.splice(authIdx, 1);
+        }
+        if (cloudDbRaw) {
+            const cloudIdx = cloudDbRaw.users.findIndex(u => (u.email || '').trim().toLowerCase() === targetEmail);
+            if (cloudIdx !== -1) {
+                if (!mutatedUser) mutatedUser = cloudDbRaw.users[cloudIdx];
+                cloudDbRaw.users.splice(cloudIdx, 1);
+                cloudDbMutated = true;
+            }
+        }
+        extraResponseData.deleted = true;
     } else if (action === 'update-password') {
         const targetEmail = (body.targetEmail || '').trim().toLowerCase();
-        const user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
+        let user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
+        const cloudUser = cloudDbRaw ? cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail) : null;
+
+        if (!user && cloudUser) {
+            user = {
+                id: cloudUser.id || ('USR-' + Date.now()),
+                name: cloudUser.name || 'LeanLife Member',
+                email: targetEmail,
+                phone: cloudUser.phone || '',
+                role: cloudUser.role || 'member',
+                status: cloudUser.status || 'Active',
+                firstLogin: false,
+                authUpdatedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            authUsers.push(user);
+        }
+
         if (!user) {
             return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND' }) };
         }
@@ -252,12 +401,39 @@ exports.handler = async function(event, context) {
         user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
+
+        if (cloudUser) {
+            cloudUser.tempPasswordRaw = null;
+            cloudUser.password = user.password;
+            cloudUser.firstLogin = false;
+            cloudUser.authUpdatedAt = user.authUpdatedAt;
+            cloudUser.updatedAt = user.updatedAt;
+            cloudDbMutated = true;
+        }
     } else if (action === 'request-password-reset') {
         const targetEmail = (body.targetEmail || body.email || '').trim().toLowerCase();
         if (!targetEmail) {
             return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'EMAIL_REQUIRED', message: 'Email address is required.' }) };
         }
-        const user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
+        let user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
+        const cloudUser = cloudDbRaw ? cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail) : null;
+
+        // Auto-reconcile user from cloud_db if missing from auth_index
+        if (!user && cloudUser) {
+            user = {
+                id: cloudUser.id || ('USR-' + Date.now()),
+                name: cloudUser.name || 'LeanLife Member',
+                email: targetEmail,
+                phone: cloudUser.phone || '',
+                role: cloudUser.role || 'member',
+                status: cloudUser.status || 'Active',
+                firstLogin: true,
+                authUpdatedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            authUsers.push(user);
+        }
+
         if (!user) {
             return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND', message: 'Account not found.' }) };
         }
@@ -269,6 +445,15 @@ exports.handler = async function(event, context) {
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
         extraResponseData.tempPassword = tempPin;
+
+        if (cloudUser) {
+            cloudUser.tempPasswordRaw = tempPin;
+            cloudUser.password = user.password;
+            cloudUser.firstLogin = true;
+            cloudUser.authUpdatedAt = user.authUpdatedAt;
+            cloudUser.updatedAt = user.updatedAt;
+            cloudDbMutated = true;
+        }
     } else if (action === 'self-register-member') {
         const { name, email, password, phone } = body.memberData || body || {};
         const cleanEmail = (email || '').trim().toLowerCase();
@@ -278,31 +463,125 @@ exports.handler = async function(event, context) {
         if (!password) {
             return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'PASSWORD_REQUIRED', message: 'Password is required.' }) };
         }
-        const exists = authUsers.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
-        if (exists) {
+        const existsInAuth = authUsers.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
+        const existsInCloud = cloudDbRaw && cloudDbRaw.users.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
+        if (existsInAuth || existsInCloud) {
             return { statusCode: 409, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_ALREADY_EXISTS', message: 'Email is already registered.' }) };
         }
+        const hashedPassword = hashPasswordPBKDF2Sync(password);
+        const userId = 'USR-' + Date.now();
+        const nowIso = new Date().toISOString();
+
         const newUser = {
-            id: 'USR-' + Date.now(),
+            id: userId,
             name: name || 'LeanLife Member',
             email: cleanEmail,
-            phone: phone || '',
-            password: hashPasswordPBKDF2Sync(password),
-            role: 'member',
+            phone: phone || '+1 (555) 0000',
+            password: hashedPassword,
+            role: 'member', // Strictly enforce member role
             status: 'Active',
             firstLogin: false,
-            authUpdatedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            authUpdatedAt: nowIso,
+            updatedAt: nowIso
         };
         authUsers.push(newUser);
         mutatedUser = newUser;
+
+        // Provision profile in cloud_db
+        if (cloudDbRaw) {
+            const cloudProfile = {
+                id: userId,
+                name: name || 'LeanLife Member',
+                email: cleanEmail,
+                phone: phone || '+1 (555) 0000',
+                dob: (body.memberData && body.memberData.dob) || '1995-01-01',
+                gender: (body.memberData && body.memberData.gender) || 'Female',
+                height: (body.memberData && body.memberData.height) || 170,
+                weight: (body.memberData && body.memberData.weight) || 155.4,
+                goal: (body.memberData && body.memberData.goal) || 'Improve health consistency',
+                status: 'Active',
+                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
+                role: 'member',
+                firstLogin: false,
+                streakCount: 0,
+                preferredCoach: 'sarah',
+                authUpdatedAt: nowIso,
+                updatedAt: nowIso
+            };
+            cloudDbRaw.users.push(cloudProfile);
+            cloudDbMutated = true;
+        }
+
+        // Generate signed HMAC session token
+        const nowSec = Math.floor(Date.now() / 1000);
+        const sessionPayload = {
+            sub: newUser.id,
+            email: newUser.email,
+            name: newUser.name,
+            role: newUser.role,
+            status: newUser.status,
+            iat: nowSec,
+            exp: nowSec + (7 * 24 * 3600)
+        };
+        extraResponseData.token = signSessionToken(sessionPayload);
+    } else if (action === 'reconcile-auth-index') {
+        const cloudUsers = (cloudDbRaw && Array.isArray(cloudDbRaw.users)) ? cloudDbRaw.users : [];
+        let reconciledCount = 0;
+
+        for (const cu of cloudUsers) {
+            const cleanEmail = (cu.email || '').trim().toLowerCase();
+            if (!cleanEmail) continue;
+
+            const existingIdx = authUsers.findIndex(u => (u.email || '').trim().toLowerCase() === cleanEmail);
+            if (existingIdx === -1) {
+                let pwdHash = cu.password;
+                let tempPin = cu.tempPasswordRaw || null;
+                if (!pwdHash || !pwdHash.startsWith('pbkdf2$')) {
+                    if (pwdHash && pwdHash.length === 64) {
+                        // Keep legacy SHA-256 hash intact
+                    } else {
+                        tempPin = tempPin || ('LL-' + Math.floor(100000 + Math.random() * 900000));
+                        pwdHash = hashPasswordPBKDF2Sync(tempPin);
+                    }
+                }
+                const reconciled = {
+                    id: cu.id || ('USR-' + Date.now()),
+                    name: cu.name || 'LeanLife Member',
+                    email: cleanEmail,
+                    phone: cu.phone || '',
+                    password: pwdHash,
+                    tempPasswordRaw: tempPin,
+                    role: cu.role || 'member',
+                    status: cu.status || 'Active',
+                    firstLogin: cu.firstLogin !== undefined ? cu.firstLogin : false,
+                    authUpdatedAt: cu.authUpdatedAt || cu.updatedAt || new Date().toISOString(),
+                    updatedAt: cu.updatedAt || new Date().toISOString()
+                };
+                authUsers.push(reconciled);
+                reconciledCount++;
+            }
+        }
+
+        mutatedUser = { email: caller.email, role: caller.role, name: caller.name };
+        extraResponseData = {
+            reconciledCount,
+            totalAuthUsers: authUsers.length,
+            totalCloudUsers: cloudUsers.length
+        };
+    } else {
+        return {
+            statusCode: 400,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({ success: false, error: 'UNKNOWN_ACTION' })
+        };
     }
 
-    // 5. Persist updated leanlife_auth_index to Supabase with Upsert
+    // 5. Persist updated datasets to Supabase with Upsert
+    let authSaved = false;
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
-        await fetch(`${SUPABASE_URL}/rest/v1/system_settings`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/system_settings`, {
             method: 'POST',
             headers: {
                 'apikey': SUPABASE_KEY,
@@ -317,12 +596,47 @@ exports.handler = async function(event, context) {
             signal: controller.signal
         });
         clearTimeout(timeoutId);
+        authSaved = res.ok;
     } catch (saveErr) {
-        console.warn("[User Admin] Cloud write warning:", saveErr.message || saveErr);
+        console.warn("[User Admin] Cloud write warning (auth_index):", saveErr.message || saveErr);
+    }
+
+    if (cloudDbMutated && cloudDbRaw) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            await fetch(`${SUPABASE_URL}/rest/v1/system_settings`, {
+                method: 'POST',
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'resolution=merge-duplicates'
+                },
+                body: JSON.stringify({
+                    id: 'leanlife_cloud_db',
+                    data: cloudDbRaw,
+                    updated_at: new Date().toISOString()
+                }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+        } catch (saveErr) {
+            console.warn("[User Admin] Cloud write warning (cloud_db):", saveErr.message || saveErr);
+        }
+    }
+
+    if (mutatedUser && mutatedUser.email) {
+        const mEmail = (mutatedUser.email || '').trim().toLowerCase();
+        const existingIdx = inMemoryWarmUsers.findIndex(u => (u.email || '').trim().toLowerCase() === mEmail);
+        if (existingIdx >= 0) {
+            inMemoryWarmUsers[existingIdx] = mutatedUser;
+        } else {
+            inMemoryWarmUsers.push(mutatedUser);
+        }
     }
 
     // 6. Return Sanitized Response (Zero password hashes leaked)
-    const { password: _p, tempPasswordRaw: _t, ...safeUser } = mutatedUser;
+    const { password: _p, tempPasswordRaw: _t, ...safeUser } = (mutatedUser || {});
 
     return {
         statusCode: 200,
@@ -330,6 +644,7 @@ exports.handler = async function(event, context) {
         body: JSON.stringify({
             success: true,
             user: safeUser,
+            token: extraResponseData.token,
             ...extraResponseData
         })
     };

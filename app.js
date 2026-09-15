@@ -375,6 +375,14 @@ const AuthService = {
             } else if (response.status === 401) {
                 const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
                 return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
+            } else if (response.status === 503) {
+                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                const errData = await response.json().catch(() => ({}));
+                return {
+                    result: AuthResult.SERVICE_UNAVAILABLE,
+                    message: errData.message || 'Authentication service is temporarily unavailable. Please try again shortly.',
+                    elapsedMs
+                };
             } else {
                 console.warn(`[AuthService] Remote auth endpoint returned HTTP ${response.status}. Initiating resilient multi-tier fallback.`);
                 endpointFailed = true;
@@ -2423,10 +2431,16 @@ const leanLifeAppCore = {
                 const exists = this.db.users.find(u => (u.email || '').toLowerCase().trim() === email);
                 if (exists) {
                     alert("Email already registered. Please log in.");
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalBtnText;
+                    }
                     return;
                 }
 
                 // Register with authoritative serverless endpoint
+                let regSucceeded = false;
+                let regData = null;
                 try {
                     const baseUrl = getApiBaseUrl();
                     const regRes = await fetch(`${baseUrl}/.netlify/functions/user-admin`, {
@@ -2442,23 +2456,69 @@ const leanLifeAppCore = {
                             }
                         })
                     });
+
                     if (regRes.status === 409) {
                         alert("Email already registered. Please log in.");
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = originalBtnText;
+                        }
+                        return;
+                    }
+
+                    if (!regRes.ok) {
+                        const errData = await regRes.json().catch(() => ({}));
+                        const errMsg = errData.message || "Registration service is temporarily unavailable. Please try again shortly.";
+                        alert(errMsg);
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = originalBtnText;
+                        }
+                        return;
+                    }
+
+                    regData = await regRes.json().catch(() => null);
+                    if (regData && regData.success) {
+                        regSucceeded = true;
+                    } else {
+                        const errMsg = (regData && regData.message) || "Registration failed. Please try again.";
+                        alert(errMsg);
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = originalBtnText;
+                        }
                         return;
                     }
                 } catch (regErr) {
-                    console.warn("[Auth] Serverless registration notice:", regErr.message || regErr);
+                    console.warn("[Auth] Serverless registration failure:", regErr.message || regErr);
+                    alert("Unable to connect to the registration service. Please check your internet connection and try again.");
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalBtnText;
+                    }
+                    return;
                 }
 
+                if (!regSucceeded || !regData) {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalBtnText;
+                    }
+                    return;
+                }
+
+                const serverUser = regData.user || {};
+                const sessionToken = regData.token || null;
                 const hashedPassword = await this.hashPassword(password);
 
                 // Create new member account
                 const newUser = {
-                    name: fullname || 'LeanLife Member',
-                    email: email,
+                    id: serverUser.id || ('USR-' + Date.now()),
+                    name: serverUser.name || fullname || 'LeanLife Member',
+                    email: serverUser.email || email,
                     password: hashedPassword,
                     role: 'member',
-                    phone: '+1 (555) 0000',
+                    phone: serverUser.phone || '+1 (555) 0000',
                     dob: '1995-01-01',
                     gender: 'Female',
                     height: 170,
@@ -2469,8 +2529,8 @@ const leanLifeAppCore = {
                     firstLogin: false,
                     streakCount: 0,
                     preferredCoach: 'sarah',
-                    authUpdatedAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
+                    authUpdatedAt: serverUser.authUpdatedAt || new Date().toISOString(),
+                    updatedAt: serverUser.updatedAt || new Date().toISOString()
                 };
 
                 this.db.users.push(newUser);
@@ -2499,10 +2559,16 @@ const leanLifeAppCore = {
                         }
                     });
 
-                // Set session
+                // Set session and store signed token
                 this.currentUser = newUser;
-                sessionStorage.setItem('leanlife_session', JSON.stringify(newUser));
-                localStorage.setItem('leanlife_session', JSON.stringify(newUser));
+                try {
+                    sessionStorage.setItem('leanlife_session', JSON.stringify(newUser));
+                    if (sessionToken) sessionStorage.setItem('leanlife_token', sessionToken);
+                    localStorage.setItem('leanlife_session', JSON.stringify(newUser));
+                    if (sessionToken) localStorage.setItem('leanlife_token', sessionToken);
+                } catch (stErr) {
+                    console.warn("Storage warning during registration session save:", stErr);
+                }
                 this.updateUIAfterLogin();
                 this.navigateTo('profile'); // Send to profile to complete setup
 
