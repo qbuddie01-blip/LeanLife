@@ -9,7 +9,10 @@ const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    'Pragma': 'no-cache',
+    'Expires': '0'
 };
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -326,7 +329,7 @@ exports.handler = async function(event, context) {
     let queryError = null;
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
         const response = await fetch(`${SUPABASE_URL}/rest/v1/system_settings?id=eq.leanlife_auth_index&select=data`, {
             method: 'GET',

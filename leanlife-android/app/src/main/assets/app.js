@@ -354,13 +354,14 @@ const AuthService = {
         let endpointFailed = false;
         try {
             const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-            const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
+            const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
 
             const baseUrl = getApiBaseUrl();
             const response = await fetch(`${baseUrl}/.netlify/functions/auth`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: inputId, password: password }),
+                cache: 'no-store',
                 signal: controller ? controller.signal : undefined
             });
 
@@ -442,24 +443,12 @@ const AuthService = {
                 }
             }
 
-            // Tier 3: Verify against local database directory
-            const localUsers = (appRef && appRef.db && Array.isArray(appRef.db.users)) ? appRef.db.users : [];
-            for (const u of localUsers) {
-                const uEmail = this.normalizeEmail(u.email);
-                const uName = (u.name || '').trim().toLowerCase();
-                const uUsername = uEmail.split('@')[0];
-
-                if (uEmail === inputId || uName === inputId || uUsername === inputId) {
-                    if (await appRef.verifyUserCredentials(u, password)) {
-                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                        return { result: AuthResult.SUCCESS, user: u, source: 'local_fallback', elapsedMs };
-                    } else {
-                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                        return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
-                    }
-                }
-            }
-
+            const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+            return {
+                result: AuthResult.SERVICE_UNAVAILABLE,
+                message: 'Authentication service is temporarily unavailable. Please try again shortly.',
+                elapsedMs
+            };
         }
 
         const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
@@ -488,22 +477,7 @@ const AuthService = {
         }
 
         // Online mode: Serverless remote authentication is authoritative
-        const remoteResult = await this.authenticateFromRemote(identifier, password);
-        if (remoteResult.result === AuthResult.SUCCESS) {
-            return remoteResult;
-        }
-        if (remoteResult.result === AuthResult.INVALID_CREDENTIALS) {
-            // Authoritative server rejection
-            return remoteResult;
-        }
-
-        // If remote was unreachable/outage, fall back to valid local cache
-        const cacheResult = await this.authenticateFromCache(identifier, password);
-        if (cacheResult.result === AuthResult.SUCCESS) {
-            return cacheResult;
-        }
-
-        return remoteResult;
+        return await this.authenticateFromRemote(identifier, password);
     },
 
     // Dedicated authoritative password update
