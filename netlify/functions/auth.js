@@ -190,14 +190,14 @@ function generateCandidateVariations(rawPassword) {
 }
 
 function verifyUserCredentials(user, inputPassword) {
-    if (!user || (!user.password && !user.tempPasswordRaw)) return false;
+    if (!user || !user.password) return false;
 
     const trimmed = String(inputPassword || '').trim();
     if (!trimmed) return false;
 
     const candidates = generateCandidateVariations(inputPassword);
 
-    // 1. PBKDF2 Check
+    // 1. PBKDF2 Check (authoritative for permanent passwords and temporary reset PINs)
     if (user.password && user.password.startsWith('pbkdf2$')) {
         for (const cand of candidates) {
             if (verifyPasswordPBKDF2(cand, user.password)) {
@@ -206,24 +206,7 @@ function verifyUserCredentials(user, inputPassword) {
         }
     }
 
-    // 2. Direct match against tempPasswordRaw
-    if (user.tempPasswordRaw) {
-        const tempRaw = String(user.tempPasswordRaw).trim();
-        const tempDigits = tempRaw.replace(/^ll-?/i, '').trim();
-        for (const cand of candidates) {
-            const candDigits = cand.replace(/^ll-?/i, '').trim();
-            if (
-                cand === tempRaw ||
-                cand.toLowerCase() === tempRaw.toLowerCase() ||
-                cand.toUpperCase() === tempRaw.toUpperCase() ||
-                (candDigits && candDigits === tempDigits)
-            ) {
-                return true;
-            }
-        }
-    }
-
-    // 3. Legacy SHA-256 or Plaintext Check
+    // 2. Legacy SHA-256 Check (for unmigrated accounts)
     if (user.password && !user.password.startsWith('pbkdf2$')) {
         for (const cand of candidates) {
             if (verifyPasswordLegacy(cand, user.password)) {
@@ -371,9 +354,18 @@ exports.handler = async function(event, context) {
         };
     }
 
-    // If leanlife_auth_index is being initialized or cold, fall back to baseline seed accounts
-    if (!authUsers || authUsers.length === 0) {
-        authUsers = BASELINE_AUTH_INDEX_USERS;
+    // Fail closed: If leanlife_auth_index is missing, empty, or unreadable, NEVER fall back to hardcoded accounts
+    if (!authUsers || !Array.isArray(authUsers) || authUsers.length === 0) {
+        console.error('[Auth Function] Authoritative leanlife_auth_index dataset is missing, empty, or unreadable. Failing closed.');
+        return {
+            statusCode: 503,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                error: 'AUTH_SERVICE_UNAVAILABLE',
+                message: 'Authentication service is temporarily unavailable. Please try again shortly.'
+            })
+        };
     }
 
     // 4. Match User in Minimal Auth Index
@@ -404,6 +396,21 @@ exports.handler = async function(event, context) {
         };
     }
 
+    // Strict server-side account status enforcement: ONLY explicitly 'Active' accounts may authenticate
+    const accountStatus = (matchedUser.status || '').trim();
+    if (accountStatus !== 'Active') {
+        console.warn(`[Auth Function] Authentication rejected: Account status for ${matchedUser.email} is "${accountStatus}".`);
+        return {
+            statusCode: 403,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                error: 'ACCOUNT_DISABLED',
+                message: 'Your account is suspended or inactive. Please contact your coach or administrator.'
+            })
+        };
+    }
+
     // 5. Verify Credentials
     const isValid = verifyUserCredentials(matchedUser, password);
     if (!isValid) {
@@ -420,7 +427,7 @@ exports.handler = async function(event, context) {
 
     // 6. Return Sanitized User and Cryptographically Signed Session Token
     const { password: _p, tempPasswordRaw: _t, ...safeUser } = matchedUser;
-    safeUser.status = 'Active';
+    safeUser.status = accountStatus;
     safeUser.authUpdatedAt = matchedUser.authUpdatedAt || matchedUser.updatedAt || new Date().toISOString();
 
     const nowSec = Math.floor(Date.now() / 1000);

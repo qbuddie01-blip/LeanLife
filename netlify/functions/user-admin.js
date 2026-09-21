@@ -3,7 +3,7 @@
 // Enforces cryptographic server-side authorization: 401 Unauthorized / 403 Forbidden
 
 const crypto = require('crypto');
-const { verifySessionToken, signSessionToken, BASELINE_AUTH_INDEX_USERS } = require('./auth');
+const { verifySessionToken, signSessionToken } = require('./auth');
 
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -23,8 +23,6 @@ function hashPasswordPBKDF2Sync(password, saltUint8 = null) {
     const hashHex = derived.toString('hex');
     return `pbkdf2$${iterations}$${saltHex}$${hashHex}`;
 }
-
-const inMemoryWarmUsers = [];
 
 exports.handler = async function(event, context) {
     if (event.httpMethod === 'OPTIONS') {
@@ -127,7 +125,7 @@ exports.handler = async function(event, context) {
 
         // Case D: Member Self-Update Authorization Check
         if (action === 'update-password') {
-            const targetEmail = (body.targetEmail || '').trim().toLowerCase();
+            const targetEmail = (body.targetEmail || body.email || '').trim().toLowerCase();
             if (caller.role !== 'admin' && caller.email.toLowerCase() !== targetEmail) {
                 return {
                     statusCode: 403,
@@ -185,17 +183,17 @@ exports.handler = async function(event, context) {
         authUsers = authData.users;
     }
 
-    if (!authUsers || authUsers.length === 0) {
-        authUsers = BASELINE_AUTH_INDEX_USERS.map(u => ({ ...u }));
-    }
-
-    if (inMemoryWarmUsers.length > 0) {
-        for (const warmUser of inMemoryWarmUsers) {
-            const warmEmail = (warmUser.email || '').trim().toLowerCase();
-            if (warmEmail && !authUsers.some(u => (u.email || '').trim().toLowerCase() === warmEmail)) {
-                authUsers.push(warmUser);
-            }
-        }
+    if (!authUsers) {
+        console.error('[User Admin] Could not retrieve authoritative leanlife_auth_index dataset.');
+        return {
+            statusCode: 503,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                error: 'AUTH_SERVICE_UNAVAILABLE',
+                message: 'Authoritative authentication index is currently unreachable. Please try again shortly.'
+            })
+        };
     }
 
     // Retrieve leanlife_cloud_db for dual-dataset operations
@@ -254,7 +252,7 @@ exports.handler = async function(event, context) {
             };
         }
         const tempPin = body.tempPassword || ('LL-' + Math.floor(100000 + Math.random() * 900000));
-        user.tempPasswordRaw = tempPin;
+        delete user.tempPasswordRaw;
         user.password = hashPasswordPBKDF2Sync(tempPin);
         user.firstLogin = true;
         user.authUpdatedAt = new Date().toISOString();
@@ -263,7 +261,7 @@ exports.handler = async function(event, context) {
         extraResponseData.tempPassword = tempPin;
 
         if (cloudUser) {
-            cloudUser.tempPasswordRaw = tempPin;
+            delete cloudUser.tempPasswordRaw;
             cloudUser.password = user.password;
             cloudUser.firstLogin = true;
             cloudUser.authUpdatedAt = user.authUpdatedAt;
@@ -290,7 +288,6 @@ exports.handler = async function(event, context) {
             email: cleanEmail,
             phone: phone || '',
             password: hashPasswordPBKDF2Sync(tempPin),
-            tempPasswordRaw: tempPin,
             role: role,
             status: 'Active',
             firstLogin: true,
@@ -373,7 +370,7 @@ exports.handler = async function(event, context) {
         }
         extraResponseData.deleted = true;
     } else if (action === 'update-password') {
-        const targetEmail = (body.targetEmail || '').trim().toLowerCase();
+        const targetEmail = (body.targetEmail || body.email || '').trim().toLowerCase();
         let user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
         const cloudUser = cloudDbRaw ? cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail) : null;
 
@@ -396,14 +393,14 @@ exports.handler = async function(event, context) {
             return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND' }) };
         }
         user.password = hashPasswordPBKDF2Sync(body.newPassword);
-        user.tempPasswordRaw = null;
+        delete user.tempPasswordRaw;
         user.firstLogin = false;
         user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
 
         if (cloudUser) {
-            cloudUser.tempPasswordRaw = null;
+            delete cloudUser.tempPasswordRaw;
             cloudUser.password = user.password;
             cloudUser.firstLogin = false;
             cloudUser.authUpdatedAt = user.authUpdatedAt;
@@ -438,7 +435,7 @@ exports.handler = async function(event, context) {
             return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND', message: 'Account not found.' }) };
         }
         const tempPin = 'LL-' + Math.floor(100000 + Math.random() * 900000);
-        user.tempPasswordRaw = tempPin;
+        delete user.tempPasswordRaw;
         user.password = hashPasswordPBKDF2Sync(tempPin);
         user.firstLogin = true;
         user.authUpdatedAt = new Date().toISOString();
@@ -447,7 +444,7 @@ exports.handler = async function(event, context) {
         extraResponseData.tempPassword = tempPin;
 
         if (cloudUser) {
-            cloudUser.tempPasswordRaw = tempPin;
+            delete cloudUser.tempPasswordRaw;
             cloudUser.password = user.password;
             cloudUser.firstLogin = true;
             cloudUser.authUpdatedAt = user.authUpdatedAt;
@@ -550,7 +547,6 @@ exports.handler = async function(event, context) {
                     email: cleanEmail,
                     phone: cu.phone || '',
                     password: pwdHash,
-                    tempPasswordRaw: tempPin,
                     role: cu.role || 'member',
                     status: cu.status || 'Active',
                     firstLogin: cu.firstLogin !== undefined ? cu.firstLogin : false,
@@ -578,9 +574,11 @@ exports.handler = async function(event, context) {
 
     // 5. Persist updated datasets to Supabase with Upsert
     let authSaved = false;
+    let cloudSaved = !cloudDbMutated; // If cloud_db was not mutated, it is already satisfied
+
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
         const res = await fetch(`${SUPABASE_URL}/rest/v1/system_settings`, {
             method: 'POST',
             headers: {
@@ -597,15 +595,19 @@ exports.handler = async function(event, context) {
         });
         clearTimeout(timeoutId);
         authSaved = res.ok;
+        if (!res.ok) {
+            console.error(`[User Admin] Supabase write failed for auth_index: HTTP ${res.status} ${res.statusText}`);
+        }
     } catch (saveErr) {
-        console.warn("[User Admin] Cloud write warning (auth_index):", saveErr.message || saveErr);
+        console.error("[User Admin] Cloud write exception (auth_index):", saveErr.message || saveErr);
+        authSaved = false;
     }
 
     if (cloudDbMutated && cloudDbRaw) {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 6000);
-            await fetch(`${SUPABASE_URL}/rest/v1/system_settings`, {
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/system_settings`, {
                 method: 'POST',
                 headers: {
                     'apikey': SUPABASE_KEY,
@@ -620,23 +622,37 @@ exports.handler = async function(event, context) {
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
+            cloudSaved = res.ok;
+            if (!res.ok) {
+                console.error(`[User Admin] Supabase write failed for cloud_db: HTTP ${res.status} ${res.statusText}`);
+            }
         } catch (saveErr) {
-            console.warn("[User Admin] Cloud write warning (cloud_db):", saveErr.message || saveErr);
+            console.error("[User Admin] Cloud write exception (cloud_db):", saveErr.message || saveErr);
+            cloudSaved = false;
         }
     }
 
-    if (mutatedUser && mutatedUser.email) {
-        const mEmail = (mutatedUser.email || '').trim().toLowerCase();
-        const existingIdx = inMemoryWarmUsers.findIndex(u => (u.email || '').trim().toLowerCase() === mEmail);
-        if (existingIdx >= 0) {
-            inMemoryWarmUsers[existingIdx] = mutatedUser;
-        } else {
-            inMemoryWarmUsers.push(mutatedUser);
-        }
+    // Strict Persistence Invariant: NEVER report success if required database persistence failed
+    if (!authSaved || !cloudSaved) {
+        console.error(`[User Admin] Persistence check failed: authSaved=${authSaved}, cloudSaved=${cloudSaved}. Aborting success response.`);
+        return {
+            statusCode: 503,
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                error: 'PERSISTENCE_FAILED',
+                message: 'Database persistence failed. Changes were not saved.',
+                diagnostics: {
+                    authSaved,
+                    cloudSaved
+                }
+            })
+        };
     }
 
-    // 6. Return Sanitized Response (Zero password hashes leaked)
+    // 6. Return Sanitized Response (Zero password hashes or raw pins leaked)
     const { password: _p, tempPasswordRaw: _t, ...safeUser } = (mutatedUser || {});
+    delete safeUser.tempPasswordRaw;
 
     return {
         statusCode: 200,

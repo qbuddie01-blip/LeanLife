@@ -32,7 +32,7 @@ const LeanLifeCacheManager = {
 
     setupMultiTabSync() {
         try {
-            if ('BroadcastChannel' in window) {
+            if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
                 this.broadcastChannel = new BroadcastChannel('leanlife_tab_sync');
                 this.broadcastChannel.onmessage = (event) => {
                     this.log('Multi-tab sync event received:', event.data);
@@ -61,14 +61,16 @@ const LeanLifeCacheManager = {
                     }
                 };
             }
-            window.addEventListener('storage', (e) => {
-                if (e.key === 'leanlife_session' && !e.newValue) {
-                    if (window.app && window.app.currentUser) {
-                        window.app.currentUser = null;
-                        window.app.updateUIAfterLogout();
+            if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+                window.addEventListener('storage', (e) => {
+                    if (e.key === 'leanlife_session' && !e.newValue) {
+                        if (window.app && window.app.currentUser) {
+                            window.app.currentUser = null;
+                            window.app.updateUIAfterLogout();
+                        }
                     }
-                }
-            });
+                });
+            }
         } catch(e) {
             console.warn("[CacheManager] Multi-tab sync warning:", e);
         }
@@ -301,45 +303,16 @@ const AuthService = {
         return (email || '').trim().toLowerCase();
     },
 
-    // Fast cached authentication (< 15ms target)
+    // Neutralized: Cached credentials must NEVER grant authenticated identity
     async authenticateFromCache(identifier, password) {
-        const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-        const inputId = this.normalizeEmail(identifier);
-        if (!inputId || !password) {
-            return { result: AuthResult.INVALID_CREDENTIALS, user: null, elapsedMs: 0 };
-        }
-
-        const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
-        const users = (appRef && appRef.db && appRef.db.users) ? appRef.db.users : [];
-        for (const u of users) {
-            const uEmail = this.normalizeEmail(u.email);
-            const uName = (u.name || '').trim().toLowerCase();
-            const uUsername = uEmail.split('@')[0];
-
-            if (uEmail === inputId || uName === inputId || uUsername === inputId) {
-                // If the cached user has no password hash (e.g. from cloud-read sync), cannot verify locally
-                if (!u.password) {
-                    continue;
-                }
-                const isValid = await appRef.verifyUserCredentials(u, password);
-                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                if (isValid) {
-                    return { result: AuthResult.SUCCESS, user: u, source: 'cache', elapsedMs };
-                } else {
-                    return { result: AuthResult.INVALID_CREDENTIALS, user: null, elapsedMs };
-                }
-            }
-        }
-
-        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-        return { result: null, user: null, notFoundInCache: true, elapsedMs };
+        console.warn("[AuthService] authenticateFromCache invoked but offline credential authentication is strictly disabled.");
+        return { result: AuthResult.NETWORK_OFFLINE, user: null, elapsedMs: 0, message: 'Internet connection required to log in.' };
     },
 
-    // Remote authentication for fresh devices (serverless endpoint or targeted fallback)
+    // Remote authentication: The SOLE authoritative credential verification path
     async authenticateFromRemote(identifier, password) {
         const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         const inputId = this.normalizeEmail(identifier);
-        const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
 
         // Check if browser is strictly offline
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -350,8 +323,7 @@ const AuthService = {
             };
         }
 
-        // 1. Primary remote path: Netlify secure serverless endpoint
-        let endpointFailed = false;
+        // Primary and ONLY remote path: Netlify secure serverless endpoint
         try {
             const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
             const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
@@ -376,6 +348,14 @@ const AuthService = {
             } else if (response.status === 401) {
                 const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
                 return { result: AuthResult.INVALID_CREDENTIALS, message: 'Invalid email address or password.', elapsedMs };
+            } else if (response.status === 403) {
+                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                const errData = await response.json().catch(() => ({}));
+                return {
+                    result: AuthResult.ACCOUNT_DISABLED,
+                    message: errData.message || 'Your account is suspended or inactive. Please contact your administrator.',
+                    elapsedMs
+                };
             } else if (response.status === 503) {
                 const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
                 const errData = await response.json().catch(() => ({}));
@@ -385,68 +365,20 @@ const AuthService = {
                     elapsedMs
                 };
             } else {
-                console.warn(`[AuthService] Remote auth endpoint returned HTTP ${response.status}. Initiating resilient multi-tier fallback.`);
-                endpointFailed = true;
+                console.warn(`[AuthService] Remote auth endpoint returned unexpected HTTP ${response.status}.`);
+                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+                return {
+                    result: AuthResult.SERVICE_UNAVAILABLE,
+                    message: 'Authentication service is temporarily unavailable. Please try again shortly.',
+                    elapsedMs
+                };
             }
         } catch (fetchErr) {
-            console.warn('[AuthService] Remote auth endpoint unavailable, switching to fallback:', fetchErr.message || fetchErr);
-            endpointFailed = true;
-        }
-
-        // 2. Resilient fallback path (for serverless outage, Android WebView, or DNS issues)
-        if (endpointFailed) {
-            // Tier 2: Check Supabase cloud database if reachable
-            if (appRef && appRef.supabase) {
-                try {
-                    const withTimeout = (p, ms = 2500) => Promise.race([
-                        p,
-                        new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))
-                    ]);
-
-                    let cloudUsers = null;
-                    const { data: authIndexRecord, error: authIndexErr } = await withTimeout(
-                        appRef.supabase
-                            .from('system_settings')
-                            .select('data')
-                            .eq('id', 'leanlife_auth_index')
-                            .single()
-                    );
-
-                    if (!authIndexErr && authIndexRecord && authIndexRecord.data && Array.isArray(authIndexRecord.data.users)) {
-                        cloudUsers = authIndexRecord.data.users;
-                    }
-
-                    if (!cloudUsers || cloudUsers.length === 0) {
-                        const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                        return {
-                            result: AuthResult.SERVICE_UNAVAILABLE,
-                            message: 'Authentication service is currently unreachable. Please check your connection.',
-                            elapsedMs
-                        };
-                    }
-
-                    if (cloudUsers && cloudUsers.length > 0) {
-                        for (const u of cloudUsers) {
-                            const uEmail = this.normalizeEmail(u.email);
-                            const uName = (u.name || '').trim().toLowerCase();
-                            const uUsername = uEmail.split('@')[0];
-
-                            if ((uEmail === inputId || uName === inputId || uUsername === inputId) &&
-                                (await appRef.verifyUserCredentials(u, password))) {
-                                const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
-                                return { result: AuthResult.SUCCESS, user: u, source: 'remote_fallback', elapsedMs };
-                            }
-                        }
-                    }
-                } catch (cloudErr) {
-                    console.warn("[AuthService] Cloud fallback connection notice:", cloudErr.message || cloudErr);
-                }
-            }
-
+            console.warn('[AuthService] Remote auth endpoint network/connection error:', fetchErr.message || fetchErr);
             const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
             return {
                 result: AuthResult.SERVICE_UNAVAILABLE,
-                message: 'Authentication service is temporarily unavailable. Please try again shortly.',
+                message: 'Authentication service is temporarily unreachable. Please check your connection and try again.',
                 elapsedMs
             };
         }
@@ -459,7 +391,9 @@ const AuthService = {
         };
     },
 
-    // Unified entry point for authentication: Server authoritative when online
+    _inFlightAuthPromise: null,
+
+    // Unified entry point for authentication: Server authoritative only, with single-flight deduplication
     async authenticate(identifier, password) {
         const appRef = this.app || (typeof window !== 'undefined' && window.app) || leanLifeAppCore;
         if (appRef && appRef.localCacheReadyPromise) {
@@ -472,12 +406,29 @@ const AuthService = {
 
         const isOffline = (typeof navigator !== 'undefined' && navigator.onLine === false);
         if (isOffline) {
-            // Strictly offline: check local cache
-            return await this.authenticateFromCache(identifier, password);
+            // Strictly offline: Fail closed. Offline state must NEVER grant authenticated identity.
+            return {
+                result: AuthResult.NETWORK_OFFLINE,
+                message: 'Internet connection required to log in. Please check your internet connection.',
+                elapsedMs: 0
+            };
         }
 
-        // Online mode: Serverless remote authentication is authoritative
-        return await this.authenticateFromRemote(identifier, password);
+        // Single-flight deduplication: reuse active in-flight request if present
+        if (this._inFlightAuthPromise) {
+            console.warn("[AuthService] Concurrent authenticate call detected; awaiting in-flight authentication.");
+            return await this._inFlightAuthPromise;
+        }
+
+        this._inFlightAuthPromise = (async () => {
+            try {
+                return await this.authenticateFromRemote(identifier, password);
+            } finally {
+                this._inFlightAuthPromise = null;
+            }
+        })();
+
+        return await this._inFlightAuthPromise;
     },
 
     // Dedicated authoritative password update
@@ -735,7 +686,7 @@ const leanLifeAppCore = {
 
     // Unified Authoritative Credential Verification Engine
     async verifyUserCredentials(user, inputPassword) {
-        if (!user || (!user.password && !user.tempPasswordRaw)) return false;
+        if (!user || !user.password) return false;
 
         const raw = String(inputPassword || '');
         const trimmed = raw.trim();
@@ -774,31 +725,6 @@ const leanLifeAppCore = {
                     if (isMatch) return true;
                 } catch (e) {
                     console.warn("[Auth] PBKDF2 candidate check error:", e);
-                }
-            }
-        }
-
-        // 2. Secondary check: Direct match against tempPasswordRaw
-        if (user.tempPasswordRaw) {
-            const tempRaw = String(user.tempPasswordRaw).trim();
-            const tempDigits = tempRaw.replace(/^ll-?/i, '').trim();
-            for (const cand of candidates) {
-                const candDigits = cand.replace(/^ll-?/i, '').trim();
-                if (
-                    cand === tempRaw ||
-                    cand.toLowerCase() === tempRaw.toLowerCase() ||
-                    cand.toUpperCase() === tempRaw.toUpperCase() ||
-                    (candDigits && candDigits === tempDigits)
-                ) {
-                    // Transparently upgrade to PBKDF2
-                    try {
-                        user.password = await this.hashPasswordPBKDF2(trimmed);
-                        user.updatedAt = new Date().toISOString();
-                        this.saveDatabase(true);
-                    } catch (upErr) {
-                        console.warn("[Auth] Temp password PBKDF2 upgrade notice:", upErr);
-                    }
-                    return true;
                 }
             }
         }
@@ -1524,7 +1450,6 @@ const leanLifeAppCore = {
                         return {
                             ...u,
                             password: localU.password,
-                            tempPasswordRaw: localU.tempPasswordRaw,
                             firstLogin: localU.firstLogin,
                             authUpdatedAt: localU.authUpdatedAt || localU.updatedAt
                         };
@@ -1581,15 +1506,6 @@ const leanLifeAppCore = {
         }
 
 
-
-        // Update password for test account olipaq222@gmail.com if it exists
-        const testUser = this.db.users.find(u => u.email.toLowerCase() === 'olipaq222@gmail.com');
-        if (testUser) {
-            testUser.password = await this.hashPassword('password123');
-            testUser.firstLogin = false;
-            testUser.updatedAt = new Date().toISOString();
-            await this.saveDatabase();
-        }
 
         // 1. Seed default Admin and System Accounts non-destructively
         this.db.users = this.db.users || [];
@@ -2181,21 +2097,19 @@ const leanLifeAppCore = {
             console.warn("[Auth] Serverless password reset request notice:", serverlessErr.message || serverlessErr);
         }
 
-        // 2. Local fallback if offline or serverless unreachable
-        let user = (this.db.users && Array.isArray(this.db.users)) ? this.db.users.find(u => (u.email || '').toLowerCase().trim() === email) : null;
+        // 2. Strict fail-closed: If serverless reset fails, DO NOT generate local PIN
         if (!tempPassword) {
-            if (!user) {
-                this.showCustomAlert(`No LeanLife account was found matching "${email}". Please verify the email address or register a new account.`, "Account Not Found", "fa-triangle-exclamation");
-                return;
-            }
-            tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
-            userName = user.name || userName;
+            this.showCustomAlert(
+                "Password reset service is temporarily unavailable. Please try again in a few moments.",
+                "Service Unavailable",
+                "fa-triangle-exclamation"
+            );
+            return;
         }
 
-        // 3. Update local database cache
+        // 3. Update local database cache if user exists locally
+        let user = (this.db.users && Array.isArray(this.db.users)) ? this.db.users.find(u => (u.email || '').toLowerCase().trim() === email) : null;
         if (user) {
-            user.password = await this.hashPassword(tempPassword);
-            user.tempPasswordRaw = tempPassword;
             user.firstLogin = true;
             user.updatedAt = new Date().toISOString();
             await this.saveDatabase();
@@ -2222,7 +2136,7 @@ const leanLifeAppCore = {
         );
 
         this.sendRealEmail(
-            user.name || 'LeanLife Member',
+            (user && user.name) || userName || 'LeanLife Member',
             email,
             'LeanLife Password Reset Request',
             tempPassword,
@@ -2398,6 +2312,11 @@ const leanLifeAppCore = {
             e.preventDefault();
         }
 
+        if (this.isAuthenticating) {
+            console.warn("[Auth] Submission already in progress, ignoring duplicate submit.");
+            return;
+        }
+
         if (this.dbLoadedPromise) {
             await this.dbLoadedPromise;
         }
@@ -2419,6 +2338,7 @@ const leanLifeAppCore = {
             return;
         }
 
+        this.isAuthenticating = true;
         try {
             if (submitBtn) {
                 submitBtn.disabled = true;
@@ -2591,6 +2511,8 @@ const leanLifeAppCore = {
                         alert(authRes.message || "You are currently offline. Please check your internet connection.");
                     } else if (authRes && authRes.result === AuthResult.TIMEOUT) {
                         alert(authRes.message || "Authentication request timed out. Please check your connection and try again.");
+                    } else if (authRes && authRes.result === AuthResult.ACCOUNT_DISABLED) {
+                        alert(authRes.message || "Your account is suspended or inactive. Please contact your administrator.");
                     } else if (authRes && authRes.result === AuthResult.SERVICE_UNAVAILABLE) {
                         alert(authRes.message || "Authentication service is temporarily unavailable. Please try again shortly.");
                     } else {
@@ -2602,8 +2524,8 @@ const leanLifeAppCore = {
 
                 let user = authRes.user;
 
-                // If user authenticated via remote function or fallback, ensure local user record is saved in local cache
-                if (authRes.source === 'remote_function' || authRes.source === 'remote_fallback' || authRes.source === 'local_fallback' || authRes.source === 'seed_fallback') {
+                // If user authenticated via remote function, ensure local user record is saved in local cache
+                if (authRes.source === 'remote_function') {
                     const localIdx = (this.db.users || []).findIndex(u => (u.email || '').toLowerCase().trim() === (user.email || '').toLowerCase().trim());
                     if (localIdx >= 0) {
                         this.db.users[localIdx] = { ...this.db.users[localIdx], ...user };
@@ -2614,9 +2536,6 @@ const leanLifeAppCore = {
                     }
                     this.saveDatabase(true);
                 }
-
-                // Always reinstate active status
-                user.status = 'Active';
 
                 // Audit
                 this.logAudit(user.name, 'User Login', `${user.role} logged in successfully`);
@@ -2670,6 +2589,7 @@ const leanLifeAppCore = {
             console.error("Authentication error:", err);
             alert("An error occurred during authentication. Please try again.");
         } finally {
+            this.isAuthenticating = false;
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalBtnText;
@@ -3246,7 +3166,6 @@ const leanLifeAppCore = {
                         email: this.currentUser.email,
                         streak_count: updatedStreak,
                         name: this.currentUser.name,
-                        password: this.currentUser.password || 'TEMP_HASH',
                         role: this.currentUser.role || 'member'
                     }, { onConflict: 'email' });
                 } catch (dbErr) {
@@ -6030,7 +5949,7 @@ const leanLifeAppCore = {
         if (!user) return;
         
         const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
-        user.tempPasswordRaw = tempPassword;
+        delete user.tempPasswordRaw;
         user.firstLogin = true;
         user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
@@ -6133,7 +6052,6 @@ const leanLifeAppCore = {
                 name: name,
                 email: email,
                 password: hashedPassword,
-                tempPasswordRaw: tempPassword,
                 role: 'member',
                 phone: phone,
                 dob: dob,
@@ -7314,8 +7232,15 @@ const leanLifeAppCore = {
             return;
         }
 
-        const tempPassword = user.tempPasswordRaw || 'LL-849204';
-        this.openCredentialsModal(user, tempPassword, 'view');
+        if (user.tempPasswordRaw) {
+            this.openCredentialsModal(user, user.tempPasswordRaw, 'view');
+        } else {
+            this.showCustomAlert(
+                "For security, passwords are encrypted and cannot be viewed. Use 'Reset Password' to generate and dispatch a new temporary access PIN for this member.",
+                "Credentials Protected",
+                "fa-shield-halved"
+            );
+        }
     },
 
     copySinglePassword() {
@@ -8116,7 +8041,7 @@ const leanLifeAppCore = {
 };
 
 // Merge real app implementation into window.app stub (for early interaction support)
-if (window.app) {
+if (typeof window !== 'undefined' && window.app) {
     const queue = window.app._queue || [];
     
     // Copy and bind all properties to window.app to keep correct execution context
@@ -8137,16 +8062,17 @@ if (window.app) {
     queue.forEach(q => {
         if (q.type === 'navigate') window.app.realNavigateTo(q.view);
     });
-} else {
+} else if (typeof window !== 'undefined') {
     window.app = leanLifeAppCore;
 }
 
 // Start application immediately if DOM is already ready, otherwise on DOMContentLoaded
 if (typeof document !== 'undefined') {
+    const appTarget = (typeof window !== 'undefined' && window.app) ? window.app : leanLifeAppCore;
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        window.app.init();
+        appTarget.init();
     } else {
-        window.addEventListener('DOMContentLoaded', () => window.app.init());
+        window.addEventListener('DOMContentLoaded', () => appTarget.init());
     }
 }
 
