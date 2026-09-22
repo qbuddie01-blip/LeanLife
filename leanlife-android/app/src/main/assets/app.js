@@ -374,8 +374,16 @@ const AuthService = {
                 };
             }
         } catch (fetchErr) {
-            console.warn('[AuthService] Remote auth endpoint network/connection error:', fetchErr.message || fetchErr);
+            const isTimeout = fetchErr.name === 'AbortError' || (controller && controller.signal && controller.signal.aborted);
+            console.warn(`[AuthService] Remote auth endpoint ${isTimeout ? 'timeout' : 'network/connection error'}:`, fetchErr.message || fetchErr);
             const elapsedMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0;
+            if (isTimeout) {
+                return {
+                    result: AuthResult.TIMEOUT,
+                    message: 'Authentication request timed out. Please check your connection and try again.',
+                    elapsedMs
+                };
+            }
             return {
                 result: AuthResult.SERVICE_UNAVAILABLE,
                 message: 'Authentication service is temporarily unreachable. Please check your connection and try again.',
@@ -2193,98 +2201,12 @@ const leanLifeAppCore = {
     },
 
     async fillSimulationCreds(email, password) {
-        this.switchAuthTab('login');
-        
-        const hashedPassword = await this.hashPassword(password);
-        
-        // Ensure simulation users exist and are active in mock db
-        let user = this.db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (!user) {
-            if (email === 'admin@leanlife.com') {
-                user = {
-                    name: 'Super Administrator',
-                    email: 'admin@leanlife.com',
-                    password: hashedPassword,
-                    role: 'admin',
-                    phone: '+1 (555) 0100',
-                    dob: '1985-01-01',
-                    gender: 'Other',
-                    height: 180,
-                    weight: 165,
-                    goal: 'Manage platform operations',
-                    status: 'Active',
-                    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&auto=format&fit=crop',
-                    firstLogin: false
-                };
-                this.db.users.push(user);
-            } else if (email === 'francessronke21@gmail.com') {
-                user = {
-                    name: 'Coach Francess Orenuga',
-                    email: 'francessronke21@gmail.com',
-                    password: hashedPassword,
-                    role: 'admin',
-                    phone: '+1 (757) 513-0205',
-                    dob: '1980-04-12',
-                    gender: 'Female',
-                    height: 168,
-                    weight: 132,
-                    goal: 'Coaching excellence & platform administration',
-                    status: 'Active',
-                    avatar: 'assets/coach_francess.png',
-                    firstLogin: false,
-                    updatedAt: new Date().toISOString()
-                };
-                this.db.users.push(user);
-            } else if (email === 'emma@example.com') {
-                user = {
-                    name: 'Emma Watson',
-                    email: 'emma@example.com',
-                    password: hashedPassword,
-                    role: 'member',
-                    phone: '+1 (555) 0199',
-                    dob: '1990-04-15',
-                    gender: 'Female',
-                    height: 172,
-                    weight: 155.4,
-                    goal: 'Build lean muscle & improve deep sleep',
-                    status: 'Active',
-                    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
-                    firstLogin: false,
-                    bloodGroup: 'O-positive',
-                    allergies: 'Peanuts, Penicillin',
-                    medications: 'Vitamin D3 2000IU, L-Theanine 200mg',
-                    conditions: 'None',
-                    emergencyName: 'John Watson',
-                    emergencyPhone: '+1 (555) 0188',
-                    preferredCoach: 'sarah',
-                    dietPreference: 'Vegetarian',
-                    activityLevel: 'Active',
-                    streakCount: 0,
-                    healthProfile: {
-                        height: 172,
-                        weight: 155.4,
-                        bloodGroup: 'O-positive',
-                        dietPreference: 'Vegetarian',
-                        emergencyName: 'John Watson',
-                        emergencyPhone: '+1 (555) 0188',
-                        allergies: 'Peanuts, Penicillin',
-                        conditions: 'None',
-                        medications: 'Vitamin D3 2000IU, L-Theanine 200mg',
-                        goals: 'Build lean muscle & improve deep sleep'
-                    }
-                };
-                this.calculateUserMonthlyStreak(user);
-                this.db.users.push(user);
-            }
-            this.saveDatabase(true);
-        } else {
-            // Force reset credentials to active defaults while preserving real streak
-            user.status = 'Active';
-            user.password = hashedPassword;
-            user.firstLogin = false;
-            this.calculateUserMonthlyStreak(user);
-            this.saveDatabase(true);
+        if (this.isAuthenticating) {
+            console.warn("[Auth] Authentication already in progress, ignoring quick login click.");
+            return;
         }
+
+        this.switchAuthTab('login');
 
         const emailInput = document.getElementById('auth-email');
         const passInput = document.getElementById('auth-password');
@@ -2303,7 +2225,7 @@ const leanLifeAppCore = {
             submitBtn.disabled = false;
         }
 
-        // Trigger login submit immediately without async pre-hash delay
+        // Enter the unified, server-authoritative authentication pipeline immediately
         await this.handleAuthSubmit({ preventDefault: () => {} });
     },
 
@@ -2339,11 +2261,13 @@ const leanLifeAppCore = {
         }
 
         this.isAuthenticating = true;
+        const quickBtns = document.querySelectorAll('#simulation-login-box button');
         try {
             if (submitBtn) {
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Processing...';
             }
+            quickBtns.forEach(btn => { btn.disabled = true; });
 
             if (isRegistering) {
                 // Check if user exists locally
@@ -2506,6 +2430,11 @@ const leanLifeAppCore = {
                         submitBtn.disabled = false;
                         submitBtn.innerHTML = originalBtnText;
                     }
+                    quickBtns.forEach(btn => { btn.disabled = false; });
+                    this.isAuthenticating = false;
+
+                    // Allow the browser to repaint the restored buttons before opening the modal alert dialog
+                    await new Promise(resolve => setTimeout(resolve, 20));
 
                     if (authRes && authRes.result === AuthResult.NETWORK_OFFLINE) {
                         alert(authRes.message || "You are currently offline. Please check your internet connection.");
@@ -2594,6 +2523,8 @@ const leanLifeAppCore = {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalBtnText;
             }
+            const quickBtns = document.querySelectorAll('#simulation-login-box button');
+            quickBtns.forEach(btn => { btn.disabled = false; });
         }
     },
 
