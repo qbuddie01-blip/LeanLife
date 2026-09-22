@@ -1214,6 +1214,11 @@ const leanLifeAppCore = {
                         userProfile: this.currentUser || null
                     };
 
+                    if (this.currentUser && (this.currentUser.role === 'admin' || this.currentUser.role === 'coach')) {
+                        syncPayload.users = this.db.users || [];
+                        syncPayload.deletedUsers = this.db.deletedUsers || [];
+                    }
+
                     const baseUrl = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http'))
                         ? window.location.origin
                         : 'https://leanlife-community.app';
@@ -2375,6 +2380,11 @@ const leanLifeAppCore = {
                     authUpdatedAt: serverUser.authUpdatedAt || new Date().toISOString(),
                     updatedAt: serverUser.updatedAt || new Date().toISOString()
                 };
+
+                // If user was previously marked deleted locally, remove from deletedUsers list
+                if (this.db.deletedUsers) {
+                    this.db.deletedUsers = this.db.deletedUsers.filter(e => (e || '').toLowerCase().trim() !== email);
+                }
 
                 this.db.users.push(newUser);
                 await this.saveDatabase();
@@ -5949,24 +5959,65 @@ const leanLifeAppCore = {
         }
     },
 
-    deleteUser(email) {
+    async deleteUser(email) {
         if (!confirm(`Are you sure you want to permanently delete user ${email}?`)) return;
-        
-        const cleanEmail = email.toLowerCase().trim();
-        const idx = this.db.users.findIndex(u => (u.email || '').toLowerCase().trim() === cleanEmail);
-        if (idx > -1) {
-            this.db.users.splice(idx, 1);
+
+        const cleanEmail = (email || '').toLowerCase().trim();
+        const adminToken = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+                           (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
+        if (!adminToken) {
+            this.showCustomAlert("Active administrator session token required to delete user. Please log in again.", "Authentication Required", "fa-lock");
+            return;
         }
 
-        this.db.deletedUsers = this.db.deletedUsers || [];
-        if (!this.db.deletedUsers.includes(cleanEmail)) {
-            this.db.deletedUsers.push(cleanEmail);
-        }
+        try {
+            const baseUrl = getApiBaseUrl();
+            const res = await fetch(`${baseUrl}/.netlify/functions/user-admin`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${adminToken}`
+                },
+                body: JSON.stringify({
+                    action: 'admin-delete-user',
+                    targetEmail: cleanEmail
+                })
+            });
 
-        this.saveDatabase();
-        this.renderAdminUsers();
-        this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'User Deleted', `Permanently deleted user: ${email}`);
-        this.showCustomAlert("User account deleted successfully.", "Account Deleted");
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                const errMsg = errData.message || `Failed to delete user on server (HTTP ${res.status}).`;
+                console.error("[Admin] Delete user server error:", res.status, errData);
+                this.showCustomAlert(errMsg, "Deletion Failed", "fa-triangle-exclamation");
+                return;
+            }
+
+            const data = await res.json().catch(() => null);
+            if (!data || !data.success) {
+                const errMsg = (data && data.message) || "Failed to delete user on server.";
+                this.showCustomAlert(errMsg, "Deletion Failed", "fa-triangle-exclamation");
+                return;
+            }
+
+            // Server-side authoritative deletion confirmed! Update local database state
+            const idx = this.db.users.findIndex(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+            if (idx > -1) {
+                this.db.users.splice(idx, 1);
+            }
+
+            this.db.deletedUsers = this.db.deletedUsers || [];
+            if (!this.db.deletedUsers.includes(cleanEmail)) {
+                this.db.deletedUsers.push(cleanEmail);
+            }
+
+            await this.saveDatabase();
+            this.renderAdminUsers();
+            this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'User Deleted', `Permanently deleted user: ${cleanEmail}`);
+            this.showCustomAlert("User account deleted successfully.", "Account Deleted");
+        } catch (err) {
+            console.error("deleteUser error:", err);
+            this.showCustomAlert("Network error deleting user: " + (err.message || err), "Deletion Failed", "fa-triangle-exclamation");
+        }
     },
 
     async handleAdminRegisterMember(e) {
@@ -6093,6 +6144,11 @@ const leanLifeAppCore = {
                     goals: 'General Wellness'
                 }
             };
+
+            // If user was previously marked deleted locally, remove from deletedUsers list
+            if (this.db.deletedUsers) {
+                this.db.deletedUsers = this.db.deletedUsers.filter(e => (e || '').toLowerCase().trim() !== email);
+            }
 
             this.db.users.unshift(newMember);
             await this.saveDatabase();

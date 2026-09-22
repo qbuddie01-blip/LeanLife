@@ -51,7 +51,8 @@ exports.handler = async function(event, context) {
     // 2. Token Extraction & Verification
     // CRITICAL: Caller identity comes STRICTLY from the verified cryptographic HMAC session token.
     // Query parameters (?email=...), body fields, or arbitrary headers are STRICTLY IGNORED.
-    const authHeader = event.headers.authorization || event.headers.Authorization || '';
+    const reqHeaders = event.headers || {};
+    const authHeader = reqHeaders.authorization || reqHeaders.Authorization || '';
     let token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
     // If POST, check body for token fallback
@@ -103,6 +104,7 @@ exports.handler = async function(event, context) {
             method: 'GET',
             headers: {
                 'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
                 'Accept': 'application/json'
             },
             signal: controller ? controller.signal : undefined
@@ -199,9 +201,63 @@ exports.handler = async function(event, context) {
     if (callerRole === 'admin' || callerRole === 'coach') {
         // ==================== B. ADMIN / COACH ====================
         // Returns administrative dataset required by coach & admin dashboards.
-        // Sanitizes all user credentials (passwords, tempPasswordRaw).
-        // Omits massive backend dumps (emails: 24k records, automationJobs: 2.2k records).
-        const sanitizedUsers = allUsers.map(u => sanitizeUserProfile(u)).filter(Boolean);
+        // Fetch authoritative leanlife_auth_index to strictly gate active user membership.
+        // Users deleted from leanlife_auth_index are never returned.
+        let authUsers = [];
+        try {
+            const authRes = await fetch(`${SUPABASE_URL}/rest/v1/system_settings?id=eq.leanlife_auth_index&select=data`, {
+                method: 'GET',
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Accept': 'application/json'
+                }
+            });
+            if (authRes.ok) {
+                const rows = await authRes.json();
+                if (Array.isArray(rows) && rows.length > 0 && rows[0].data && Array.isArray(rows[0].data.users)) {
+                    authUsers = rows[0].data.users;
+                }
+            }
+        } catch (authFetchErr) {
+            console.warn('[CloudRead] Notice fetching auth index:', authFetchErr.message || authFetchErr);
+        }
+
+        const cloudUserMap = new Map();
+        allUsers.forEach(u => {
+            const k = (u.email || '').trim().toLowerCase();
+            if (k) cloudUserMap.set(k, u);
+        });
+
+        // Authoritative membership list comes strictly from authUsers.
+        // If authUsers was retrieved, only accounts present in authUsers are visible.
+        // This ensures deleted users NEVER reappear after page refresh.
+        const sourceUsersList = authUsers.length > 0 ? authUsers : allUsers;
+        const sanitizedUsers = sourceUsersList.map(u => {
+            const k = (u.email || '').trim().toLowerCase();
+            const cloudU = cloudUserMap.get(k) || {};
+            const merged = {
+                ...cloudU,
+                ...u,
+                dob: cloudU.dob || u.dob,
+                gender: cloudU.gender || u.gender,
+                height: cloudU.height !== undefined ? cloudU.height : u.height,
+                weight: cloudU.weight !== undefined ? cloudU.weight : u.weight,
+                goal: cloudU.goal || u.goal,
+                avatar: cloudU.avatar || u.avatar,
+                preferredCoach: cloudU.preferredCoach || u.preferredCoach,
+                healthProfile: cloudU.healthProfile || u.healthProfile,
+                streakCount: cloudU.streakCount !== undefined ? cloudU.streakCount : u.streakCount,
+                id: u.id || cloudU.id,
+                name: u.name || cloudU.name,
+                email: u.email,
+                role: u.role || cloudU.role || 'member',
+                status: u.status || cloudU.status || 'Active',
+                firstLogin: u.firstLogin !== undefined ? u.firstLogin : cloudU.firstLogin,
+                authUpdatedAt: u.authUpdatedAt || cloudU.authUpdatedAt
+            };
+            return sanitizeUserProfile(merged);
+        }).filter(Boolean);
 
         const adminPayload = {
             authenticated: true,

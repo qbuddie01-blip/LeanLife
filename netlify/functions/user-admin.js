@@ -78,7 +78,8 @@ exports.handler = async function(event, context) {
     let caller = null;
 
     if (!publicActions.includes(action)) {
-        const authHeader = event.headers.authorization || event.headers.Authorization || '';
+        const reqHeaders = event.headers || {};
+        const authHeader = reqHeaders.authorization || reqHeaders.Authorization || '';
         const token = authHeader.replace(/^Bearer\s+/i, '').trim() || body.token;
 
         // Case A: Missing Session Token -> 401 Unauthorized
@@ -202,59 +203,21 @@ exports.handler = async function(event, context) {
         };
     }
 
-    // Retrieve leanlife_cloud_db for dual-dataset operations
-    let cloudDbRaw = null;
-    let cloudDbMutated = false;
-    const cloudActions = [
-        'self-register-member',
-        'admin-register-member',
-        'request-password-reset',
-        'reconcile-auth-index',
-        'update-password',
-        'admin-delete-user',
-        'toggle-user-status',
-        'change-user-role',
-        'admin-reset-password'
-    ];
-
-    if (cloudActions.includes(action)) {
-        cloudDbRaw = await fetchDataset('leanlife_cloud_db');
-        if (!cloudDbRaw) {
-            cloudDbRaw = { users: [] };
-        } else if (!Array.isArray(cloudDbRaw.users)) {
-            cloudDbRaw.users = [];
-        }
-    }
-
     // 4. Execute Privileged or Public Mutation
+    // All credential, registration, and user-management actions operate strictly against
+    // the lightweight authoritative leanlife_auth_index (~5 KB), eliminating cloud_db bloat timeouts.
     let mutatedUser = null;
     let extraResponseData = {};
 
     if (action === 'admin-reset-password') {
         const targetEmail = (body.targetEmail || '').trim().toLowerCase();
         let user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
-        const cloudUser = cloudDbRaw ? cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail) : null;
-
-        if (!user && cloudUser) {
-            user = {
-                id: cloudUser.id || ('USR-' + Date.now()),
-                name: cloudUser.name || 'LeanLife Member',
-                email: targetEmail,
-                phone: cloudUser.phone || '',
-                role: cloudUser.role || 'member',
-                status: cloudUser.status || 'Active',
-                firstLogin: true,
-                authUpdatedAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            };
-            authUsers.push(user);
-        }
 
         if (!user) {
             return {
                 statusCode: 404,
                 headers: CORS_HEADERS,
-                body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND' })
+                body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND', message: 'User not found in authentication index.' })
             };
         }
         const tempPin = body.tempPassword || ('LL-' + Math.floor(100000 + Math.random() * 900000));
@@ -265,15 +228,6 @@ exports.handler = async function(event, context) {
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
         extraResponseData.tempPassword = tempPin;
-
-        if (cloudUser) {
-            delete cloudUser.tempPasswordRaw;
-            cloudUser.password = user.password;
-            cloudUser.firstLogin = true;
-            cloudUser.authUpdatedAt = user.authUpdatedAt;
-            cloudUser.updatedAt = user.updatedAt;
-            cloudDbMutated = true;
-        }
     } else if (action === 'admin-register-member') {
         const { name, email, phone, role = 'member' } = body.memberData || {};
         const cleanEmail = (email || '').trim().toLowerCase();
@@ -281,8 +235,7 @@ exports.handler = async function(event, context) {
             return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'EMAIL_REQUIRED' }) };
         }
         const existsInAuth = authUsers.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
-        const existsInCloud = cloudDbRaw && cloudDbRaw.users.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
-        if (existsInAuth || existsInCloud) {
+        if (existsInAuth) {
             return { statusCode: 409, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_ALREADY_EXISTS' }) };
         }
         const tempPin = (body.memberData && (body.memberData.tempPassword || body.memberData.password)) ||
@@ -305,100 +258,40 @@ exports.handler = async function(event, context) {
         authUsers.push(newUser);
         mutatedUser = newUser;
         extraResponseData.tempPassword = tempPin;
-
-        if (cloudDbRaw) {
-            cloudDbRaw.users.push({
-                id: userId,
-                name: name || 'LeanLife Member',
-                email: cleanEmail,
-                phone: phone || '',
-                role: role,
-                status: 'Active',
-                firstLogin: true,
-                authUpdatedAt: nowIso,
-                updatedAt: nowIso
-            });
-            cloudDbMutated = true;
-        }
     } else if (action === 'toggle-user-status') {
         const targetEmail = (body.targetEmail || '').trim().toLowerCase();
         const user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
         if (!user) {
-            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND' }) };
+            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND', message: 'User not found in authentication index.' }) };
         }
         user.status = user.status === 'Active' ? 'Suspended' : 'Active';
         user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
-
-        if (cloudDbRaw) {
-            const cloudUser = cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
-            if (cloudUser) {
-                cloudUser.status = user.status;
-                cloudUser.updatedAt = user.updatedAt;
-                cloudDbMutated = true;
-            }
-        }
     } else if (action === 'change-user-role') {
         const targetEmail = (body.targetEmail || '').trim().toLowerCase();
         const user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
         if (!user) {
-            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND' }) };
+            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND', message: 'User not found in authentication index.' }) };
         }
         user.role = body.newRole || 'member';
         user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
-
-        if (cloudDbRaw) {
-            const cloudUser = cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
-            if (cloudUser) {
-                cloudUser.role = user.role;
-                cloudUser.updatedAt = user.updatedAt;
-                cloudDbMutated = true;
-            }
-        }
     } else if (action === 'admin-delete-user') {
         const targetEmail = (body.targetEmail || '').trim().toLowerCase();
         const authIdx = authUsers.findIndex(u => (u.email || '').trim().toLowerCase() === targetEmail);
-        if (authIdx === -1 && (!cloudDbRaw || !cloudDbRaw.users.some(u => (u.email || '').trim().toLowerCase() === targetEmail))) {
-            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND' }) };
+        if (authIdx === -1) {
+            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND', message: 'User not found in authentication index.' }) };
         }
-        if (authIdx !== -1) {
-            mutatedUser = authUsers[authIdx];
-            authUsers.splice(authIdx, 1);
-        }
-        if (cloudDbRaw) {
-            const cloudIdx = cloudDbRaw.users.findIndex(u => (u.email || '').trim().toLowerCase() === targetEmail);
-            if (cloudIdx !== -1) {
-                if (!mutatedUser) mutatedUser = cloudDbRaw.users[cloudIdx];
-                cloudDbRaw.users.splice(cloudIdx, 1);
-                cloudDbMutated = true;
-            }
-        }
+        mutatedUser = authUsers[authIdx];
+        authUsers.splice(authIdx, 1);
         extraResponseData.deleted = true;
     } else if (action === 'update-password') {
         const targetEmail = (body.targetEmail || body.email || '').trim().toLowerCase();
         let user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
-        const cloudUser = cloudDbRaw ? cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail) : null;
-
-        if (!user && cloudUser) {
-            user = {
-                id: cloudUser.id || ('USR-' + Date.now()),
-                name: cloudUser.name || 'LeanLife Member',
-                email: targetEmail,
-                phone: cloudUser.phone || '',
-                role: cloudUser.role || 'member',
-                status: cloudUser.status || 'Active',
-                firstLogin: false,
-                authUpdatedAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            };
-            authUsers.push(user);
-        }
-
         if (!user) {
-            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND' }) };
+            return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND', message: 'User not found in authentication index.' }) };
         }
         user.password = hashPasswordPBKDF2Sync(body.newPassword);
         delete user.tempPasswordRaw;
@@ -406,39 +299,12 @@ exports.handler = async function(event, context) {
         user.authUpdatedAt = new Date().toISOString();
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
-
-        if (cloudUser) {
-            delete cloudUser.tempPasswordRaw;
-            cloudUser.password = user.password;
-            cloudUser.firstLogin = false;
-            cloudUser.authUpdatedAt = user.authUpdatedAt;
-            cloudUser.updatedAt = user.updatedAt;
-            cloudDbMutated = true;
-        }
     } else if (action === 'request-password-reset') {
         const targetEmail = (body.targetEmail || body.email || '').trim().toLowerCase();
         if (!targetEmail) {
             return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'EMAIL_REQUIRED', message: 'Email address is required.' }) };
         }
         let user = authUsers.find(u => (u.email || '').trim().toLowerCase() === targetEmail);
-        const cloudUser = cloudDbRaw ? cloudDbRaw.users.find(u => (u.email || '').trim().toLowerCase() === targetEmail) : null;
-
-        // Auto-reconcile user from cloud_db if missing from auth_index
-        if (!user && cloudUser) {
-            user = {
-                id: cloudUser.id || ('USR-' + Date.now()),
-                name: cloudUser.name || 'LeanLife Member',
-                email: targetEmail,
-                phone: cloudUser.phone || '',
-                role: cloudUser.role || 'member',
-                status: cloudUser.status || 'Active',
-                firstLogin: true,
-                authUpdatedAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            };
-            authUsers.push(user);
-        }
-
         if (!user) {
             return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_NOT_FOUND', message: 'Account not found.' }) };
         }
@@ -450,15 +316,6 @@ exports.handler = async function(event, context) {
         user.updatedAt = new Date().toISOString();
         mutatedUser = user;
         extraResponseData.tempPassword = tempPin;
-
-        if (cloudUser) {
-            delete cloudUser.tempPasswordRaw;
-            cloudUser.password = user.password;
-            cloudUser.firstLogin = true;
-            cloudUser.authUpdatedAt = user.authUpdatedAt;
-            cloudUser.updatedAt = user.updatedAt;
-            cloudDbMutated = true;
-        }
     } else if (action === 'self-register-member') {
         const { name, email, password, phone } = body.memberData || body || {};
         const cleanEmail = (email || '').trim().toLowerCase();
@@ -469,8 +326,7 @@ exports.handler = async function(event, context) {
             return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'PASSWORD_REQUIRED', message: 'Password is required.' }) };
         }
         const existsInAuth = authUsers.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
-        const existsInCloud = cloudDbRaw && cloudDbRaw.users.some(u => (u.email || '').trim().toLowerCase() === cleanEmail);
-        if (existsInAuth || existsInCloud) {
+        if (existsInAuth) {
             return { statusCode: 409, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_ALREADY_EXISTS', message: 'Email is already registered.' }) };
         }
         const hashedPassword = hashPasswordPBKDF2Sync(password);
@@ -492,31 +348,6 @@ exports.handler = async function(event, context) {
         authUsers.push(newUser);
         mutatedUser = newUser;
 
-        // Provision profile in cloud_db
-        if (cloudDbRaw) {
-            const cloudProfile = {
-                id: userId,
-                name: name || 'LeanLife Member',
-                email: cleanEmail,
-                phone: phone || '+1 (555) 0000',
-                dob: (body.memberData && body.memberData.dob) || '1995-01-01',
-                gender: (body.memberData && body.memberData.gender) || 'Female',
-                height: (body.memberData && body.memberData.height) || 170,
-                weight: (body.memberData && body.memberData.weight) || 155.4,
-                goal: (body.memberData && body.memberData.goal) || 'Improve health consistency',
-                status: 'Active',
-                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
-                role: 'member',
-                firstLogin: false,
-                streakCount: 0,
-                preferredCoach: 'sarah',
-                authUpdatedAt: nowIso,
-                updatedAt: nowIso
-            };
-            cloudDbRaw.users.push(cloudProfile);
-            cloudDbMutated = true;
-        }
-
         // Generate signed HMAC session token
         const nowSec = Math.floor(Date.now() / 1000);
         const sessionPayload = {
@@ -530,6 +361,7 @@ exports.handler = async function(event, context) {
         };
         extraResponseData.token = signSessionToken(sessionPayload);
     } else if (action === 'reconcile-auth-index') {
+        const cloudDbRaw = await fetchDataset('leanlife_cloud_db');
         const cloudUsers = (cloudDbRaw && Array.isArray(cloudDbRaw.users)) ? cloudDbRaw.users : [];
         let reconciledCount = 0;
 
@@ -580,9 +412,8 @@ exports.handler = async function(event, context) {
         };
     }
 
-    // 5. Persist updated datasets to Supabase with Upsert
+    // 5. Persist updated authoritative leanlife_auth_index to Supabase with Upsert
     let authSaved = false;
-    let cloudSaved = !cloudDbMutated; // If cloud_db was not mutated, it is already satisfied
 
     try {
         const controller = new AbortController();
@@ -612,39 +443,9 @@ exports.handler = async function(event, context) {
         authSaved = false;
     }
 
-    if (cloudDbMutated && cloudDbRaw) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-            const res = await fetch(`${cleanUrl}/rest/v1/system_settings`, {
-                method: 'POST',
-                headers: {
-                    'apikey': cleanKey,
-                    'Authorization': `Bearer ${cleanKey}`,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'resolution=merge-duplicates'
-                },
-                body: JSON.stringify({
-                    id: 'leanlife_cloud_db',
-                    data: cloudDbRaw,
-                    updated_at: new Date().toISOString()
-                }),
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-            cloudSaved = res.ok;
-            if (!res.ok) {
-                console.error(`[User Admin] Supabase write failed for cloud_db: HTTP ${res.status} ${res.statusText}`);
-            }
-        } catch (saveErr) {
-            console.error("[User Admin] Cloud write exception (cloud_db):", saveErr.message || saveErr);
-            cloudSaved = false;
-        }
-    }
-
     // Strict Persistence Invariant: NEVER report success if required database persistence failed
-    if (!authSaved || !cloudSaved) {
-        console.error(`[User Admin] Persistence check failed: authSaved=${authSaved}, cloudSaved=${cloudSaved}. Aborting success response.`);
+    if (!authSaved) {
+        console.error(`[User Admin] Persistence check failed: authSaved=${authSaved}. Aborting success response.`);
         return {
             statusCode: 503,
             headers: CORS_HEADERS,
@@ -653,8 +454,7 @@ exports.handler = async function(event, context) {
                 error: 'PERSISTENCE_FAILED',
                 message: 'Database persistence failed. Changes were not saved.',
                 diagnostics: {
-                    authSaved,
-                    cloudSaved
+                    authSaved
                 }
             })
         };

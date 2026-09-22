@@ -49,7 +49,8 @@ exports.handler = async function(event, context) {
     }
 
     // 3. Extract and Verify Session Token
-    const authHeader = event.headers.authorization || event.headers.Authorization || '';
+    const reqHeaders = event.headers || {};
+    const authHeader = reqHeaders.authorization || reqHeaders.Authorization || '';
     const token = authHeader.replace(/^Bearer\s+/i, '').trim() || body.token;
 
     if (!token) {
@@ -105,6 +106,7 @@ exports.handler = async function(event, context) {
             method: 'GET',
             headers: {
                 'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
                 'Accept': 'application/json'
             },
             signal: controller ? controller.signal : undefined
@@ -171,8 +173,8 @@ exports.handler = async function(event, context) {
         systemSettings: incomingSettings
     } = body;
 
-    // Helper: sanitize photo/image fields to prevent payload bloating
-    const sanitizePhoto = (url) => (url && typeof url === 'string' && url.length > 500) ? '' : url;
+    // Helper: preserve user-uploaded photos/images intact
+    const sanitizePhoto = (url) => url;
 
     // 5. Apply Role-Based Mutation & Field-Level Access Control
 
@@ -193,15 +195,23 @@ exports.handler = async function(event, context) {
         }
 
         // B. Users: Admins can manage member metadata, but PASSWORDS MUST NEVER BE STORED in leanlife_cloud_db
+        if (Array.isArray(body.deletedUsers) && body.deletedUsers.length > 0) {
+            const deletedSet = new Set(body.deletedUsers.map(e => String(e).trim().toLowerCase()));
+            currentCloudDb.users = currentCloudDb.users.filter(u => !deletedSet.has((u.email || '').trim().toLowerCase()));
+        }
+
         if (Array.isArray(incomingUsers)) {
             const userMap = new Map();
             currentCloudDb.users.forEach(u => {
                 const k = (u.email || '').trim().toLowerCase();
                 if (k) userMap.set(k, u);
             });
+            const deletedSet = (Array.isArray(body.deletedUsers) && body.deletedUsers.length > 0)
+                ? new Set(body.deletedUsers.map(e => String(e).trim().toLowerCase()))
+                : new Set();
             incomingUsers.forEach(u => {
                 const k = (u.email || '').trim().toLowerCase();
-                if (k) {
+                if (k && !deletedSet.has(k)) {
                     const existing = userMap.get(k);
                     // Strictly strip any credential fields
                     const { password: _p, tempPasswordRaw: _t, ...safeFields } = u;
@@ -445,6 +455,7 @@ exports.handler = async function(event, context) {
             method: 'POST',
             headers: {
                 'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
                 'Content-Type': 'application/json',
                 'Prefer': 'resolution=merge-duplicates'
             },
