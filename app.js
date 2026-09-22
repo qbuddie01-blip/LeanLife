@@ -5944,58 +5944,78 @@ const leanLifeAppCore = {
         alert(`User status for ${user.name} toggled to: ${user.status}`);
     },
 
-    adminResetPassword(email) {
-        const user = this.db.users.find(u => (u.email || '').toLowerCase().trim() === (email || '').toLowerCase().trim());
+    async adminResetPassword(email) {
+        const cleanEmail = (email || '').toLowerCase().trim();
+        const user = this.db.users.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
         if (!user) return;
-        
-        const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
-        delete user.tempPasswordRaw;
-        user.firstLogin = true;
-        user.authUpdatedAt = new Date().toISOString();
-        user.updatedAt = new Date().toISOString();
-        
-        // 1. INSTANT (0ms): Re-render admin users table & display Action Center Modal
-        this.renderAdminUsers();
-        this.openCredentialsModal(user, tempPassword, 'reset');
 
-        // 2. ASYNCHRONOUS (Background): Hash password, save database, & dispatch real email
-        setTimeout(async () => {
-            try {
-                user.password = await this.hashPassword(tempPassword);
-                await this.saveDatabase();
-                LeanLifeCacheManager.notifyOtherTabs('USERS_UPDATED', { user });
+        const adminToken = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+                           (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
+        if (!adminToken) {
+            this.showCustomAlert("Active administrator session token required to reset user password. Please log in again.", "Authentication Required", "fa-lock");
+            return;
+        }
 
-                // Synchronize with authoritative Supabase auth index via user-admin function
-                const adminToken = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
-                                   (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
-                if (adminToken) {
-                    const baseUrl = getApiBaseUrl();
-                    fetch(`${baseUrl}/.netlify/functions/user-admin`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
-                        body: JSON.stringify({ action: 'admin-reset-password', targetEmail: user.email, tempPassword: tempPassword })
-                    }).catch(e => console.warn("[Admin] Cloud reset sync notice:", e));
-                }
-                
-                const emailResult = await this.sendRealEmail(user.name, user.email, 'LeanLife Temporary Credentials Reset', tempPassword, 'reset');
-                const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
+        try {
+            // 1. Generate ONE reset credential (LL-XXXXXX)
+            const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
 
-                this.db.emails = this.db.emails || [];
-                this.db.emails.unshift({
-                    id: 'EML-' + Date.now(),
-                    timestamp: new Date().toISOString(),
-                    recipient: user.email,
-                    subject: 'LeanLife Temporary Credentials Reset',
-                    templateName: 'Password Reset',
-                    status: deliveryStatus
-                });
-                await this.saveDatabase();
-                
-                this.logAudit(this.currentUser.name, 'Admin Password Reset', `Generated temporary password for ${user.email}. Email delivery: ${deliveryStatus}`);
-            } catch (err) {
-                console.error("Background adminResetPassword error:", err);
+            // 2. Persist PBKDF2 hash to authoritative leanlife_auth_index via serverless endpoint BEFORE success
+            const baseUrl = getApiBaseUrl();
+            const resetRes = await fetch(`${baseUrl}/.netlify/functions/user-admin`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+                body: JSON.stringify({ action: 'admin-reset-password', targetEmail: cleanEmail, tempPassword: tempPassword })
+            });
+
+            if (!resetRes.ok) {
+                const errData = await resetRes.json().catch(() => ({}));
+                const errMsg = errData.message || "Database persistence failed. Password was not reset.";
+                console.error("[Admin] Reset password persistence failure HTTP", resetRes.status, errData);
+                this.showCustomAlert(errMsg, "Reset Failed", "fa-triangle-exclamation");
+                return;
             }
-        }, 10);
+
+            const resetData = await resetRes.json().catch(() => null);
+            if (!resetData || !resetData.success) {
+                const errMsg = (resetData && resetData.message) || "Database persistence failed. Changes were not saved.";
+                this.showCustomAlert(errMsg, "Reset Failed", "fa-triangle-exclamation");
+                return;
+            }
+
+            // 3. Confirm successful authoritative persistence -> update local cache & hash
+            delete user.tempPasswordRaw;
+            user.firstLogin = true;
+            user.authUpdatedAt = new Date().toISOString();
+            user.updatedAt = new Date().toISOString();
+            user.password = await this.hashPassword(tempPassword);
+            await this.saveDatabase();
+            LeanLifeCacheManager.notifyOtherTabs('USERS_UPDATED', { user });
+
+            // 4. Update UI & communicate credential
+            this.renderAdminUsers();
+            this.openCredentialsModal(user, tempPassword, 'reset');
+
+            // 5. Dispatch notification email
+            const emailResult = await this.sendRealEmail(user.name, user.email, 'LeanLife Temporary Credentials Reset', tempPassword, 'reset');
+            const deliveryStatus = emailResult && emailResult.ok ? 'Delivered' : 'Failed';
+
+            this.db.emails = this.db.emails || [];
+            this.db.emails.unshift({
+                id: 'EML-' + Date.now(),
+                timestamp: new Date().toISOString(),
+                recipient: user.email,
+                subject: 'LeanLife Temporary Credentials Reset',
+                templateName: 'Password Reset',
+                status: deliveryStatus
+            });
+            await this.saveDatabase();
+
+            this.logAudit(this.currentUser ? this.currentUser.name : 'Admin', 'Admin Password Reset', `Generated temporary password for ${user.email}. Email delivery: ${deliveryStatus}`);
+        } catch (err) {
+            console.error("adminResetPassword error:", err);
+            this.showCustomAlert("Error resetting user password: " + (err.message || err), "Reset Failed", "fa-circle-exclamation");
+        }
     },
 
     deleteUser(email) {
@@ -6023,6 +6043,14 @@ const leanLifeAppCore = {
             e.preventDefault();
         }
 
+        if (this.isRegisteringMember) {
+            console.warn("[App] Member registration already in progress, ignoring duplicate submit.");
+            return;
+        }
+
+        const submitBtn = document.querySelector('#admin-register-form button[type="submit"]');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+
         try {
             const name = (document.getElementById('reg-name')?.value || '').trim();
             const email = (document.getElementById('reg-email')?.value || '').trim().replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').toLowerCase();
@@ -6036,19 +6064,74 @@ const leanLifeAppCore = {
                 return;
             }
 
-            // Check if user already exists
+            // Check if user already exists in local cache
             const existingUser = this.db.users.find(u => (u.email || '').toLowerCase().trim() === email);
             if (existingUser) {
                 this.showCustomAlert(`A user with email "${email}" is already registered on LeanLife.`, "Account Exists", "fa-triangle-exclamation");
                 return;
             }
 
-            // Generate secure temporary credentials (LL-XXXXXX)
-            const username = email.split('@')[0];
+            this.isRegisteringMember = true;
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Generating Account...';
+            }
+
+            // 1. Generate ONE temporary credential (LL-XXXXXX)
             const tempPassword = 'LL-' + Math.floor(100000 + Math.random() * 900000);
             const hashedPassword = await this.hashPassword(tempPassword);
 
+            // 2. Persist hash authoritatively to serverless user-admin endpoint BEFORE declaring success
+            const sessionToken = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
+                                 (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
+            if (!sessionToken) {
+                this.showCustomAlert("Active administrator session token required to register member. Please log in again.", "Authentication Required", "fa-lock");
+                return;
+            }
+
+            const baseUrl = getApiBaseUrl();
+            const regRes = await fetch(`${baseUrl}/.netlify/functions/user-admin`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${sessionToken}`
+                },
+                body: JSON.stringify({
+                    action: 'admin-register-member',
+                    token: sessionToken,
+                    memberData: {
+                        name: name,
+                        email: email,
+                        phone: phone,
+                        role: 'member',
+                        tempPassword: tempPassword
+                    }
+                })
+            });
+
+            if (regRes.status === 409) {
+                this.showCustomAlert(`A user with email "${email}" is already registered on LeanLife.`, "Account Exists", "fa-triangle-exclamation");
+                return;
+            }
+
+            if (!regRes.ok) {
+                const errData = await regRes.json().catch(() => ({}));
+                const errMsg = errData.message || "Failed to persist member account to database. Please try again.";
+                this.showCustomAlert(errMsg, "Persistence Error", "fa-triangle-exclamation");
+                return;
+            }
+
+            const regData = await regRes.json().catch(() => null);
+            if (!regData || !regData.success) {
+                const errMsg = (regData && regData.message) || "Failed to persist member account to database.";
+                this.showCustomAlert(errMsg, "Persistence Error", "fa-triangle-exclamation");
+                return;
+            }
+
+            // 3. Authoritative persistence verified! Build local record and update local state
+            const serverUser = regData.user || {};
             const newMember = {
+                id: serverUser.id || ('USR-' + Date.now()),
                 name: name,
                 email: email,
                 password: hashedPassword,
@@ -6064,8 +6147,8 @@ const leanLifeAppCore = {
                 goal: 'General Wellness',
                 avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop',
                 streakCount: 0,
-                authUpdatedAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
+                authUpdatedAt: serverUser.authUpdatedAt || new Date().toISOString(),
+                updatedAt: serverUser.updatedAt || new Date().toISOString(),
                 healthProfile: {
                     height: 170,
                     weight: 155.4,
@@ -6080,51 +6163,24 @@ const leanLifeAppCore = {
                 }
             };
 
-            // 1. INSTANT: Add user to local directory at top of list
             this.db.users.unshift(newMember);
-
-            // 2. Persist to cache & database
             await this.saveDatabase();
             LeanLifeCacheManager.notifyOtherTabs('USERS_UPDATED', { user: newMember });
 
-            // Background: Synchronize credentials with serverless user-admin endpoint if admin session token exists
-            const sessionToken = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('leanlife_token')) ||
-                                 (typeof localStorage !== 'undefined' && localStorage.getItem('leanlife_token'));
-            if (sessionToken) {
-                const baseUrl = getApiBaseUrl();
-                fetch(`${baseUrl}/.netlify/functions/user-admin`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${sessionToken}`
-                    },
-                    body: JSON.stringify({
-                        action: 'admin-register-member',
-                        token: sessionToken,
-                        memberData: {
-                            name: newMember.name,
-                            email: newMember.email,
-                            phone: newMember.phone,
-                            role: newMember.role
-                        }
-                    })
-                }).catch(e => console.warn("[App] Background member sync notice:", e));
-            }
-
-            // 3. Clear search/filters & reset form
+            // 4. Clear search/filters & reset form
             const searchInput = document.getElementById('admin-user-search');
             if (searchInput) searchInput.value = '';
             const statusInput = document.getElementById('admin-user-filter-status');
             if (statusInput) statusInput.value = 'all';
             document.getElementById('admin-register-form')?.reset();
 
-            // 4. Re-render admin user table so user appears at top of list immediately
+            // 5. Re-render admin user table
             this.renderAdminUsers();
 
-            // 5. Display dedicated Credentials Action Center modal (Copy & WhatsApp ready)
+            // 6. Display dedicated Credentials Action Center modal (Copy & WhatsApp ready)
             this.openCredentialsModal(newMember, tempPassword, 'created');
 
-            // 6. ASYNCHRONOUS (Background): Dispatch real onboarding email
+            // 7. Dispatch real onboarding email with the EXACT same temporary password
             const outboxId = 'EML-' + Date.now();
             this.db.emails = this.db.emails || [];
             this.db.emails.unshift({
@@ -6135,7 +6191,7 @@ const leanLifeAppCore = {
                 templateName: 'Welcome Email',
                 status: 'Pending'
             });
-            this.saveDatabase(true);
+            await this.saveDatabase();
 
             this.sendRealEmail(name, email, 'Welcome to LeanLife Onboarding', tempPassword, 'welcome')
                 .then(emailResult => {
@@ -6154,6 +6210,12 @@ const leanLifeAppCore = {
         } catch (err) {
             console.error("Error in handleAdminRegisterMember:", err);
             this.showCustomAlert("An error occurred while creating the member account: " + (err.message || err), "Error", "fa-circle-exclamation");
+        } finally {
+            this.isRegisteringMember = false;
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHtml || '<i class="fa-solid fa-circle-check"></i> Generate Member Account';
+            }
         }
     },
 
@@ -7362,6 +7424,18 @@ const leanLifeAppCore = {
     },
 
     async sendRealEmail(recipientName, recipientEmail, subject, tempPassword, templateType = null, extraData = {}) {
+        this._recentEmailDispatches = this._recentEmailDispatches || new Map();
+        const dedupeKey = `${(recipientEmail || '').trim().toLowerCase()}:${templateType || subject}:${tempPassword || ''}`;
+        const now = Date.now();
+        if (this._recentEmailDispatches.has(dedupeKey)) {
+            const lastSent = this._recentEmailDispatches.get(dedupeKey);
+            if (now - lastSent < 15000) {
+                console.warn(`[sendRealEmail] Deduplicating identical email dispatch to ${recipientEmail} within 15s.`);
+                return { ok: true, provider: 'deduped' };
+            }
+        }
+        this._recentEmailDispatches.set(dedupeKey, now);
+
         const config = window.SUPABASE_CONFIG || {};
 
         // 1. Primary Email Provider: EmailJS
@@ -7465,53 +7539,59 @@ const leanLifeAppCore = {
                         console.log(`Real email successfully dispatched to ${recipientEmail} via EmailJS Browser SDK!`);
                         this.logAudit('System', 'Real Email Dispatched', `Real onboarding email delivered to ${recipientEmail} via EmailJS SDK`);
                         return { ok: true, provider: 'emailjs-sdk' };
+                    } else {
+                        console.warn("EmailJS Browser SDK non-OK result:", sdkResult);
+                        return { ok: false, provider: 'emailjs-sdk', error: 'Non-OK response' };
                     }
                 } catch (sdkErr) {
                     console.warn("EmailJS Browser SDK notice:", sdkErr);
+                    // Do NOT automatically re-send via direct HTTP fetch if the SDK was already invoked,
+                    // as the message may have already reached EmailJS servers and queued for delivery.
+                    return { ok: false, provider: 'emailjs-sdk', error: sdkErr.message || String(sdkErr) };
                 }
-            }
-
-            // 1B. Direct HTTP API Fetch
-            try {
-                const targetUrl = 'https://api.emailjs.com/api/v1.0/email/send';
-                
-                const response = await fetch(targetUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        service_id: serviceId,
-                        template_id: templateId,
-                        user_id: publicKey,
-                        template_params: templateParams
-                    })
-                });
-
-                if (response.ok) {
-                    console.log(`Real email successfully dispatched to ${recipientEmail} via EmailJS API!`);
-                    this.logAudit('System', 'Real Email Dispatched', `Real onboarding email delivered to ${recipientEmail} via EmailJS`);
-                    return { ok: true, provider: 'emailjs' };
-                } else {
-                    const errText = await response.text();
-                    console.error("EmailJS API returned error status:", response.status, errText);
-                    const isGrantErr = response.status === 412 || errText.includes('Invalid grant');
-                    const auditMsg = isGrantErr ? 
-                        `⚠️ EmailJS Gmail Service Re-authentication Required (HTTP 412: Invalid Grant). Please log into https://dashboard.emailjs.com/ and reconnect your Gmail account.` : 
-                        `EmailJS rejected email to ${recipientEmail} (HTTP ${response.status}): ${errText}`;
-                    this.logAudit('System', 'Real Email FAILED', auditMsg);
+            } else {
+                // 1B. Direct HTTP API Fetch (Used ONLY when Browser SDK is unavailable)
+                try {
+                    const targetUrl = 'https://api.emailjs.com/api/v1.0/email/send';
                     
-                    if (isGrantErr) {
-                        this.showCustomAlert(
-                            `⚠️ Welcome Email Not Delivered to ${recipientEmail}\n\nReason: EmailJS returned HTTP 412 (Invalid Grant). The Gmail account connected to EmailJS needs to be reconnected.\n\n30-Second Fix:\n1. Open https://dashboard.emailjs.com/\n2. Click Email Services -> service_a1av3q9\n3. Click "Reconnect Account" button`,
-                            "EmailJS Re-connection Required",
-                            "fa-triangle-exclamation"
-                        );
+                    const response = await fetch(targetUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            service_id: serviceId,
+                            template_id: templateId,
+                            user_id: publicKey,
+                            template_params: templateParams
+                        })
+                    });
+
+                    if (response.ok) {
+                        console.log(`Real email successfully dispatched to ${recipientEmail} via EmailJS API!`);
+                        this.logAudit('System', 'Real Email Dispatched', `Real onboarding email delivered to ${recipientEmail} via EmailJS`);
+                        return { ok: true, provider: 'emailjs' };
+                    } else {
+                        const errText = await response.text();
+                        console.error("EmailJS API returned error status:", response.status, errText);
+                        const isGrantErr = response.status === 412 || errText.includes('Invalid grant');
+                        const auditMsg = isGrantErr ? 
+                            `⚠️ EmailJS Gmail Service Re-authentication Required (HTTP 412: Invalid Grant). Please log into https://dashboard.emailjs.com/ and reconnect your Gmail account.` : 
+                            `EmailJS rejected email to ${recipientEmail} (HTTP ${response.status}): ${errText}`;
+                        this.logAudit('System', 'Real Email FAILED', auditMsg);
+                        
+                        if (isGrantErr) {
+                            this.showCustomAlert(
+                                `⚠️ Welcome Email Not Delivered to ${recipientEmail}\n\nReason: EmailJS returned HTTP 412 (Invalid Grant). The Gmail account connected to EmailJS needs to be reconnected.\n\n30-Second Fix:\n1. Open https://dashboard.emailjs.com/\n2. Click Email Services -> service_a1av3q9\n3. Click "Reconnect Account" button`,
+                                "EmailJS Re-connection Required",
+                                "fa-triangle-exclamation"
+                            );
+                        }
                     }
+                } catch (err) {
+                    console.error("Failed to execute EmailJS HTTP request:", err);
+                    this.logAudit('System', 'Real Email FAILED', `Network error sending email via EmailJS: ${err.message}`);
                 }
-            } catch (err) {
-                console.error("Failed to execute EmailJS HTTP request:", err);
-                this.logAudit('System', 'Real Email FAILED', `Network error sending email via EmailJS: ${err.message}`);
             }
         }
 

@@ -314,10 +314,14 @@ exports.handler = async function(event, context) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/system_settings?id=eq.leanlife_auth_index&select=data`, {
+        const cleanUrl = (SUPABASE_URL || '').trim().replace(/\/+$/, '');
+        const cleanKey = (SUPABASE_KEY || '').trim();
+
+        const response = await fetch(`${cleanUrl}/rest/v1/system_settings?id=eq.leanlife_auth_index&select=data`, {
             method: 'GET',
             headers: {
-                'apikey': SUPABASE_KEY,
+                'apikey': cleanKey,
+                'Authorization': `Bearer ${cleanKey}`,
                 'Accept': 'application/json'
             },
             signal: controller.signal

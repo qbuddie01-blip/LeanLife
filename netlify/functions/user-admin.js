@@ -14,6 +14,8 @@ const CORS_HEADERS = {
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+const cleanUrl = (SUPABASE_URL || '').trim().replace(/\/+$/, '');
+const cleanKey = (SUPABASE_KEY || '').trim();
 
 function hashPasswordPBKDF2Sync(password, saltUint8 = null) {
     const iterations = 100000;
@@ -158,9 +160,13 @@ exports.handler = async function(event, context) {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 6000);
-            const res = await fetch(`${SUPABASE_URL}/rest/v1/system_settings?id=eq.${encodeURIComponent(id)}&select=data`, {
+            const res = await fetch(`${cleanUrl}/rest/v1/system_settings?id=eq.${encodeURIComponent(id)}&select=data`, {
                 method: 'GET',
-                headers: { 'apikey': SUPABASE_KEY, 'Accept': 'application/json' },
+                headers: {
+                    'apikey': cleanKey,
+                    'Authorization': `Bearer ${cleanKey}`,
+                    'Accept': 'application/json'
+                },
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -279,7 +285,9 @@ exports.handler = async function(event, context) {
         if (existsInAuth || existsInCloud) {
             return { statusCode: 409, headers: CORS_HEADERS, body: JSON.stringify({ success: false, error: 'USER_ALREADY_EXISTS' }) };
         }
-        const tempPin = 'LL-' + Math.floor(100000 + Math.random() * 900000);
+        const tempPin = (body.memberData && (body.memberData.tempPassword || body.memberData.password)) ||
+                        body.tempPassword ||
+                        ('LL-' + Math.floor(100000 + Math.random() * 900000));
         const userId = 'USR-' + Date.now();
         const nowIso = new Date().toISOString();
         const newUser = {
@@ -579,10 +587,11 @@ exports.handler = async function(event, context) {
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/system_settings`, {
+        const res = await fetch(`${cleanUrl}/rest/v1/system_settings`, {
             method: 'POST',
             headers: {
-                'apikey': SUPABASE_KEY,
+                'apikey': cleanKey,
+                'Authorization': `Bearer ${cleanKey}`,
                 'Content-Type': 'application/json',
                 'Prefer': 'resolution=merge-duplicates'
             },
@@ -607,10 +616,11 @@ exports.handler = async function(event, context) {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 8000);
-            const res = await fetch(`${SUPABASE_URL}/rest/v1/system_settings`, {
+            const res = await fetch(`${cleanUrl}/rest/v1/system_settings`, {
                 method: 'POST',
                 headers: {
-                    'apikey': SUPABASE_KEY,
+                    'apikey': cleanKey,
+                    'Authorization': `Bearer ${cleanKey}`,
                     'Content-Type': 'application/json',
                     'Prefer': 'resolution=merge-duplicates'
                 },
